@@ -17,10 +17,10 @@ Final run on the branch head after the review fixes (2026-11-09):
 
 ```text
 swift test --scratch-path .build-main
-✔ Test run with 690 tests in 110 suites passed after 127.262 seconds.
+✔ Test run with 718 tests in 115 suites passed after 18.485 seconds.
 ```
 
-- Tests: 690 in 110 suites, all passing. The unsigned app build (`xcodebuild … CODE_SIGNING_ALLOWED=NO`) also succeeds.
+- Tests: 718 in 115 suites, all passing. The unsigned app build (`xcodebuild … CODE_SIGNING_ALLOWED=NO`) also succeeds.
 - An earlier snapshot taken while the Drive fixes were half applied showed 3 loopback OAuth failures; they do not reproduce on the final tree (`OAuthPrimitivesTests` 8 of 8 pass on their own and in the full run).
 - Two timing-sensitive tests were made deterministic: `AuthSessionTests` no longer shares one fake clock between parallel tests, and `TriggerDebouncerTests` polls for the expected fire instead of fixed sleeps.
 - Per-target counts: [codebase-summary.md](./architecture/codebase-summary.md#test-targets).
