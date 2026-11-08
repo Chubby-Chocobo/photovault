@@ -1,7 +1,7 @@
 ---
 phase: 03b
 title: "Core policies: rate limiting, disk guard, places, sidecars, devices, views"
-status: pending
+status: done
 priority: P1
 size: M
 human_effort: 3-5h

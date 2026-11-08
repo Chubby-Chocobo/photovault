@@ -1,7 +1,7 @@
 ---
 phase: 08
 title: "Engine: change tracking, export, fan-out, sync cycle"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 6-10h

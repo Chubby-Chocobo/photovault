@@ -1,7 +1,7 @@
 ---
 phase: 03
 title: "Core contracts: models, persisted entities, protocols, state machine, fakes"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 4-6h

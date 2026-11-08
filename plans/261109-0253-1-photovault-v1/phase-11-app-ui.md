@@ -1,7 +1,7 @@
 ---
 phase: 11
 title: "App: menu bar, onboarding, Settings, notifications"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 5-8h

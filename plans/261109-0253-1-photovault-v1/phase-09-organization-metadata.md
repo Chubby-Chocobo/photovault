@@ -1,7 +1,7 @@
 ---
 phase: 09
 title: "Organization & metadata: day folders, places, sidecars, edits, views"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 5-8h

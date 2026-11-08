@@ -1,7 +1,7 @@
 ---
 phase: 01
 title: "Scaffold: SPM package, Xcode app project, CI, config"
-status: pending
+status: done
 priority: P1
 size: M
 human_effort: 2-3h

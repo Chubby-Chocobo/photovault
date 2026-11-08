@@ -1,7 +1,7 @@
 ---
 phase: 05
 title: "Photos adapter, export streaming, metadata reader"
-status: pending
+status: done
 priority: P1
 size: M
 human_effort: 3-5h

@@ -1,7 +1,7 @@
 ---
 phase: 06
 title: "Google Drive: OAuth, Keychain, REST, resumable upload"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 5-8h

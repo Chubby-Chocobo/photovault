@@ -49,19 +49,19 @@ Dependencies: Core ← Store, Photos, Drive, Local; Engine ← Core + Store; App
 
 | # | Phase | Status | Size | Depends on |
 |---|---|---|---|---|
-| 01 | [Scaffold: SPM package, Xcode app project, CI, config](phase-01-scaffold.md) | pending | M | — |
-| 02 | [HTML mockups of every screen](phase-02-mockups.md) | pending | M | — |
-| 03 | [Core contracts: models, entities, protocols, state machine, fakes](phase-03-core-contracts.md) | pending | L | 01 |
-| 03b | [Core policies: rate limiting, disk guard, places, sidecars, devices, views](phase-03b-core-policies.md) | pending | M | 03 |
-| 04 | [Store: GRDB schema, repositories, backups](phase-04-store.md) | pending | L | 03 |
-| 05 | [Photos adapter, export streaming, metadata reader](phase-05-photos-adapter.md) | pending | M | 03 |
-| 06 | [Google Drive: OAuth, Keychain, REST, resumable upload](phase-06-google-drive.md) | pending | L | 03 |
-| 07 | [Local/NAS destination](phase-07-local-destination.md) | pending | M | 03 |
-| 08 | [Engine: change tracking, export, fan-out, sync cycle](phase-08-engine-pipeline.md) | pending | L | 04 |
-| 09 | [Organization & metadata: day folders, places, sidecars, edits, views](phase-09-organization-metadata.md) | pending | L | 03b, 08 |
-| 10 | [Hardening: recovery, reconciliation, integrity, rebuild](phase-10-recovery-integrity.md) | pending | L | 07, 09 |
-| 11 | [App: menu bar, onboarding, Settings, notifications](phase-11-app-ui.md) | pending | L | 02, 05, 06, 07, 10 |
-| 12 | [Docs: README, sidecar schema, decisions, spikes, test report](phase-12-docs.md) | pending | M | 11 |
+| 01 | [Scaffold: SPM package, Xcode app project, CI, config](phase-01-scaffold.md) | done | M | — |
+| 02 | [HTML mockups of every screen](phase-02-mockups.md) | done | M | — |
+| 03 | [Core contracts: models, entities, protocols, state machine, fakes](phase-03-core-contracts.md) | done | L | 01 |
+| 03b | [Core policies: rate limiting, disk guard, places, sidecars, devices, views](phase-03b-core-policies.md) | done | M | 03 |
+| 04 | [Store: GRDB schema, repositories, backups](phase-04-store.md) | done | L | 03 |
+| 05 | [Photos adapter, export streaming, metadata reader](phase-05-photos-adapter.md) | done | M | 03 |
+| 06 | [Google Drive: OAuth, Keychain, REST, resumable upload](phase-06-google-drive.md) | done | L | 03 |
+| 07 | [Local/NAS destination](phase-07-local-destination.md) | done | M | 03 |
+| 08 | [Engine: change tracking, export, fan-out, sync cycle](phase-08-engine-pipeline.md) | done | L | 04 |
+| 09 | [Organization & metadata: day folders, places, sidecars, edits, views](phase-09-organization-metadata.md) | done | L | 03b, 08 |
+| 10 | [Hardening: recovery, reconciliation, integrity, rebuild](phase-10-recovery-integrity.md) | done | L | 07, 09 |
+| 11 | [App: menu bar, onboarding, Settings, notifications](phase-11-app-ui.md) | done | L | 02, 05, 06, 07, 10 |
+| 12 | [Docs: README, sidecar schema, decisions, spikes, test report](phase-12-docs.md) | in-progress | M | 11 |
 
 Phase 03 (contracts) is written by the controller as code; it is the contract. Phases 03b and 04–07 then run in parallel (separate folders, separate `--scratch-path`); none of them may change Core contract types. Phase 02 runs in parallel with 01–03.
 
@@ -143,6 +143,30 @@ Phase 03 (contracts) is written by the controller as code; it is the contract. P
 - Alternatives: keep everything local
 - Why: the owner explicitly asked to set up the GitHub remote and run /vibe --ship
 - Review later: no
+
+### Edited JPEG extension
+- Chosen: edited JPEGs are named `(edited).JPG`; other edited files use the upper-cased UTI extension
+- Alternatives: `(edited).JPEG` straight from the UTI
+- Why: matches iPhone and camera naming the owner already sees; recorded in `docs/decisions/0021-edited-extension-casing.md`
+- Review later: no
+
+### Owner decisions surfaced by the app
+- Chosen: the app shows engine decisions only with data the engine persists (folder-trashed cards carry no folder name; the zero-match recovery card offers "Thử khôi phục lại" or "Tiếp tục không dùng dữ liệu cũ")
+- Alternatives: persist folder path and recovery stats in the engine for richer cards
+- Why: avoids a schema change late in the build; the Activity window already holds the details
+- Review later: yes
+
+### Small-file reads on local destinations
+- Chosen: `LocalFolderDestination.readSmallFile` (no symlinks, 1 MB cap) feeds recovery's sidecar reader
+- Alternatives: read sidecars through `FileManager` from the app
+- Why: keeps every byte read from the NAS behind the same fd-relative, no-follow access as writes
+- Review later: no
+
+### Crash scope and owner commands during a sync
+- Chosen: NFR-01 covers power loss and kernel panic (SQLite `synchronous=FULL` + `fullfsync`); owner commands run in one exclusive lane with the sync cycle, which yields at pass boundaries
+- Alternatives: `synchronous=NORMAL` (faster, loses recent commits on power loss); per-destination locks for commands
+- Why: a lost reserved-ID commit after power loss re-creates the file on Drive; a single lane is the simplest way to stop integrity checks and root changes racing uploads
+- Review later: yes (measure write throughput on a large backfill)
 
 ## Audit Review
 

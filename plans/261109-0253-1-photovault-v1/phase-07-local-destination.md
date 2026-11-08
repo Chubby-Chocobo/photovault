@@ -1,7 +1,7 @@
 ---
 phase: 07
 title: "Local/NAS destination"
-status: pending
+status: done
 priority: P1
 size: M
 human_effort: 3-4h

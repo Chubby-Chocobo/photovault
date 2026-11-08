@@ -1,7 +1,7 @@
 ---
 phase: 02
 title: "HTML mockups of every screen"
-status: pending
+status: done
 priority: P2
 size: M
 human_effort: 2-4h

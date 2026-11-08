@@ -1,7 +1,7 @@
 ---
 phase: 10
 title: "Hardening: recovery, reconciliation, integrity, rebuild"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 4-6h

@@ -1,7 +1,7 @@
 ---
 phase: 04
 title: "Store: GRDB schema, repositories, backups"
-status: pending
+status: done
 priority: P1
 size: L
 human_effort: 4-6h
