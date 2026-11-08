@@ -47,7 +47,8 @@ struct SidecarPlanner: JobPlanningExtension {
         for job in jobs where job.resType.isSidecar && !wanted.contains(job.resType) && [.pending, .deferred].contains(job.state) {
             _ = try JobRepository.apply(db, .cancel, to: job.identity, now: context.now)
         }
-        guard !wanted.isEmpty, asset.placement != nil else { return }
+        // A provisional category means the header was not read yet: the sidecar would be written twice.
+        guard !wanted.isEmpty, asset.placement != nil, !asset.categoryProvisional else { return }
         let resourceJobs = jobs.filter { !$0.resType.isSidecar && $0.state != .cancelled }
         let originals = resourceJobs.filter { $0.kind == .original }
         let gating = originals.isEmpty ? resourceJobs : originals

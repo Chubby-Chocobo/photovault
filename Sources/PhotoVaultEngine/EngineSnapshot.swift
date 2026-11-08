@@ -74,4 +74,6 @@ public enum CycleOutcome: Sendable, Equatable {
     case queued
     case paused
     case blocked(CycleBlock)
+    /// The cycle stopped on an error; nothing is lost, the next cycle starts again. Only the error type is kept.
+    case failed(CycleFailure)
 }

@@ -12,7 +12,8 @@ public actor SyncCoordinator {
     private let env: EngineEnvironment
     private let stages: [any CycleStage]
     let organization: OrganizationServices
-    private let reconciler: (any ReconciliationRunning)?
+    private let reconciler: any ReconciliationRunning
+    let hardening: HardeningServices
     let staging: StagingManager
     let resourceGuard: ResourceGuard
     let baseline: Baseline
@@ -29,7 +30,7 @@ public actor SyncCoordinator {
     private var followUp = false
     private var followUpTrigger: SyncTrigger = .manual
     private var globallyPaused = false
-    private var needsReconciliation: ReconciliationReason?
+    var needsReconciliation: ReconciliationReason?
     private var lastCheckBlock: CycleBlock?
     private var lastNetworkOK = true
     private var lastPublished: EngineSnapshot?
@@ -50,21 +51,27 @@ public actor SyncCoordinator {
         recoveryParticipants: [any RecoveryParticipant], planningExtensions: [any JobPlanningExtension]
     ) {
         self.env = env
-        self.reconciler = reconciler
         let extensions = planningExtensions + [SidecarPlanner()]
         let staging = StagingManager(env: env)
         let guardActor = ResourceGuard(env: env, staging: staging)
         let uploadRunner = UploadRunner(env: env, staging: staging)
         let services = OrganizationServices(env: env, uploader: uploadRunner, resourceGuard: guardActor)
+        let finalizePass = FinalizePass(env: env, extensions: extensions)
+        let eligibilityService = EligibilityService(env: env, extensions: extensions)
+        let hardening = HardeningServices(
+            env: env, uploader: uploadRunner, finalize: finalizePass, eligibility: eligibilityService, extensions: extensions,
+            organization: services)
         organization = services
-        self.stages = stages + services.stages
+        self.hardening = hardening
+        self.reconciler = reconciler ?? hardening.reconciler
+        self.stages = stages + services.stages + hardening.stages
         self.staging = staging
         resourceGuard = guardActor
         baseline = Baseline(env: env)
         scanner = Scanner(env: env)
         tracker = ChangeTracker(env: env, extensions: extensions)
-        finalize = FinalizePass(env: env, extensions: extensions)
-        eligibility = EligibilityService(env: env, extensions: extensions)
+        finalize = finalizePass
+        eligibility = eligibilityService
         classifier = ClassifyWorker(env: env, resourceGuard: guardActor, staging: staging, extensions: extensions)
         exporter = ExportWorker(env: env, resourceGuard: guardActor, staging: staging)
         uploader = uploadRunner
@@ -166,8 +173,9 @@ public actor SyncCoordinator {
         } catch is CancellationError {
             return .completed(CycleReport())
         } catch {
-            env.log.log(.error, category: "cycle", "cycle ended with error: \(type(of: error))")
-            return .completed(CycleReport())
+            let failure = CycleFailure(error)
+            env.log.log(.error, category: "cycle", "cycle ended with error: \(failure.errorType)")
+            return .failed(failure)
         }
     }
 
@@ -193,6 +201,7 @@ public actor SyncCoordinator {
         try await DestinationHealth(env: env).refresh()
         _ = try await recovery.resolveInterrupted()
         try await DeferredJobSweeper(env: env).sweep()
+        try await hardening.triggers.detectDataAtDestinations()
         try await runStages(.checks, trigger, &report)
 
         // 2. scan, change tracking
@@ -204,16 +213,19 @@ public actor SyncCoordinator {
                 report.changesProcessed = processed
                 needsReconciliation = nil
             case .needsReconciliation(let reason):
-                if let reconciler {
+                do {
                     try await reconciler.reconcile(reason: reason)
                     needsReconciliation = nil
-                } else {
+                } catch {
                     needsReconciliation = reason
                     report.needsReconciliation = reason
+                    throw error
                 }
             case .scanIncomplete: break
             }
             try await finalize.runAfterScan()
+            // FR-51: a destination waiting for recovery gets it now, before any upload.
+            if await hardening.recovery.hasWork() { try await hardening.recovery.runPending() }
         }
         try await runStages(.changes, trigger, &report)
 
@@ -289,7 +301,7 @@ public actor SyncCoordinator {
         (try? await buildSnapshot()) ?? lastPublished ?? EngineSnapshot.empty(at: env.clock.now)
     }
 
-    private func publish() async {
+    func publish() async {
         guard let snapshot = try? await buildSnapshot() else { return }
         lastPublished = snapshot
         for continuation in subscribers.values { continuation.yield(snapshot) }

@@ -162,7 +162,7 @@ import Testing
         #expect(await h.drive.files.isEmpty)
     }
 
-    @Test func tokenExpiryReportsReconciliationAndKeepsToken() async throws {
+    @Test func tokenExpiryIsReconciledByTheCycleAndTheTrackerKeepsTheOldTokenUntilThen() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)
         await h.add(h.snapshot("a"), recordChange: false)
@@ -179,8 +179,29 @@ import Testing
             Issue.record("cycle did not complete")
             return
         }
-        #expect(report.needsReconciliation == .tokenExpired)
+        #expect(report.needsReconciliation == nil)
+        #expect(try h.changeToken() != before, "reconciliation saved a new token")
+        #expect(try h.asset(.local("b"))?.insertedAt != nil)
+        #expect(await h.coordinator.currentSnapshot().overall == .idle)
+    }
+
+    @Test func aFailingReconciliationKeepsTheStateNeedsReconciliation() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a"), recordChange: false)
+        try await h.baseline(.googleDrive)
+        _ = try await h.coordinator.scanner.run()
+        let before = try h.changeToken()
+        await h.add(h.snapshot("b"))
+        await h.fakePhotos.expireHistory()
+        h.photos.failFetch = PhotosSourceError.networkError
+        let outcome = await h.run()
+        #expect(outcome == .failed(CycleFailure(source: .photos, errorType: "PhotosSourceError")))
+        #expect(try h.changeToken() == before)
         #expect(await h.coordinator.currentSnapshot().overall == .needsReconciliation)
+        h.photos.failFetch = nil
+        await h.run()
+        #expect(await h.coordinator.currentSnapshot().overall == .idle)
     }
 
     @Test func eachChangeCommitsItsOwnToken() async throws {

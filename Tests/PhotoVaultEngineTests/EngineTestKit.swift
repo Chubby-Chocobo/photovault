@@ -48,6 +48,8 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
     private var running = 0
     private(set) var maxConcurrent = 0
     var beforeExport: (@Sendable (String, ResourceType, ExportControl) async throws -> Void)?
+    private var mappingBatchSizes: [Int] = []
+    var failFetch: (any Error)?
     var headerOverride: (@Sendable (String, URL, ExportControl) async throws -> HeaderResult)?
 
     init(_ inner: FakePhotosSource) { self.inner = inner }
@@ -56,11 +58,19 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
     func authorizationStatus() -> PhotosAuthorization { authorization }
     func requestAuthorization() async -> PhotosAuthorization { await inner.requestAuthorization() }
     func currentChangeToken() async throws -> ChangeToken { try await inner.currentChangeToken() }
-    func fetchAllAssets(after cursor: AssetCursor?, limit: Int) async throws -> AssetPage { try await inner.fetchAllAssets(after: cursor, limit: limit) }
+    func fetchAllAssets(after cursor: AssetCursor?, limit: Int) async throws -> AssetPage {
+        if let failFetch { throw failFetch }
+        return try await inner.fetchAllAssets(after: cursor, limit: limit)
+    }
     func assets(localIds: [String]) async throws -> [AssetSnapshot] { try await inner.assets(localIds: localIds) }
     func totalAssetCount() async throws -> Int { try await inner.totalAssetCount() }
     func fetchPersistentChanges(since token: ChangeToken) async throws -> [PersistentChange] { try await inner.fetchPersistentChanges(since: token) }
-    func cloudIdentifierMappings(localIds: [String]) async throws -> [String: String] { try await inner.cloudIdentifierMappings(localIds: localIds) }
+    func cloudIdentifierMappings(localIds: [String]) async throws -> [String: String] {
+        lock.withLock { mappingBatchSizes.append(localIds.count) }
+        return try await inner.cloudIdentifierMappings(localIds: localIds)
+    }
+
+    var cloudMappingBatches: [Int] { lock.withLock { mappingBatchSizes } }
     func localIdentifierMappings(cloudIds: [String]) async throws -> [String: String] { try await inner.localIdentifierMappings(cloudIds: cloudIds) }
     func albums() async throws -> [AlbumSnapshot] { try await inner.albums() }
     func adjustmentDataHash(localId: String) async throws -> String? { try await inner.adjustmentDataHash(localId: localId) }
@@ -99,7 +109,7 @@ let camera = CaptureMetadata(make: "Apple", model: "iPhone 15")
 
 /// A complete engine over a real Store, the fake Photos library and fake destinations.
 final class Harness: @unchecked Sendable {
-    let store: Store
+    var store: Store
     let fakePhotos = FakePhotosSource()
     let photos: ProbePhotosSource
     let clock = TestClock()
@@ -115,11 +125,17 @@ final class Harness: @unchecked Sendable {
     var tuning: EngineTuning
     var env: EngineEnvironment
     var coordinator: SyncCoordinator
+    /// Reads sidecars and hashes of local destinations (recovery); nil like a production build without it.
+    var localContent: (any LocalContentReading)?
+    private(set) var organizationEnabled: Bool
+    /// Replace the fake destinations of the same id in every registry the harness builds.
+    var overrides: [any Destination] = []
 
     /// - Parameter organization: leave sidecars, views and place names at their defaults; the
     ///   upload-pipeline tests switch them off so they only see the backup files.
     init(store: Store? = nil, organization: Bool = false, tuning customTuning: ((inout EngineTuning) -> Void)? = nil) async throws {
         self.store = try store ?? Store.inMemory()
+        organizationEnabled = organization
         photos = ProbePhotosSource(fakePhotos)
         root = try TestFiles.temporaryDirectory("engine")
         nas = FakeDestination(id: nasId, reservesIds: false)
@@ -132,35 +148,42 @@ final class Harness: @unchecked Sendable {
         env = try await Self.makeEnv(self.store, photos, clock, disk, system, log, injector, root, registry, t, geocoder)
         coordinator = SyncCoordinator(env: env)
         if !organization {
-            try await env.settings.update { settings in
-                settings.sidecarJsonEnabled = false
-                settings.sidecarXmpEnabled = false
-                settings.viewByDeviceEnabled = false
-                settings.viewByPlaceEnabled = false
-                settings.viewFavoritesEnabled = false
-            }
+            try await switchOrganizationOff()
         }
     }
 
-    private static func makeEnv(
+    /// Sidecars, views and place names off: the upload-pipeline tests only look at the backup files.
+    func switchOrganizationOff() async throws {
+        try await env.settings.update { settings in
+            settings.sidecarJsonEnabled = false
+            settings.sidecarXmpEnabled = false
+            settings.viewByDeviceEnabled = false
+            settings.viewByPlaceEnabled = false
+            settings.viewFavoritesEnabled = false
+        }
+    }
+
+    static func makeEnv(
         _ store: Store, _ photos: ProbePhotosSource, _ clock: TestClock, _ disk: FakeDiskSpace, _ system: FakeSystemConditions,
         _ log: RecordingLogSink, _ injector: CrashInjector, _ root: URL, _ registry: DestinationRegistry, _ tuning: EngineTuning,
-        _ geocoder: FakeGeocoder
+        _ geocoder: FakeGeocoder, _ localContent: (any LocalContentReading)? = nil
     ) async throws -> EngineEnvironment {
         EngineEnvironment(
             store: store, photos: photos, destinations: registry, metadataReader: StubMetadataReader(),
             utiResolver: FakeUTIResolver(), clock: clock, disk: disk, system: system, log: log,
             stagingDirectory: root.appendingPathComponent("staging"), containerDirectory: root,
-            settings: try SettingsStore(store: store, defaultTimeZone: utc), tuning: tuning, faults: injector, geocoder: geocoder)
+            settings: try SettingsStore(store: store, defaultTimeZone: utc), tuning: tuning, faults: injector, geocoder: geocoder,
+            localContent: localContent)
     }
 
     /// Emulates a process restart: every in-memory object is rebuilt over the same database,
     /// staging directory and destinations.
     func restart() async throws {
-        let registry = DestinationRegistry([drive, nas])
-        env = try await Self.makeEnv(store, photos, clock, disk, system, log, injector, root, registry, tuning, geocoder)
+        env = try await Self.makeEnv(store, photos, clock, disk, system, log, injector, root, makeRegistry(), tuning, geocoder, localContent)
         coordinator = SyncCoordinator(env: env)
     }
+
+    func makeRegistry() -> DestinationRegistry { DestinationRegistry([drive, nas] + overrides) }
 
     var staging: URL { root.appendingPathComponent("staging") }
 

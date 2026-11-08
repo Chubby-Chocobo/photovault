@@ -111,6 +111,8 @@ struct UploadAttempt: Sendable {
             fileName: plan.fileName, content: content, appProperties: plan.properties, description: description,
             expectedPriorHash: job.uploadedHash)
         guard let result = try await deliver(request, job: job) else { return .skipped }
+        // FR-47: every write answer is checked; a file that landed in a trashed folder is not done.
+        if result.trashed { throw DestinationError.folderTrashed(logicalPath: plan.parentLogical) }
         try env.reach(.afterUploadBeforeCommit)
         let now = env.clock.now
         let layout = env.layout
@@ -268,6 +270,7 @@ struct UploadAttempt: Sendable {
         case .verify:
             if case .folderMissing(let path) = failure {
                 try await ensurer.invalidate(logicalPath: path)
+                try await FolderGone.markBranchMissing(env, destinationId: record.id, logicalPath: path)
                 try await applyIfValid(.destinationFailure(message: failure.description))
                 return .requeued
             }

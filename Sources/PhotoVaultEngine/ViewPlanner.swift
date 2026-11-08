@@ -70,10 +70,36 @@ enum ViewPlanner {
                     plan.paths[.init(view: view, assetKey: asset.assetKey)] = path
                 }
                 if let record = try ShortcutRepository.fetch(db, destinationId: destination.id, view: view, assetKey: asset.assetKey) {
-                    plan.current.append(record)
+                    // A shortcut recovery adopted is not trashed just because the asset's position cannot be
+                    // computed yet (header not read, place not geocoded).
+                    let stillDesired = plan.desired.contains { $0.assetKey == asset.assetKey && $0.view == view }
+                    let held = stillDesired ? false : try ViewHold.isHeld(db, destinationId: destination.id, view: view, asset: asset)
+                    if !held {
+                        plan.current.append(record)
+                    }
                 }
             }
         }
         return plan
+    }
+}
+
+/// Shortcuts that recovery (FR-51) found at a destination and adopted. Until the data that places
+/// the asset in a view exists again, an empty desired state must not be read as "remove it".
+enum ViewHold {
+    private static func key(_ destinationId: DestinationID, _ view: ViewKind, _ asset: AssetKey) -> String {
+        "viewhold:\(destinationId.rawValue):\(view.rawValue):\(asset.rawValue)"
+    }
+
+    static func add(_ db: Database, destinationId: DestinationID, view: ViewKind, assetKey: AssetKey) throws {
+        try KeyValueRepository.set(db, key(destinationId, view, assetKey), 1)
+    }
+
+    static func isHeld(_ db: Database, destinationId: DestinationID, view: ViewKind, asset: AssetRecord) throws -> Bool {
+        guard try KeyValueRepository.int(db, key(destinationId, view, asset.assetKey)) == 1 else { return false }
+        if asset.categoryProvisional { return true }
+        if view == .byPlace, let cell = asset.geoCell ?? asset.location.map(GeoCell.init),
+           try GeoCacheRepository.fetch(db, cell: cell, locale: "en") == nil { return true }
+        return false
     }
 }

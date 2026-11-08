@@ -49,6 +49,14 @@ public struct EngineTuning: Sendable {
     public var stagingIdleExpiry: TimeInterval = 2 * 3600
     public var transientRetries = ErrorClassifier.transientRetries
     public var maxCycleIterations = 100_000
+    /// Pause between the exports recovery makes to tell look-alike files apart (FR-51).
+    public var recoveryExportInterval: TimeInterval = 2
+    /// At most this many look-alike candidates are exported per recovery run.
+    public var recoveryExportBudget = 200
+    /// Recovered local files whose SHA-256 is verified per cycle.
+    public var recoveryVerifyBatch = 25
+    /// Integrity checks of a destination are due after this long (FR-47).
+    public var integrityInterval: TimeInterval = 7 * 24 * 3600
     /// Waits between in-pass retries; tests replace it with a no-op.
     public var sleep: @Sendable (TimeInterval) async throws -> Void = { seconds in
         try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
@@ -77,6 +85,8 @@ public struct EngineEnvironment: Sendable {
     public var faults: (any FaultInjecting)?
     /// Reverse geocoder for place names; nil disables geocoding (FR-85).
     public var geocoder: (any ReverseGeocoding)?
+    /// Reads sidecars, hashes and the marker of local destinations; nil limits local recovery to names.
+    public var localContent: (any LocalContentReading)?
 
     public init(
         store: Store, photos: any PhotosSource, destinations: DestinationRegistry, metadataReader: any MetadataReading,
@@ -84,7 +94,7 @@ public struct EngineEnvironment: Sendable {
         system: any SystemConditions, log: any LogSink = NullLogSink(), layout: any LayoutPolicy = DynamicLayout(),
         transform: any Transform = IdentityTransform(), stagingDirectory: URL, containerDirectory: URL,
         settings: SettingsStore, tuning: EngineTuning = EngineTuning(), faults: (any FaultInjecting)? = nil,
-        geocoder: (any ReverseGeocoding)? = nil
+        geocoder: (any ReverseGeocoding)? = nil, localContent: (any LocalContentReading)? = nil
     ) {
         self.store = store
         self.photos = photos
@@ -103,6 +113,7 @@ public struct EngineEnvironment: Sendable {
         self.tuning = tuning
         self.faults = faults
         self.geocoder = geocoder
+        self.localContent = localContent
     }
 
     func reach(_ point: CrashPoint) throws { try faults?.reach(point) }

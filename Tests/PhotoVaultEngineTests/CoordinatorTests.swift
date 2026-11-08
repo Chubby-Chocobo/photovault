@@ -25,7 +25,7 @@ private final class CountingStage: CycleStage, @unchecked Sendable {
     }
 }
 
-private struct Reconciler: ReconciliationRunning {
+private struct RecordingReconciler: ReconciliationRunning {
     let box: ReasonBox
     func reconcile(reason: ReconciliationReason) async throws { box.record(reason) }
 }
@@ -95,7 +95,7 @@ private final class ReasonBox: @unchecked Sendable {
         await h.add(h.snapshot("b"))
         await h.fakePhotos.expireHistory()
         let box = ReasonBox()
-        let coordinator = SyncCoordinator(env: h.env, reconciler: Reconciler(box: box))
+        let coordinator = SyncCoordinator(env: h.env, reconciler: RecordingReconciler(box: box))
         _ = await coordinator.run(trigger: .manual)
         #expect(box.all == [.tokenExpired])
     }
