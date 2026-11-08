@@ -5,12 +5,28 @@ enum Schema {
     static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1", migrate: createV1)
+        migrator.registerMigration("v2-upload-intent", migrate: createUploadIntent)
         return migrator
+    }
+
+    /// What a path-addressed (local / NAS) upload is about to write: persisted before the first byte,
+    /// so recovery after a crash probes that exact path instead of recomputing the layout.
+    private static func createUploadIntent(_ db: Database) throws {
+        try db.execute(sql: """
+        CREATE TABLE upload_intent (
+            job_id INTEGER PRIMARY KEY NOT NULL,
+            destination_id TEXT NOT NULL,
+            remote_path TEXT NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            created_at DATETIME NOT NULL
+        );
+        CREATE INDEX upload_intent_destination ON upload_intent(destination_id);
+        """)
     }
 
     /// Referential integrity is enforced by the repositories: assets are soft-deleted and never
     /// removed, and destination removal deletes its dependent rows explicitly.
-    private static func createV1(_ db: Database) throws {
+    static func createV1(_ db: Database) throws {
         try db.execute(sql: """
         CREATE TABLE destination (
             id TEXT PRIMARY KEY NOT NULL,

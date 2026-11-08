@@ -19,6 +19,13 @@ enum UploadOutcome: Sendable, Equatable {
     case unsupported
 }
 
+/// Asked before every job starts; the coordinator re-checks pause, network, power and waiting
+/// owner commands here, so a long pass reacts within one job.
+struct UploadGate: Sendable {
+    var mayStart: @Sendable () async -> Bool
+    static let open = UploadGate(mayStart: { true })
+}
+
 /// Step 6 of the cycle: fan-out of ready jobs to every accepting destination, at most
 /// `maxConcurrentUploadsPerDestination` at a time per destination (NFR-03). Destination state
 /// that outlives a pass (consecutive failures, backoff, folder creation) is kept here.
@@ -28,6 +35,7 @@ actor UploadRunner {
     private var ensurers: [DestinationID: FolderEnsurer] = [:]
     private var consecutiveFailures: [DestinationID: Int] = [:]
     private var backoffUntil: [DestinationID: Date] = [:]
+    private var activePasses: [DestinationID: Task<Int, any Error>] = [:]
 
     init(env: EngineEnvironment, staging: StagingManager) {
         self.env = env
@@ -67,12 +75,12 @@ actor UploadRunner {
     // MARK: Pass
 
     /// Uploads for every destination concurrently. `maxJobsPerDestination` bounds a step-by-step run.
-    func runPass(maxJobsPerDestination: Int? = nil) async throws -> UploadPassResult {
+    func runPass(maxJobsPerDestination: Int? = nil, gate: UploadGate = .open) async throws -> UploadPassResult {
         let ids = await env.destinations.ids
         var result = UploadPassResult()
         try await withThrowingTaskGroup(of: (DestinationID, Int).self) { group in
             for id in ids {
-                group.addTask { (id, try await self.runDestination(id, maxJobs: maxJobsPerDestination)) }
+                group.addTask { (id, try await self.runCancellable(id, maxJobs: maxJobsPerDestination, gate: gate)) }
             }
             for try await (id, count) in group {
                 result.uploaded += count
@@ -82,7 +90,23 @@ actor UploadRunner {
         return result
     }
 
-    private func runDestination(_ id: DestinationID, maxJobs: Int?) async throws -> Int {
+    /// Stops the transfers of one destination (root change, removal); the others keep running.
+    /// Their jobs stay `uploading` and are resolved by recovery.
+    func cancelUploads(of id: DestinationID) { activePasses[id]?.cancel() }
+
+    private func runCancellable(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
+        let task = Task { try await self.runDestination(id, maxJobs: maxJobs, gate: gate) }
+        activePasses[id] = task
+        defer { if activePasses[id] == task { activePasses[id] = nil } }
+        do {
+            return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        } catch is CancellationError {
+            if Task.isCancelled { throw CancellationError() }
+            return 0
+        }
+    }
+
+    private func runDestination(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
         if let until = backoffUntil[id], until > env.clock.now { return 0 }
@@ -98,6 +122,14 @@ actor UploadRunner {
             while true {
                 try Task.checkCancellation()
                 while !stop, inFlight.count < limit, dispatched < (maxJobs ?? .max) {
+                    // Pause, network, power, the destination's status and waiting owner commands can
+                    // change during a pass that lasts hours: ask again before every job.
+                    guard await gate.mayStart(),
+                          let current = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }),
+                          current.acceptsUploads else {
+                        stop = true
+                        break
+                    }
                     if buffer.isEmpty {
                         // One ranking query per window, not per job.
                         let now = env.clock.now
@@ -113,7 +145,7 @@ actor UploadRunner {
                     inFlight.insert(jobId)
                     dispatched += 1
                     let attempt = UploadAttempt(
-                        env: env, staging: staging, runner: self, destination: destination, record: record, ensurer: ensurer, ready: next)
+                        env: env, staging: staging, runner: self, destination: destination, record: current, ensurer: ensurer, ready: next)
                     group.addTask { (jobId, try await attempt.run()) }
                 }
                 guard let (jobId, outcome) = try await group.next() else { break }

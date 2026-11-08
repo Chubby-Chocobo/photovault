@@ -227,7 +227,9 @@ actor ExportWorker {
                     diskCancelCount: started.resource.diskCancelCount + 1, bytesReceivedAtCancel: received,
                     freeAtStart: permit.freeBytesAtStart, criticalWatermarkBytes: started.settings.criticalWatermarkBytes)
                 try await env.store.write { db in
-                    try ResourceRepository.cancelExportForDisk(db, key: key, type: type, bytesReceived: received, tooLarge: tooLarge)
+                    try ResourceRepository.cancelExportForDisk(
+                        db, key: key, type: type, bytesReceived: received, tooLarge: tooLarge,
+                        retryAt: now.addingTimeInterval(JobTransitions.deferredRetryInterval))
                     if tooLarge { try EngineQueries.apply(db, .tooLargeForDisk, key: key, type: type, states: [.pending], now: now) }
                 }
                 return .cancelledForDisk(started.id)
@@ -274,16 +276,26 @@ actor ExportWorker {
 
     // MARK: tooLargeForDisk
 
-    /// FR-31: a resource that did not fit is retried automatically only when the free space now
-    /// covers its known size plus the margin.
+    /// FR-31. The mark is on the resource, so a job that appears later for it (another destination,
+    /// a wider rule) is deferred too and shows in the counts instead of waiting for ever. The
+    /// resource is tried again when the free space covers the bytes it reached (its size when
+    /// known) plus the margin, or after 24 hours at the latest.
     private func revisitTooLarge() async throws {
-        guard let free = try? env.disk.capacity(of: env.stagingDirectory).available else { return }
+        let free = try? env.disk.capacity(of: env.stagingDirectory).available
         let now = env.clock.now
         try await env.store.write { db in
-            for resource in try EngineQueries.tooLargeResources(db)
-            where DiskGuardPolicy.mayRetryTooLarge(freeBytes: free, knownSizeBytes: resource.sizeBytes) {
-                try EngineQueries.clearTooLarge(db, key: resource.assetKey, type: resource.type)
-                try EngineQueries.apply(db, .retryDeferred, key: resource.assetKey, type: resource.type, states: [.deferred], now: now)
+            for resource in try EngineQueries.tooLargeResources(db) {
+                let key = resource.assetKey
+                let type = resource.type
+                let fits = free.map {
+                    DiskGuardPolicy.mayRetryTooLarge(freeBytes: $0, knownSizeBytes: resource.sizeBytes ?? resource.bytesReceivedAtCancel)
+                } ?? false
+                if fits || (resource.nextExportAttemptAt.map { $0 <= now } ?? false) {
+                    try EngineQueries.clearTooLarge(db, key: key, type: type)
+                    try EngineQueries.apply(db, .retryDeferred, key: key, type: type, states: [.deferred], now: now)
+                } else {
+                    try EngineQueries.apply(db, .tooLargeForDisk, key: key, type: type, states: [.pending], now: now)
+                }
             }
         }
     }

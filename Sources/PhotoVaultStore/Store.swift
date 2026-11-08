@@ -24,10 +24,10 @@ public final class Store: Sendable {
     static func open(at url: URL, backups: DatabaseBackup?, migrator: DatabaseMigrator) throws -> Store {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var configuration = Configuration()
-        configuration.prepareDatabase { db in
-            try db.execute(sql: "PRAGMA synchronous = NORMAL")
-        }
+        configuration.prepareDatabase(Self.makeDurable)
         let pool = try DatabasePool(path: url.path, configuration: configuration)
+        // GRDB sets `synchronous = NORMAL` on the writer after `prepareDatabase`; undo that.
+        try pool.writeWithoutTransaction(Self.makeDurable)
         let store = Store(writer: pool)
         if let backups {
             let pending = try pool.read { db in
@@ -38,6 +38,14 @@ public final class Store: Sendable {
         }
         try migrator.migrate(pool)
         return store
+    }
+
+    /// Reservations are committed before the side effect they guard; they must survive power loss
+    /// and a kernel panic (NFR-01). macOS needs F_FULLFSYNC for the data to reach the disk.
+    @Sendable private static func makeDurable(_ db: Database) throws {
+        try db.execute(sql: "PRAGMA synchronous = FULL")
+        try db.execute(sql: "PRAGMA fullfsync = ON")
+        try db.execute(sql: "PRAGMA checkpoint_fullfsync = ON")
     }
 
     /// In-memory database for tests and previews.

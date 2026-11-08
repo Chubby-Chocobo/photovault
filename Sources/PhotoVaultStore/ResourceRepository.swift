@@ -100,16 +100,19 @@ public enum ResourceRepository {
             arguments: [key.rawValue, type.rawValue])
     }
 
-    /// `exporting → none` after the disk guard cancelled the export (FR-31).
+    /// `exporting → none` after the disk guard cancelled the export (FR-31). A resource that is
+    /// now too large for the disk is retried at `retryAt` at the latest (`next_export_attempt_at`),
+    /// or earlier when the free space grows past the bytes it reached.
     @discardableResult
     public static func cancelExportForDisk(
-        _ db: Database, key: AssetKey, type: ResourceType, bytesReceived: Int64?, tooLarge: Bool
+        _ db: Database, key: AssetKey, type: ResourceType, bytesReceived: Int64?, tooLarge: Bool, retryAt: Date? = nil
     ) throws -> Bool {
         try db.execute(sql: """
             UPDATE resource SET staging_state = 'none', bytes_received_at_cancel = ?,
-                disk_cancel_count = disk_cancel_count + 1, too_large_for_disk = ?
+                disk_cancel_count = disk_cancel_count + 1, too_large_for_disk = ?,
+                next_export_attempt_at = CASE WHEN ? THEN ? ELSE next_export_attempt_at END
             WHERE asset_key = ? AND res_type = ? AND staging_state = 'exporting'
-            """, arguments: [bytesReceived, tooLarge, key.rawValue, type.rawValue])
+            """, arguments: [bytesReceived, tooLarge, tooLarge, retryAt, key.rawValue, type.rawValue])
         return db.changesCount > 0
     }
 

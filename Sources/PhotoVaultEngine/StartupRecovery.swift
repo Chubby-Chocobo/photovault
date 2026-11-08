@@ -22,6 +22,9 @@ public struct RecoverySummary: Sendable, Equatable {
 /// - job `uploading` with a reserved id → probe: present with the expected hash → done; present
 ///   with other content → back to `pending` (the upload path replaces it in place); missing → back
 ///   to `pending` keeping the id and the session (the upload path resumes or opens a new one);
+/// - job `uploading` at a path-addressed destination → probe the path saved with its intent: our
+///   content there → done at that path (a changed layout or a newer edit is handled by the move
+///   worker and a refresh); other content → foreign, the retry plans again; nothing there → retry;
 /// - `remote_folder` rows with an unconfirmed reserved id → probe;
 /// - move jobs in progress are left to the move worker (participants).
 /// Idempotent: the cycle calls `resolveInterrupted` again while a destination was unreachable.
@@ -67,9 +70,12 @@ struct StartupRecovery: Sendable {
         let now = env.clock.now
         let identity = job.identity
         guard let destination = await env.destinations.destination(for: job.destinationId) else { return .later }
-        guard let remoteId = job.remoteId else {
-            // Nothing was created without a reserved id (Drive) or the path-addressed upload is
-            // idempotent (local): simply try again.
+        // A reserved id (Drive) or the file the job already owns, else the path the interrupted
+        // write was about to create (local / NAS, saved before the first byte).
+        var intent: UploadIntent?
+        if let jobId = job.id { intent = try await env.store.read { db in try UploadIntentRepository.fetch(db, jobId: jobId) } }
+        guard let remoteId = job.remoteId ?? intent?.remotePath else {
+            // Nothing was created without a reserved id (Drive): simply try again.
             try await requeue(identity)
             return .requeued
         }
@@ -84,10 +90,20 @@ struct StartupRecovery: Sendable {
             try await requeue(identity)
             return .requeued
         }
+        // Present with other content: not ours. Requeued; the retry plans again and, for an
+        // original, takes a conflict name. Nothing is skipped for good because of it.
         let kind = destination.capabilities.verifiedHash
-        let remoteHash = kind == .md5 ? item.md5 : item.sha256
-        let expected = try await expectedHash(job, kind: kind)
-        guard let remoteHash, let expected, remoteHash == expected else {
+        let remoteHash: String?
+        do {
+            remoteHash = try await hash(of: item, kind: kind, destination: job.destinationId)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            env.logJob(.notice, "recovery", jobId: job.id, "hash of the file at the destination unreadable; will retry")
+            return .later
+        }
+        let expected = try await expectedHashes(job, kind: kind, intent: intent)
+        guard let remoteHash, expected.contains(remoteHash) else {
             try await requeue(identity)
             return .requeued
         }
@@ -104,20 +120,34 @@ struct StartupRecovery: Sendable {
                 }
             }
             try UploadCompletion.commit(
-                db, identity: identity, remoteId: remoteId, finalName: remoteName, uploadedParent: parent,
+                db, identity: identity, remoteId: item.remoteId, finalName: remoteName, uploadedParent: parent,
                 verifiedHash: remoteHash, layout: layout, now: now)
         }
         env.logJob(.info, "recovery", jobId: job.id, "interrupted upload found complete at destination")
         return .completed
     }
 
-    /// Hash of the content the interrupted upload was sending: the session's MD5 when a session
-    /// was opened, otherwise the hash of the staged generation if it is still the same.
-    private func expectedHash(_ job: UploadJob, kind: ContentHashKind) async throws -> String? {
-        if kind == .md5, let md5 = job.sessionMd5 { return md5 }
+    /// The hash a destination reports, or for a local folder (whose probe has none) the one the
+    /// content reader computes. Nil when it cannot be told: the job is then planned again.
+    private func hash(of item: RemoteItem, kind: ContentHashKind, destination: DestinationID) async throws -> String? {
+        if let reported = kind == .md5 ? item.md5 : item.sha256 { return reported }
+        guard kind == .sha256, item.kind == .file, let reader = env.localContent else { return nil }
+        return try await reader.sha256(destination: destination, path: item.remoteId)
+    }
+
+    /// Hashes the interrupted upload may have left at the destination: the content the saved intent
+    /// was writing (also when the asset was edited again since), the session's MD5 when a session
+    /// was opened, and the hash of the staged generation if it is still the same.
+    private func expectedHashes(_ job: UploadJob, kind: ContentHashKind, intent: UploadIntent?) async throws -> Set<String> {
+        var hashes = Set<String>()
+        if kind == .sha256, let intent { hashes.insert(intent.contentSha256) }
+        if kind == .md5, let md5 = job.sessionMd5 { hashes.insert(md5) }
         let resource = try await env.store.read { db in try ResourceRepository.fetch(db, key: job.assetKey, type: job.resType) }
-        guard let resource, resource.stagingState == .ready, resource.stagingGen == job.uploadingGen else { return nil }
-        return kind == .md5 ? resource.md5 : resource.sha256
+        if let resource, resource.stagingState == .ready, resource.stagingGen == job.uploadingGen,
+           let hash = kind == .md5 ? resource.md5 : resource.sha256 {
+            hashes.insert(hash)
+        }
+        return hashes
     }
 
     /// `uploading → pending`, keeping the reserved id and the session.

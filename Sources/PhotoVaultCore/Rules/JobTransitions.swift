@@ -8,6 +8,9 @@ public enum JobEvent: Hashable, Sendable {
     case startUpload(generation: Int)
     /// A resumable session was opened; persisted before the first byte.
     case sessionStarted(SessionCheckpoint)
+    /// The resumable session no longer fits the content (another generation, or the destination
+    /// forgot it): the next attempt opens a new one for the same reserved id.
+    case sessionDropped
     /// Upload finished and the checksum matched.
     case uploadSucceeded(remoteId: String, finalName: String, parent: String, verifiedHash: String)
     /// Checksum differed; the engine re-sends media to the same ID.
@@ -69,6 +72,10 @@ public enum JobTransitions {
         case (.uploading, .sessionStarted(let checkpoint)):
             j.sessionRef = checkpoint.sessionRef
             j.sessionMd5 = checkpoint.md5
+
+        case (.pending, .sessionDropped), (.uploading, .sessionDropped):
+            j.sessionRef = nil
+            j.sessionMd5 = nil
 
         case (.uploading, let .uploadSucceeded(remoteId, finalName, parent, hash)):
             j.remoteId = remoteId
@@ -141,6 +148,9 @@ public enum JobTransitions {
         case (.skipped, .retrySkipped):
             j.state = .pending
             j.stateReason = nil
+            // A session kept from before the skip may belong to other content; a new one is cheap.
+            j.sessionRef = nil
+            j.sessionMd5 = nil
             j.attempts = 0
             j.mismatchCount = 0
             j.deferredSince = nil

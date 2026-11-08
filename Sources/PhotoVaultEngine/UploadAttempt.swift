@@ -48,6 +48,11 @@ struct UploadAttempt: Sendable {
             }
         } catch {
             if error is EngineAbort || error is CancellationError { throw error }
+            if let stored = error as? StoreError, case .notFound = stored {
+                // The job was removed meanwhile (destination reset): nothing to record, nothing to fail.
+                env.logJob(.notice, "upload", jobId: ready.job.id, "job no longer exists")
+                return .unsupported
+            }
             return try await handleFailure(error)
         }
         if case .done = outcome { try await staging.releaseUnneeded(asset: identity.assetKey) }
@@ -64,7 +69,27 @@ struct UploadAttempt: Sendable {
         guard let plan = try await env.store.read({ db in
             try LayoutResolver.plan(db, job: job, resource: resource, layout: layout, nameBuilder: builder)
         }) else { return .unsupported }
-        guard let path = resource.stagingPath, FileManager.default.fileExists(atPath: path),
+        guard let path = resource.stagingPath, resource.md5 != nil, resource.sha256 != nil, resource.sizeBytes != nil else {
+            // No staged file recorded: export it again.
+            try await env.store.write { db in _ = try ResourceRepository.releaseStaging(db, key: resource.assetKey, type: resource.type) }
+            return .requeued
+        }
+        // The lease comes before every look at the file: a release in progress refuses it and the
+        // job waits for the export again, a release that comes later sees the lease and stops.
+        guard await staging.lease(path) else { return .requeued }
+        let outcome: UploadOutcome
+        do {
+            outcome = try await performLeased(resource, path: path, plan: plan, snapshot: snapshot)
+        } catch {
+            await staging.unlease(path)
+            throw error
+        }
+        await staging.unlease(path)
+        return outcome
+    }
+
+    private func performLeased(_ resource: ResourceRecord, path: String, plan: UploadPlan, snapshot: SettingsSnapshot) async throws -> UploadOutcome {
+        guard FileManager.default.fileExists(atPath: path),
               let md5 = resource.md5, let sha256 = resource.sha256, let size = resource.sizeBytes else {
             // The staged file is gone: export it again.
             try await env.store.write { db in _ = try ResourceRepository.releaseStaging(db, key: resource.assetKey, type: resource.type) }
@@ -77,18 +102,9 @@ struct UploadAttempt: Sendable {
         let settings = snapshot.settings
         let description: String? = destination.capabilities.supportsDescription
             ? try await env.store.read { db in try OrganizationLookups.descriptionText(db, asset: plan.asset, settings: settings) } : nil
-        await staging.lease(path)
-        let outcome: UploadOutcome
-        do {
-            outcome = try await transfer(
-                generation: resource.stagingGen, plan: plan, description: description,
-                content: StagedContent(file: URL(fileURLWithPath: path), size: size, md5: md5, sha256: sha256))
-        } catch {
-            await staging.unlease(path)
-            throw error
-        }
-        await staging.unlease(path)
-        return outcome
+        return try await transfer(
+            generation: resource.stagingGen, plan: plan, description: description,
+            content: StagedContent(file: URL(fileURLWithPath: path), size: size, md5: md5, sha256: sha256))
     }
 
     func transfer(generation: Int, plan: UploadPlan, description: String?, content staged: StagedContent) async throws -> UploadOutcome {
@@ -102,10 +118,10 @@ struct UploadAttempt: Sendable {
             job = try await apply(.reserved(remoteId: reserved))
             try env.reach(.afterFileIdPersisted)
         }
-        job = try await apply(.startUpload(generation: generation))
+        let content = try await env.transform.apply(to: staged)
+        job = try await startUpload(generation: generation, job: job, parent: parent, fileName: plan.fileName, content: content)
         try env.reach(.afterStartUpload)
         env.logJob(.info, "upload", jobId: job.id, "start type=\(job.resType.rawValue) bytes=\(staged.size)")
-        let content = try await env.transform.apply(to: staged)
         let request = UploadRequest(
             job: identity, jobId: job.id, kind: job.kind, reservedRemoteId: job.remoteId, parent: parent,
             fileName: plan.fileName, content: content, appProperties: plan.properties, description: description,
@@ -131,6 +147,26 @@ struct UploadAttempt: Sendable {
         return .done(bytes: content.size)
     }
 
+    /// `pending → uploading`. A destination that does not reserve ids is addressed by path: the path
+    /// about to be written and the hash of the content are saved in the same transaction, so that
+    /// recovery after a crash probes exactly that file (spec 8.3, FR-44).
+    private func startUpload(generation: Int, job: UploadJob, parent: RemoteFolderRef, fileName: String, content: StagedContent) async throws -> UploadJob {
+        guard !destination.capabilities.reservesIds else { return try await apply(.startUpload(generation: generation)) }
+        let path = (job.doneGen > 0 ? job.remoteId : nil) ?? (parent.remoteId.isEmpty ? fileName : parent.remoteId + "/" + fileName)
+        let id = identity
+        let now = env.clock.now
+        let sha256 = content.sha256
+        let destinationId = record.id
+        return try await env.store.write { db in
+            let started = try JobRepository.apply(db, .startUpload(generation: generation), to: id, now: now)
+            if let jobId = started.id {
+                try UploadIntentRepository.save(db, UploadIntent(
+                    jobId: jobId, destinationId: destinationId, remotePath: path, contentSha256: sha256, createdAt: now))
+            }
+            return started
+        }
+    }
+
     /// Sends the content and verifies its hash. Returns nil when the job ended up skipped.
     private func deliver(_ request: UploadRequest, job startJob: UploadJob) async throws -> UploadResult? {
         var job = startJob
@@ -140,6 +176,12 @@ struct UploadAttempt: Sendable {
         var skipResume = false
         var forceReplace = false
         while true {
+            // A session belongs to the content it was opened for: after an edit or a re-export it
+            // is dropped and a new one is opened for the same reserved id.
+            if let sessionMd5 = job.sessionMd5, sessionMd5 != request.content.md5 {
+                env.logJob(.notice, "upload", jobId: job.id, "session was opened for other content, dropped")
+                job = try await apply(.sessionDropped)
+            }
             do {
                 var result = try await attempt(request, job: job, probeFirst: probeFirst, skipResume: skipResume, forceReplace: forceReplace)
                 if job.remoteId == nil {
@@ -200,6 +242,11 @@ struct UploadAttempt: Sendable {
                     request, session: SessionCheckpoint(sessionRef: ref, md5: md5, totalBytes: request.content.size), onSession: persist)
             } catch DestinationError.sessionExpired {
                 // The session is gone; a fresh one is opened for the same reserved id below.
+                try await applyIfValid(.sessionDropped)
+            } catch let error as DestinationError {
+                // The destination rejects this session for this content: never offer it again.
+                if case .itemLevel = ErrorClassifier.classify(error, consecutiveFailures: 0) { try await applyIfValid(.sessionDropped) }
+                throw error
             }
         }
         if let remoteId = job.remoteId, job.doneGen > 0, job.uploadedHash != nil {
@@ -227,63 +274,5 @@ struct UploadAttempt: Sendable {
         let id = identity
         let now = env.clock.now
         return try await env.store.write { db in try JobRepository.apply(db, event, to: id, now: now) }
-    }
-
-    /// Applies an event, ignoring a transition that is no longer valid (the job moved on).
-    private func applyIfValid(_ event: JobEvent) async throws {
-        do {
-            try await apply(event)
-        } catch is JobTransitionError {
-            env.logJob(.notice, "upload", jobId: ready.job.id, "transition no longer valid")
-        }
-    }
-
-    // MARK: Errors (spec 8.14)
-
-    private func handleFailure(_ error: any Error) async throws -> UploadOutcome {
-        guard let failure = error as? DestinationError else {
-            env.logJob(.error, "upload", jobId: ready.job.id, "unexpected error type=\(type(of: error))")
-            return try await itemFailure("unexpected error")
-        }
-        let consecutive = await runner.consecutive(record.id)
-        var classification = ErrorClassifier.classify(failure, consecutiveFailures: consecutive)
-        if case .transient = classification {
-            classification = ErrorClassifier.classify(failure, consecutiveFailures: consecutive + env.tuning.transientRetries + 1)
-        }
-        env.logJob(.notice, "upload", jobId: ready.job.id, "failed error=\(failure) class=\(classification)")
-        switch classification {
-        case .destinationLevel(let status):
-            await runner.noteFailure(record.id)
-            if let status {
-                let id = record.id
-                let now = env.clock.now
-                try await env.store.write { db in try DestinationRepository.setStatus(db, id: id, status: status, now: now) }
-                await ActivityLog(env: env).statusChanged(id, to: status)
-            } else {
-                await runner.backOff(record.id)
-            }
-            try await applyIfValid(.destinationFailure(message: failure.description))
-            return .stopDestination
-        case .permanent(let reason):
-            try await applyIfValid(.permanentFailure(reason, message: failure.description))
-            return .skipped
-        case .verify:
-            if case .folderMissing(let path) = failure {
-                try await ensurer.invalidate(logicalPath: path)
-                try await FolderGone.markBranchMissing(env, destinationId: record.id, logicalPath: path)
-                try await applyIfValid(.destinationFailure(message: failure.description))
-                return .requeued
-            }
-            return try await itemFailure(failure.description)
-        case .itemLevel, .transient:
-            return try await itemFailure(failure.description)
-        }
-    }
-
-    private func itemFailure(_ message: String) async throws -> UploadOutcome {
-        let current = try await env.store.read { db in try JobRepository.fetch(db, identity: identity) }
-        let delay = Backoff().delay(forAttempt: current?.attempts ?? 0)
-        try await applyIfValid(.itemFailure(message: message, retryAt: env.clock.now.addingTimeInterval(delay)))
-        return .requeued
     }
 }

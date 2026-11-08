@@ -114,6 +114,26 @@ import Testing
         #expect(j.state == .pending && j.attempts == 0 && j.remoteId == "f1")
     }
 
+    @Test func retrySkippedDropsAStaleResumableSession() throws {
+        var j = try JobTransitions.apply(.reserved(remoteId: "f1"), to: job(), now: now)
+        j = try JobTransitions.apply(.startUpload(generation: 1), to: j, now: now)
+        j = try JobTransitions.apply(.sessionStarted(SessionCheckpoint(sessionRef: "s", md5: "m", totalBytes: 1)), to: j, now: now)
+        j = try JobTransitions.apply(.permanentFailure(.permanentError, message: "x"), to: j, now: now)
+        #expect(j.sessionRef == "s", "a skipped job keeps what it had")
+        j = try JobTransitions.apply(.retrySkipped, to: j, now: now)
+        #expect(j.sessionRef == nil && j.sessionMd5 == nil && j.remoteId == "f1")
+    }
+
+    @Test func sessionDroppedClearsOnlyTheSessionAndOnlyWhileTheJobIsLive() throws {
+        var j = try JobTransitions.apply(.reserved(remoteId: "f1"), to: job(), now: now)
+        j = try JobTransitions.apply(.startUpload(generation: 1), to: j, now: now)
+        j = try JobTransitions.apply(.sessionStarted(SessionCheckpoint(sessionRef: "s", md5: "m", totalBytes: 1)), to: j, now: now)
+        let dropped = try JobTransitions.apply(.sessionDropped, to: j, now: now)
+        #expect(dropped.state == .uploading && dropped.sessionRef == nil && dropped.sessionMd5 == nil)
+        #expect(dropped.remoteId == "f1" && dropped.uploadingGen == 1)
+        #expect(throws: JobTransitionError.self) { try JobTransitions.apply(.sessionDropped, to: job(.done, done: 1), now: now) }
+    }
+
     @Test func doneToPendingRefreshWhenTargetRises() throws {
         var j = job(.done, target: 1, done: 1)
         j.remoteId = "f1"

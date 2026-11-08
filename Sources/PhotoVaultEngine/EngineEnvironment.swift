@@ -55,8 +55,6 @@ public struct EngineTuning: Sendable {
     public var recoveryExportBudget = 200
     /// Recovered local files whose SHA-256 is verified per cycle.
     public var recoveryVerifyBatch = 25
-    /// Integrity checks of a destination are due after this long (FR-47).
-    public var integrityInterval: TimeInterval = 7 * 24 * 3600
     /// Waits between in-pass retries; tests replace it with a no-op.
     public var sleep: @Sendable (TimeInterval) async throws -> Void = { seconds in
         try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))

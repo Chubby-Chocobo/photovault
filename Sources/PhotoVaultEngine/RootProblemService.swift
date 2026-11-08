@@ -168,6 +168,17 @@ struct RetryService: Sendable {
                 if job.stateReason == .tooLargeForDisk { try EngineQueries.clearTooLarge(db, key: job.assetKey, type: job.resType) }
                 count += 1
             }
+            // A resource marked too large for the disk is re-armed as a whole, whichever of its
+            // jobs (pending, or deferred for that reason) the owner's retry reached.
+            for resource in try EngineQueries.tooLargeResources(db) {
+                let waiting = try EngineQueries.jobs(db, key: resource.assetKey, type: resource.type, states: [.pending, .deferred])
+                guard waiting.contains(where: { id == nil || $0.destinationId == id }) else { continue }
+                try EngineQueries.clearTooLarge(db, key: resource.assetKey, type: resource.type)
+                for job in waiting where job.state == .deferred && job.stateReason == .tooLargeForDisk {
+                    _ = try JobRepository.apply(db, .retryDeferred, to: job.identity, now: now)
+                    count += 1
+                }
+            }
             return count
         }
     }

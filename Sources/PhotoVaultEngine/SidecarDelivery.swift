@@ -26,7 +26,7 @@ extension UploadAttempt {
         let hash = SidecarFactory.hash(built.file, kind: kind)
         if try await destinationAlreadyHolds(hash) { return try await finishWithoutUpload(hash: hash, plan: built.plan) }
 
-        let url = staging.fileURL(assetKey: id.assetKey, type: id.resType, generation: ready.job.targetGen)
+        let url = staging.fileURL(of: ready.job, generation: ready.job.targetGen)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try built.file.data.write(to: url, options: .atomic)
         let content = StagedContent(file: url, size: Int64(built.file.data.count), md5: built.file.md5, sha256: built.file.sha256)

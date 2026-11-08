@@ -84,7 +84,8 @@ enum EngineQueries {
 
     static func clearTooLarge(_ db: Database, key: AssetKey, type: ResourceType) throws {
         try db.execute(sql: """
-            UPDATE resource SET too_large_for_disk = 0, disk_cancel_count = 0, bytes_received_at_cancel = NULL
+            UPDATE resource SET too_large_for_disk = 0, disk_cancel_count = 0, bytes_received_at_cancel = NULL,
+                next_export_attempt_at = NULL
             WHERE asset_key = ? AND res_type = ?
             """, arguments: [key.rawValue, type.rawValue])
     }

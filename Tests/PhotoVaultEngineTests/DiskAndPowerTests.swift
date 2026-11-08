@@ -89,13 +89,21 @@ private func backfillAndIncremental(_ h: Harness) async throws {
         let resource = try #require(try h.read { db in try ResourceRepository.fetch(db, key: .local("huge"), type: .photo) })
         #expect(resource.tooLargeForDisk && resource.diskCancelCount == 2)
 
-        // Not retried automatically, and not expired after 30 days.
-        h.photos.beforeExport = nil
-        h.disk.set(available: 100 * GiB)
+        // The disk is still small: after 40 days the job is retried (every 24 h) and cancelled
+        // again; the 30-day rule never skips it.
+        h.disk.set(available: 5 * GiB)
         h.clock.advance(by: 40 * 86_400)
         await h.run()
-        #expect(try h.jobs().first?.state == .deferred)
+        let later = try #require(try h.jobs().first)
+        #expect(later.state != .skipped && later.stateReason != .deferredTooLong)
         #expect(await h.drive.files.isEmpty)
+
+        // Free space grows past what the file reached plus the margin: it goes through by itself.
+        h.photos.beforeExport = nil
+        h.disk.set(available: 100 * GiB)
+        await h.run()
+        #expect(await h.drive.files.count == 1)
+        #expect(try h.jobs().first?.state == .done)
     }
 
     @Test func t15OnBatteryStopsBackfillButIncrementalContinues() async throws {

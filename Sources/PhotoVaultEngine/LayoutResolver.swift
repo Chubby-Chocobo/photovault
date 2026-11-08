@@ -50,6 +50,7 @@ enum UploadCompletion {
         let job = try JobRepository.apply(
             db, .uploadSucceeded(remoteId: remoteId, finalName: finalName, parent: uploadedParent, verifiedHash: verifiedHash),
             to: identity, now: now)
+        if let jobId = job.id { try UploadIntentRepository.delete(db, jobId: jobId) }
         if let asset = try AssetRepository.fetch(db, key: identity.assetKey), let placement = asset.placement {
             let current = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: layout))
             try MoveJobPlanner.enqueueMove(db, identity: identity, from: uploadedParent, to: current, now: now)

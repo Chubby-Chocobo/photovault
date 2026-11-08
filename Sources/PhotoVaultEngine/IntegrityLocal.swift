@@ -14,18 +14,19 @@ extension IntegrityChecker {
         let id = record.id
         let jobs = try await doneJobs(id)
         report.checked = jobs.count
-        var missing: [JobIdentity] = []
+        var missing: [DoneJob] = []
+        var sizeMismatch = Set<JobIdentity>()
+        var hashMismatch = Set<JobIdentity>()
         var intact: [(job: DoneJob, size: Int64)] = []
         for job in jobs {
             try Task.checkCancellation()
             guard let item = try await destination.probe(remoteId: job.remoteId), item.kind == .file else {
-                report.missing += 1
-                missing.append(job.identity)
+                missing.append(job)
                 continue
             }
             if let expected = job.expectedSize, let actual = item.size, expected != actual {
-                report.sizeMismatch += 1
-                missing.append(job.identity)
+                sizeMismatch.insert(job.identity)
+                missing.append(job)
             } else {
                 intact.append((job, item.size ?? job.expectedSize ?? 0))
             }
@@ -38,12 +39,16 @@ extension IntegrityChecker {
                 let actual = try await reader.sha256(destination: id, path: chosen.job.remoteId)
                 report.hashed += 1
                 if actual != expected {
-                    report.hashMismatch += 1
-                    missing.append(chosen.job.identity)
+                    hashMismatch.insert(chosen.job.identity)
+                    missing.append(chosen.job)
                 }
             }
         }
-        try await markMissing(missing)
+        // Counted after marking: a file that was moved or refreshed since the snapshot is not judged.
+        let marked = try await markMissing(missing)
+        report.sizeMismatch = sizeMismatch.intersection(marked).count
+        report.hashMismatch = hashMismatch.intersection(marked).count
+        report.missing = marked.subtracting(sizeMismatch).subtracting(hashMismatch).count
         return report
     }
 

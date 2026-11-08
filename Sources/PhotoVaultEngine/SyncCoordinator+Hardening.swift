@@ -10,8 +10,10 @@ extension SyncCoordinator {
     /// "Đối chiếu lại": lists the whole library again, then runs a cycle so what is new is uploaded.
     /// Throws when the scan is not complete or Photos refuses.
     public func runReconciliation() async throws {
-        try await hardening.reconciler.reconcile(reason: .requested)
-        needsReconciliation = nil
+        try await exclusive {
+            try await hardening.reconciler.reconcile(reason: .requested)
+            needsReconciliation = nil
+        }
         await publish()
         _ = await run(trigger: .manual)
     }
@@ -21,14 +23,14 @@ extension SyncCoordinator {
     /// "Kiểm tra ngay": one destination or all. Missing files become `missingRemote`; nothing is
     /// uploaded again until `confirmReupload`.
     public func runIntegrityCheck(_ id: DestinationID?) async throws -> IntegrityReport {
-        let report = try await hardening.integrity.run(id)
+        let report = try await exclusive { try await hardening.integrity.run(id) }
         await publish()
         return report
     }
 
     /// The owner agreed to upload the missing files of a destination again (T20).
     public func confirmReupload(_ id: DestinationID) async throws {
-        try await hardening.integrity.confirmReupload(id)
+        try await exclusive { try await hardening.integrity.confirmReupload(id) }
         await publish()
     }
 
@@ -36,13 +38,13 @@ extension SyncCoordinator {
 
     /// Deferred jobs go back to `pending` now instead of after 24 hours.
     public func retryDeferred(_ id: DestinationID?) async throws {
-        try await hardening.retry.retryDeferred(id)
+        try await exclusive { try await hardening.retry.retryDeferred(id) }
         await publish()
     }
 
     /// Skipped jobs go back to `pending`; a known remote file is reused, never uploaded twice.
     public func retrySkipped(_ id: DestinationID?) async throws {
-        try await hardening.retry.retrySkipped(id)
+        try await exclusive { try await hardening.retry.retrySkipped(id) }
         await publish()
     }
 
@@ -50,13 +52,13 @@ extension SyncCoordinator {
 
     /// "Khôi phục giúp tôi": untrashes the root and the folders the app created.
     public func untrashAppItems(_ id: DestinationID) async throws {
-        try await hardening.roots.untrashAppItems(id)
+        try await exclusive { try await hardening.roots.untrashAppItems(id) }
         await publish()
     }
 
     /// The owner's answer to a missing or trashed root. The engine never recreates a root by itself.
     public func resolveRootProblem(_ id: DestinationID, choice: RootProblemChoice) async throws {
-        try await hardening.roots.resolve(id, choice: choice)
+        try await exclusive { try await hardening.roots.resolve(id, choice: choice) }
         await publish()
     }
 
@@ -66,7 +68,7 @@ extension SyncCoordinator {
     /// `destination.json` (`rootId` is ignored for a local destination). The destination waits for
     /// recovery, which runs in the first cycle after the scan is complete.
     public func adoptExistingRoot(_ id: DestinationID, rootId: String) async throws {
-        try await hardening.triggers.adoptExistingRoot(id, rootId: rootId)
+        try await exclusive { try await hardening.triggers.adoptExistingRoot(id, rootId: rootId) }
         await publish()
     }
 
@@ -75,13 +77,18 @@ extension SyncCoordinator {
     public func changeDriveRoot(
         _ id: DestinationID, rootId: String, rootName: String, account: DriveAccount? = nil, rootHasContent: Bool
     ) async throws {
-        try await hardening.triggers.changeDriveRoot(id, rootId: rootId, rootName: rootName, account: account, rootHasContent: rootHasContent)
+        // The old root's transfers stop now; the rest of the cycle yields at its next boundary.
+        await uploader.cancelUploads(of: id)
+        try await exclusive {
+            try await hardening.triggers.changeDriveRoot(
+                id, rootId: rootId, rootName: rootName, account: account, rootHasContent: rootHasContent)
+        }
         await publish()
     }
 
     /// The owner asks for recovery now. Needs a complete scan; otherwise `.notReady`.
     public func startRecovery(_ id: DestinationID) async throws -> RecoveryOutcome {
-        let outcome = try await hardening.recovery.recover(id)
+        let outcome = try await exclusive { try await hardening.recovery.recover(id) }
         if case .recovered = outcome { _ = await run(trigger: .manual) }
         await publish()
         return outcome
@@ -90,7 +97,7 @@ extension SyncCoordinator {
     /// After `RecoveryOutcome.needsOwnerDecision`: the owner accepts that nothing at the
     /// destination is used. Everything is queued per scope; files already there may be uploaded again.
     public func proceedWithoutRecovery(_ id: DestinationID) async throws {
-        try await hardening.recovery.proceedWithoutRecovery(id)
+        try await exclusive { try await hardening.recovery.proceedWithoutRecovery(id) }
         await publish()
     }
 

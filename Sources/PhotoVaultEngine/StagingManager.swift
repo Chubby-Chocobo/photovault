@@ -3,30 +3,52 @@ import Foundation
 import PhotoVaultCore
 import PhotoVaultStore
 
-/// Generation-named staging files (spec 8.9.3): `<staging>/<sha256(assetKey) prefix>/<resType>.<gen>`.
+/// Generation-named staging files (spec 8.9.3): `<staging>/<sha256(assetKey) prefix>/<resType>.<gen>`;
+/// sidecars, whose bytes differ per destination, add a destination tag: `<resType>.<tag>.<gen>`.
 /// A file is released when no available destination still needs it and no transfer reads it, or
-/// when it sat idle for two hours. A file an upload is reading is never deleted. The database row
+/// when it sat idle for two hours. A file an upload is reading is never deleted: leases and
+/// releases are decided inside this actor, a release marks the file first and a lease on a file
+/// being released is refused, so the check and the unlink cannot be separated by a new lease. The database row
 /// is updated before the file is removed, so a crash leaves an orphan file (swept at startup),
 /// never a row pointing at a missing file.
 public actor StagingManager {
     private let env: EngineEnvironment
     private var leases: [String: Int] = [:]
+    private var releasing: Set<String> = []
 
     init(env: EngineEnvironment) { self.env = env }
 
-    nonisolated func fileURL(assetKey: AssetKey, type: ResourceType, generation: Int) -> URL {
+    nonisolated func fileURL(assetKey: AssetKey, type: ResourceType, generation: Int, destination: DestinationID? = nil) -> URL {
         let prefix = assetKey.sha256Hex.prefix(32)
+        let name = destination.map { "\(type.rawValue).\(Self.tag($0)).\(generation)" } ?? "\(type.rawValue).\(generation)"
         return env.stagingDirectory
             .appendingPathComponent(String(prefix), isDirectory: true)
-            .appendingPathComponent("\(type.rawValue).\(generation)", isDirectory: false)
+            .appendingPathComponent(name, isDirectory: false)
+    }
+
+    /// Short, path-safe tag of a destination id.
+    private nonisolated static func tag(_ id: DestinationID) -> String {
+        String(SHA256.hash(data: Data(id.rawValue.utf8)).hexString.prefix(8))
+    }
+
+    /// The staging file of an upload job: sidecars are per destination, resources are shared.
+    nonisolated func fileURL(of job: UploadJob, generation: Int) -> URL {
+        fileURL(assetKey: job.assetKey, type: job.resType, generation: generation, destination: job.resType.isSidecar ? job.destinationId : nil)
     }
 
     private static func canonical(_ path: String) -> String { URL(fileURLWithPath: path).resolvingSymlinksInPath().path }
 
     // MARK: Leases
 
-    /// Marks a staged file as being read by a transfer.
-    func lease(_ path: String) { leases[Self.canonical(path), default: 0] += 1 }
+    /// Marks a staged file as being read by a transfer. Returns false while the file is being
+    /// released: the caller treats the staging as lost.
+    @discardableResult
+    func lease(_ path: String) -> Bool {
+        let key = Self.canonical(path)
+        guard !releasing.contains(key) else { return false }
+        leases[key, default: 0] += 1
+        return true
+    }
 
     func unlease(_ path: String) {
         let key = Self.canonical(path)
@@ -50,10 +72,7 @@ public actor StagingManager {
         var released = 0
         for resource in ready where asset == nil || resource.assetKey == asset {
             guard let path = resource.stagingPath, !isLeased(path) else { continue }
-            let needed = try await env.store.read { db in
-                try EngineQueries.jobsNeedingStaging(db, key: resource.assetKey, type: resource.type, stagingGen: resource.stagingGen)
-            }
-            if needed == 0, try await release(resource) { released += 1 }
+            if try await release(resource, onlyIfUnneeded: true) { released += 1 }
         }
         return released
     }
@@ -67,16 +86,29 @@ public actor StagingManager {
         for resource in ready {
             guard let path = resource.stagingPath, !isLeased(path) else { continue }
             guard (resource.lastUsedAt ?? .distantPast) < cutoff else { continue }
-            if try await release(resource) { released += 1 }
+            if try await release(resource, onlyIfUnneeded: false) { released += 1 }
         }
         return released
     }
 
-    private func release(_ resource: ResourceRecord) async throws -> Bool {
-        let changed = try await env.store.write { db in
-            try ResourceRepository.releaseStaging(db, key: resource.assetKey, type: resource.type)
+    /// Row first, file second. The path is marked as `releasing` before the first suspension, so a
+    /// lease taken meanwhile is refused; a lease taken before is seen here and stops the release.
+    /// `onlyIfUnneeded` repeats the "nobody needs it" check inside the same transaction as the update.
+    private func release(_ resource: ResourceRecord, onlyIfUnneeded: Bool) async throws -> Bool {
+        let key = resource.stagingPath.map(Self.canonical)
+        if let key {
+            guard leases[key] == nil, !releasing.contains(key) else { return false }
+            releasing.insert(key)
         }
-        if let path = resource.stagingPath { remove(URL(fileURLWithPath: path)) }
+        defer { if let key { releasing.remove(key) } }
+        let changed = try await env.store.write { db in
+            if onlyIfUnneeded,
+               try EngineQueries.jobsNeedingStaging(db, key: resource.assetKey, type: resource.type, stagingGen: resource.stagingGen) > 0 {
+                return false
+            }
+            return try ResourceRepository.releaseStaging(db, key: resource.assetKey, type: resource.type)
+        }
+        if changed || !onlyIfUnneeded, let path = resource.stagingPath { remove(URL(fileURLWithPath: path)) }
         return changed
     }
 
@@ -115,7 +147,7 @@ public actor StagingManager {
             }
             for job in try JobRepository.fetch(db, state: .uploading) {
                 if let gen = job.uploadingGen {
-                    paths.insert(Self.canonical(self.fileURL(assetKey: job.assetKey, type: job.resType, generation: gen).path))
+                    paths.insert(Self.canonical(self.fileURL(of: job, generation: gen).path))
                 }
             }
             return paths

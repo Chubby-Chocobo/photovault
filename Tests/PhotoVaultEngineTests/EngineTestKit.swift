@@ -288,6 +288,13 @@ final class WrappedDestination: Destination, @unchecked Sendable {
     private(set) var maxConcurrentUploads = 0
     /// Runs before every `replaceContent` reaches the destination (a mid-flight owner action).
     nonisolated(unsafe) var beforeReplace: (@Sendable () async -> Void)?
+    /// Runs when an upload reaches the destination, before anything is written; may throw (cancellation).
+    nonisolated(unsafe) var beforeUpload: (@Sendable (UploadRequest) async throws -> Void)?
+    /// Runs when the destination is listed (an integrity check); receives the uploads running at that moment.
+    nonisolated(unsafe) var onList: (@Sendable (Int) -> Void)?
+    private var uploadedNameLog: [String] = []
+    var uploadedNames: [String] { lock.withLock { uploadedNameLog } }
+    var uploadsRunning: Int { lock.withLock { running } }
 
     init(_ inner: FakeDestination) { self.inner = inner }
 
@@ -306,7 +313,9 @@ final class WrappedDestination: Destination, @unchecked Sendable {
         }
         defer { lock.withLock { running -= 1 } }
         for _ in 0..<10 { await Task.yield() }
+        try await beforeUpload?(request)
         var result = try await inner.upload(request, onSession: onSession)
+        lock.withLock { uploadedNameLog.append(request.fileName) }
         if lock.withLock({ () -> Bool in
             guard corruptUploads > 0 else { return false }
             corruptUploads -= 1
@@ -337,7 +346,10 @@ final class WrappedDestination: Destination, @unchecked Sendable {
     }
 
     func renameFolder(_ folder: RemoteFolderRef, newName: String) async throws -> RemoteFolderRef { try await inner.renameFolder(folder, newName: newName) }
-    func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> { inner.list(under: folder) }
+    func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> {
+        onList?(uploadsRunning)
+        return inner.list(under: folder)
+    }
     func quota() async throws -> Quota? { try await inner.quota() }
 }
 

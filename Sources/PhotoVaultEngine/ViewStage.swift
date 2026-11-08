@@ -53,7 +53,8 @@ struct ViewStage: CycleStage {
         let targets = try await viewTargets()
         guard !targets.isEmpty else { return false }
         let rebuilding = try await env.store.read { db in try KeyValueRepository.int(db, Self.rebuildKey) } == 1
-        if rebuilding { try await prepareRebuild(targets) }
+        // A destination that cannot answer now keeps the rebuild queued: no folder is created blindly.
+        if rebuilding, !(try await prepareRebuild(targets)) { return false }
         var worked = false
         for target in targets {
             let executor = try await executor(for: target)
@@ -137,8 +138,11 @@ struct ViewStage: CycleStage {
     // MARK: Rebuild
 
     /// View folders the owner deleted or trashed are forgotten, so the rebuild creates them again.
-    private func prepareRebuild(_ targets: [Target]) async throws {
-        guard try await env.store.read({ db in try KeyValueRepository.int(db, Self.preparedKey) }) != 1 else { return }
+    /// Only a definitive answer counts (not found, or trashed): an error says nothing about the folder,
+    /// so the preparation stops and is repeated later, and no second view folder is created beside
+    /// one that still exists. Returns false when it has to wait.
+    private func prepareRebuild(_ targets: [Target]) async throws -> Bool {
+        guard try await env.store.read({ db in try KeyValueRepository.int(db, Self.preparedKey) }) != 1 else { return true }
         for target in targets {
             let id = target.record.id
             let ensurer = await uploader.ensurer(for: target.record, destination: target.destination)
@@ -147,11 +151,21 @@ struct ViewStage: CycleStage {
             }
             for folder in folders {
                 guard let remoteId = folder.remoteId else { continue }
-                let item = try? await target.destination.probe(remoteId: remoteId)
-                if item == nil || item?.trashed == true { try await ensurer.invalidate(logicalPath: folder.logicalPath) }
+                let gone: Bool
+                do {
+                    let item = try await target.destination.probe(remoteId: remoteId)
+                    gone = item == nil || item?.trashed == true
+                } catch DestinationError.notFound {
+                    gone = true
+                } catch let error as DestinationError {
+                    env.log.log(.notice, category: "views", "rebuild waits: probe failed error=\(error)")
+                    return false
+                }
+                if gone { try await ensurer.invalidate(logicalPath: folder.logicalPath) }
             }
         }
         try await env.store.write { db in try KeyValueRepository.set(db, Self.preparedKey, 1) }
+        return true
     }
 
     private func restoreRemoved(_ keys: [AssetKey]) async throws {

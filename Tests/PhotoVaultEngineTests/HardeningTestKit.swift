@@ -128,6 +128,8 @@ final class ControllableDrive: RootManaging, ViewDestination, @unchecked Sendabl
     private let lock = NSLock()
     private var hidden = false
     private var root: String
+    /// Runs when an upload reaches the destination, before anything is written; may throw (cancellation).
+    nonisolated(unsafe) var beforeUpload: (@Sendable () async throws -> Void)?
 
     init(_ inner: FakeDestination) {
         self.inner = inner
@@ -159,7 +161,8 @@ final class ControllableDrive: RootManaging, ViewDestination, @unchecked Sendabl
     func reserveIds(count: Int, kind: ReservedIdKind) async throws -> [String] { try await inner.reserveIds(count: count, kind: kind) }
     func ensureFolder(_ request: FolderRequest) async throws -> RemoteFolderRef { try await inner.ensureFolder(request) }
     func upload(_ request: UploadRequest, onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
-        try await inner.upload(request, onSession: onSession)
+        try await beforeUpload?()
+        return try await inner.upload(request, onSession: onSession)
     }
     func resumeUpload(_ request: UploadRequest, session: SessionCheckpoint, onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
         try await inner.resumeUpload(request, session: session, onSession: onSession)

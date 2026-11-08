@@ -85,6 +85,17 @@ import Testing
         #expect(try h.jobs(.missingRemote).count == 1)
     }
 
+    @Test(arguments: [(1, 2.0, true), (30, 8.0, false), (30, 31.0, true)])
+    func theIntervalComesFromTheSettingInDays(_ days: Int, _ elapsed: Double, _ due: Bool) async throws {
+        let h = try await driveLife()
+        try await h.update { $0.integrityCheckIntervalDays = days }
+        await h.drive.externallyDelete(try #require(await h.drive.files.first).id)
+        await h.settle()
+        h.clock.advance(by: elapsed * 24 * 3600)
+        await h.run()
+        #expect(try h.jobs(.missingRemote).count == (due ? 1 : 0))
+    }
+
     // MARK: T40
 
     @Test func t40ATrashedMonthFolderIsFoundAtTheNextWriteAndUntrashingRestoresIt() async throws {
