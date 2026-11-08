@@ -10,9 +10,12 @@ struct PipelineContext: Sendable {
     var destinations: [DestinationRecord]
     var now: Date
     var nameBuilder: NameStemBuilder
+    var layout: any LayoutPolicy
 
     /// Reads the destinations inside the caller's transaction.
-    init(_ db: Database, snapshot: SettingsSnapshot, now: Date, utiResolver: any UTIResolver) throws {
+    init(_ db: Database, snapshot: SettingsSnapshot, now: Date, utiResolver: any UTIResolver,
+         layout: any LayoutPolicy = DynamicLayout()) throws {
+        self.layout = layout
         settings = snapshot.settings
         timeZone = snapshot.timeZone
         destinations = try DestinationRepository.fetchAll(db)
@@ -31,7 +34,7 @@ extension EngineEnvironment {
     func settingsSnapshot() async -> SettingsSnapshot { await settings.snapshot() }
 
     func context(_ db: Database, _ snapshot: SettingsSnapshot) throws -> PipelineContext {
-        try PipelineContext(db, snapshot: snapshot, now: clock.now, utiResolver: utiResolver)
+        try PipelineContext(db, snapshot: snapshot, now: clock.now, utiResolver: utiResolver, layout: layout)
     }
 
     func logJob(_ level: LogLevel, _ category: String, jobId: Int64?, _ message: String) {

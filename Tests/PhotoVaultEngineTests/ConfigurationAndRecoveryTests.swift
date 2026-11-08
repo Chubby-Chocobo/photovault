@@ -100,7 +100,7 @@ import Testing
         try await h.baseline(.googleDrive)
         let box = SeenBox()
         let coordinator = SyncCoordinator(env: h.env, stages: [], reconciler: nil, recoveryParticipants: [], planningExtensions: [Spy(seen: box)])
-        await coordinator.run(trigger: .manual)
+        _ = await coordinator.run(trigger: .manual)
         #expect(box.all.contains("l:x|gdrive|true|1"))
     }
 
@@ -122,7 +122,7 @@ import Testing
         #expect(flag.isSet)
     }
 
-    @Test func unsupportedSidecarJobsAreLeftAloneNotLooped() async throws {
+    @Test func sidecarJobsAreGeneratedAndUploadedAndTheCycleTerminates() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)
         await h.add(h.snapshot("sc", subtypes: .photoScreenshot), recordChange: false)
@@ -133,7 +133,7 @@ import Testing
             try JobRepository.save(db, &job)
         }
         await h.run()
-        #expect(try h.jobs(.pending).count == 1, "a sidecar job waits for the sidecar phase; the cycle still terminates")
-        #expect(await h.drive.files.count == 1)
+        #expect(try h.jobs(.pending).isEmpty, "the sidecar is generated at upload time and the cycle terminates")
+        #expect(await h.drive.files.count == 2)
     }
 }

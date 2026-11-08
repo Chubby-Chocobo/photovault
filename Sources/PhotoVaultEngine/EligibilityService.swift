@@ -38,6 +38,15 @@ struct EligibilityService: Sendable {
         _ db: Database, asset: AssetRecord, context: PipelineContext, only: DestinationID? = nil,
         backfillOrigin: JobOrigin = .backfill, extensions: [any JobPlanningExtension] = []
     ) throws -> Int {
+        // A deleted asset is no longer eligible anywhere; jobs that never uploaded anything are cancelled
+        // (jobs with files at a destination stay, the backup is never touched, T23).
+        if asset.deletedAt != nil {
+            var cancelled = 0
+            for destination in context.destinations {
+                cancelled += try JobRepository.cancelAll(db, assetKey: asset.assetKey, destinationId: destination.id, now: context.now).count
+            }
+            return cancelled
+        }
         let resources = try ResourceRepository.fetchAll(db, key: asset.assetKey)
         let descriptors = resources.map(\.descriptor)
         var written = 0

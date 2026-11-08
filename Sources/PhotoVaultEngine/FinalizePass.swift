@@ -33,7 +33,7 @@ struct FinalizePass: Sendable {
                 let context = try env.context(db, snapshot)
                 var dirty = Set<ArchiveDay>()
                 for key in keys { try AssetFinalizer.finalize(db, key: key, context: context, dirtyDays: &dirty, extensions: extensions) }
-                try AssetFinalizer.recount(db, days: dirty, settings: context.settings)
+                try AssetFinalizer.recount(db, days: dirty, context: context)
                 return keys.last?.rawValue
             }
             guard let last else { break }
@@ -56,7 +56,7 @@ struct FinalizePass: Sendable {
                 let context = try env.context(db, snapshot)
                 var dirty = Set<ArchiveDay>()
                 for key in keys { try AssetFinalizer.finalize(db, key: key, context: context, dirtyDays: &dirty, extensions: extensions) }
-                try AssetFinalizer.recount(db, days: dirty, settings: context.settings)
+                try AssetFinalizer.recount(db, days: dirty, context: context)
                 return keys.count
             }
             if count == 0 { return total }

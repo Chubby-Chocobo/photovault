@@ -11,6 +11,7 @@ import PhotoVaultStore
 public actor SyncCoordinator {
     private let env: EngineEnvironment
     private let stages: [any CycleStage]
+    let organization: OrganizationServices
     private let reconciler: (any ReconciliationRunning)?
     let staging: StagingManager
     let resourceGuard: ResourceGuard
@@ -49,21 +50,25 @@ public actor SyncCoordinator {
         recoveryParticipants: [any RecoveryParticipant], planningExtensions: [any JobPlanningExtension]
     ) {
         self.env = env
-        self.stages = stages
         self.reconciler = reconciler
+        let extensions = planningExtensions + [SidecarPlanner()]
         let staging = StagingManager(env: env)
         let guardActor = ResourceGuard(env: env, staging: staging)
+        let uploadRunner = UploadRunner(env: env, staging: staging)
+        let services = OrganizationServices(env: env, uploader: uploadRunner, resourceGuard: guardActor)
+        organization = services
+        self.stages = stages + services.stages
         self.staging = staging
         resourceGuard = guardActor
         baseline = Baseline(env: env)
         scanner = Scanner(env: env)
-        tracker = ChangeTracker(env: env, extensions: planningExtensions)
-        finalize = FinalizePass(env: env, extensions: planningExtensions)
-        eligibility = EligibilityService(env: env, extensions: planningExtensions)
-        classifier = ClassifyWorker(env: env, resourceGuard: guardActor, staging: staging, extensions: planningExtensions)
+        tracker = ChangeTracker(env: env, extensions: extensions)
+        finalize = FinalizePass(env: env, extensions: extensions)
+        eligibility = EligibilityService(env: env, extensions: extensions)
+        classifier = ClassifyWorker(env: env, resourceGuard: guardActor, staging: staging, extensions: extensions)
         exporter = ExportWorker(env: env, resourceGuard: guardActor, staging: staging)
-        uploader = UploadRunner(env: env, staging: staging)
-        recovery = StartupRecovery(env: env, staging: staging, participants: recoveryParticipants)
+        uploader = uploadRunner
+        recovery = StartupRecovery(env: env, staging: staging, participants: recoveryParticipants + [MoveRecovery(env: env)])
     }
 
     // MARK: Lifecycle
@@ -110,6 +115,7 @@ public actor SyncCoordinator {
     /// Call after global settings changed: recomputes the destination set for every asset (FR-19).
     public func settingsChanged() async throws {
         try await eligibility.recomputeAll()
+        try await organization.settingsChanged()
         await publish()
     }
 
@@ -117,6 +123,7 @@ public actor SyncCoordinator {
     /// database, never by rescanning (FR-71).
     public func destinationAdded(_ id: DestinationID) async throws {
         try await eligibility.recomputeAll(destination: id, backfillOrigin: .destinationBackfill)
+        try await organization.settingsChanged()
         await publish()
     }
 

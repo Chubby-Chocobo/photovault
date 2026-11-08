@@ -45,26 +45,21 @@ enum UploadCompletion {
     @discardableResult
     static func commit(
         _ db: Database, identity: JobIdentity, remoteId: String, finalName: String, uploadedParent: String,
-        verifiedHash: String, layout: any LayoutPolicy, now: Date
+        verifiedHash: String, layout: any LayoutPolicy, description: String? = nil, now: Date
     ) throws -> UploadJob {
         let job = try JobRepository.apply(
             db, .uploadSucceeded(remoteId: remoteId, finalName: finalName, parent: uploadedParent, verifiedHash: verifiedHash),
             to: identity, now: now)
         if let asset = try AssetRepository.fetch(db, key: identity.assetKey), let placement = asset.placement {
             let current = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: layout))
-            let subject = MoveJob.subject(for: identity)
-            if current != uploadedParent {
-                let open = try MoveJobRepository.fetch(db, destinationId: identity.destinationId, state: .pending)
-                    + MoveJobRepository.fetch(db, destinationId: identity.destinationId, state: .inProgress)
-                if !open.contains(where: { $0.subject == subject && $0.toValue == current }) {
-                    try MoveJobRepository.insert(db, MoveJob(
-                        destinationId: identity.destinationId, operation: .moveFile, subject: subject,
-                        fromValue: uploadedParent, toValue: current, createdAt: now))
-                }
-            }
+            try MoveJobPlanner.enqueueMove(db, identity: identity, from: uploadedParent, to: current, now: now)
         }
         try DestinationRepository.markSuccess(db, id: identity.destinationId, at: now)
         try ResourceRepository.touch(db, key: identity.assetKey, type: identity.resType, now: now)
+        if !identity.resType.isSidecar {
+            try DirtyQueue.mark(db, asset: identity.assetKey)
+            if let description { try DescriptionState.record(db, destinationId: identity.destinationId, key: identity.assetKey, text: description) }
+        }
         return job
     }
 }

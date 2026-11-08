@@ -81,9 +81,14 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
     }
 }
 
+/// Staged test files start with the asset's local id, so ids starting with `sony` read as another camera.
 struct StubMetadataReader: MetadataReading {
     func metadata(of file: URL, uti: String, mediaType: MediaType) -> CaptureMetadata {
-        CaptureMetadata(make: "Apple", model: "iPhone 15", lensModel: "Wide")
+        let head = (try? Data(contentsOf: file)).map { String(decoding: $0.prefix(8), as: UTF8.self) } ?? ""
+        if head.hasPrefix("l:sony") || head.hasPrefix("sony") {
+            return CaptureMetadata(make: "SONY", model: "ILCE-7M4", lensModel: "FE 24-70")
+        }
+        return CaptureMetadata(make: "Apple", model: "iPhone 15", lensModel: "Wide")
     }
 }
 
@@ -102,6 +107,7 @@ final class Harness: @unchecked Sendable {
     let system = FakeSystemConditions()
     let log = RecordingLogSink()
     let injector = CrashInjector()
+    let geocoder = FakeGeocoder()
     let root: URL
     let drive = FakeDestination(id: .googleDrive, reservesIds: true)
     let nasId = DestinationID.local()
@@ -110,7 +116,9 @@ final class Harness: @unchecked Sendable {
     var env: EngineEnvironment
     var coordinator: SyncCoordinator
 
-    init(store: Store? = nil, tuning customTuning: ((inout EngineTuning) -> Void)? = nil) async throws {
+    /// - Parameter organization: leave sidecars, views and place names at their defaults; the
+    ///   upload-pipeline tests switch them off so they only see the backup files.
+    init(store: Store? = nil, organization: Bool = false, tuning customTuning: ((inout EngineTuning) -> Void)? = nil) async throws {
         self.store = try store ?? Store.inMemory()
         photos = ProbePhotosSource(fakePhotos)
         root = try TestFiles.temporaryDirectory("engine")
@@ -121,26 +129,36 @@ final class Harness: @unchecked Sendable {
         customTuning?(&t)
         tuning = t
         let registry = DestinationRegistry([drive, nas])
-        env = try await Self.makeEnv(self.store, photos, clock, disk, system, log, injector, root, registry, t)
+        env = try await Self.makeEnv(self.store, photos, clock, disk, system, log, injector, root, registry, t, geocoder)
         coordinator = SyncCoordinator(env: env)
+        if !organization {
+            try await env.settings.update { settings in
+                settings.sidecarJsonEnabled = false
+                settings.sidecarXmpEnabled = false
+                settings.viewByDeviceEnabled = false
+                settings.viewByPlaceEnabled = false
+                settings.viewFavoritesEnabled = false
+            }
+        }
     }
 
     private static func makeEnv(
         _ store: Store, _ photos: ProbePhotosSource, _ clock: TestClock, _ disk: FakeDiskSpace, _ system: FakeSystemConditions,
-        _ log: RecordingLogSink, _ injector: CrashInjector, _ root: URL, _ registry: DestinationRegistry, _ tuning: EngineTuning
+        _ log: RecordingLogSink, _ injector: CrashInjector, _ root: URL, _ registry: DestinationRegistry, _ tuning: EngineTuning,
+        _ geocoder: FakeGeocoder
     ) async throws -> EngineEnvironment {
         EngineEnvironment(
             store: store, photos: photos, destinations: registry, metadataReader: StubMetadataReader(),
             utiResolver: FakeUTIResolver(), clock: clock, disk: disk, system: system, log: log,
             stagingDirectory: root.appendingPathComponent("staging"), containerDirectory: root,
-            settings: try SettingsStore(store: store, defaultTimeZone: utc), tuning: tuning, faults: injector)
+            settings: try SettingsStore(store: store, defaultTimeZone: utc), tuning: tuning, faults: injector, geocoder: geocoder)
     }
 
     /// Emulates a process restart: every in-memory object is rebuilt over the same database,
     /// staging directory and destinations.
     func restart() async throws {
         let registry = DestinationRegistry([drive, nas])
-        env = try await Self.makeEnv(store, photos, clock, disk, system, log, injector, root, registry, tuning)
+        env = try await Self.makeEnv(store, photos, clock, disk, system, log, injector, root, registry, tuning, geocoder)
         coordinator = SyncCoordinator(env: env)
     }
 
@@ -245,6 +263,8 @@ final class WrappedDestination: Destination, @unchecked Sendable {
     private var corruptReplaces = 0
     private var running = 0
     private(set) var maxConcurrentUploads = 0
+    /// Runs before every `replaceContent` reaches the destination (a mid-flight owner action).
+    nonisolated(unsafe) var beforeReplace: (@Sendable () async -> Void)?
 
     init(_ inner: FakeDestination) { self.inner = inner }
 
@@ -279,6 +299,7 @@ final class WrappedDestination: Destination, @unchecked Sendable {
     func probe(remoteId: String) async throws -> RemoteItem? { try await inner.probe(remoteId: remoteId) }
 
     func replaceContent(remoteId: String, _ request: UploadRequest) async throws -> UploadResult {
+        await beforeReplace?()
         var result = try await inner.replaceContent(remoteId: remoteId, request)
         if lock.withLock({ () -> Bool in
             guard corruptReplaces > 0 else { return false }

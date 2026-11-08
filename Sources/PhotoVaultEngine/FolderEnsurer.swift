@@ -21,21 +21,22 @@ actor FolderEnsurer {
     }
 
     /// Ensures every level and returns the deepest folder (the root for an empty chain).
-    func ensure(_ chain: [FolderLevel]) async throws -> RemoteFolderRef {
+    /// - Parameter view: set for view folders; they carry `pvView` and are not subject to the pause rules.
+    func ensure(_ chain: [FolderLevel], view: ViewKind? = nil) async throws -> RemoteFolderRef {
         var parent = root
-        for level in chain { parent = try await ensureLevel(level, parent: parent) }
+        for level in chain { parent = try await ensureLevel(level, parent: parent, view: view) }
         return parent
     }
 
-    private func ensureLevel(_ level: FolderLevel, parent: RemoteFolderRef) async throws -> RemoteFolderRef {
+    private func ensureLevel(_ level: FolderLevel, parent: RemoteFolderRef, view: ViewKind?) async throws -> RemoteFolderRef {
         if let running = inFlight[level.logicalPath] { return try await running.value }
-        let task = Task { try await self.createLevel(level, parent: parent) }
+        let task = Task { try await self.createLevel(level, parent: parent, view: view) }
         inFlight[level.logicalPath] = task
         defer { inFlight[level.logicalPath] = nil }
         return try await task.value
     }
 
-    private func createLevel(_ level: FolderLevel, parent: RemoteFolderRef) async throws -> RemoteFolderRef {
+    private func createLevel(_ level: FolderLevel, parent: RemoteFolderRef, view: ViewKind?) async throws -> RemoteFolderRef {
         let id = destinationId
         let path = level.logicalPath
         let row = try await env.store.read { db in try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: path) }
@@ -57,7 +58,7 @@ actor FolderEnsurer {
         }
         let request = FolderRequest(
             logicalPath: path, name: level.displayName, parent: parent, reservedId: reserved,
-            appProperties: AppPropertyCodec.folderProperties(logicalPath: path, view: nil))
+            appProperties: AppPropertyCodec.folderProperties(logicalPath: path, view: view))
         let ref: RemoteFolderRef
         do {
             ref = try await destination.ensureFolder(request)

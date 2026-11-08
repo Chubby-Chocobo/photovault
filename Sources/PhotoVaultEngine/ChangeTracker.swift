@@ -89,6 +89,7 @@ public actor ChangeTracker {
                 // Deletions only mark the row; the backup is never touched (T23).
                 asset.deletedAt = context.now
                 try AssetRepository.upsert(db, asset, timeZone: context.timeZone)
+                try EligibilityService.recompute(db, asset: asset, context: context, extensions: extensions)
                 if asset.category == .camera, let creation = asset.creationDate {
                     dirty.insert(ArchiveDay(date: creation, timeZone: context.timeZone))
                 }
@@ -97,7 +98,7 @@ public actor ChangeTracker {
             for key in Set(touched) {
                 try AssetFinalizer.finalize(db, key: key, context: context, dirtyDays: &dirty, extensions: extensions)
             }
-            try AssetFinalizer.recount(db, days: dirty, settings: context.settings)
+            try AssetFinalizer.recount(db, days: dirty, context: context)
             try KeyValueRepository.set(db, KeyValueRepository.Key.changeToken, change.token.data)
         }
     }

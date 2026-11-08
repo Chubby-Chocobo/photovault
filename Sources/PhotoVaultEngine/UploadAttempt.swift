@@ -16,8 +16,8 @@ struct UploadAttempt: Sendable {
     let ensurer: FolderEnsurer
     let ready: JobRepository.ReadyJob
 
-    private var identity: JobIdentity { ready.job.identity }
-    private var hashKind: ContentHashKind { destination.capabilities.verifiedHash }
+    var identity: JobIdentity { ready.job.identity }
+    var hashKind: ContentHashKind { destination.capabilities.verifiedHash }
 
     init(env: EngineEnvironment, staging: StagingManager, runner: UploadRunner, destination: any Destination,
          record: DestinationRecord, ensurer: FolderEnsurer, ready: JobRepository.ReadyJob) {
@@ -31,14 +31,21 @@ struct UploadAttempt: Sendable {
     }
 
     func run() async throws -> UploadOutcome {
-        guard let resource = ready.resource else { return .unsupported }
+        let isSidecar = identity.resType.isSidecar
+        guard isSidecar || ready.resource != nil else { return .unsupported }
         // The ready list may be a little stale: only a job that is still pending may start.
         let id = identity
         let current = try await env.store.read { db in try JobRepository.fetch(db, identity: id) }
         guard let current, current.state == .pending, (current.nextAttemptAt ?? .distantPast) <= env.clock.now else { return .unsupported }
         let outcome: UploadOutcome
         do {
-            outcome = try await perform(resource)
+            if isSidecar {
+                outcome = try await performSidecar()
+            } else if let resource = ready.resource {
+                outcome = try await perform(resource)
+            } else {
+                return .unsupported
+            }
         } catch {
             if error is EngineAbort || error is CancellationError { throw error }
             return try await handleFailure(error)
@@ -67,10 +74,15 @@ struct UploadAttempt: Sendable {
             try await apply(.permanentFailure(.tooLargeForRule, message: "larger than destination limit"))
             return .skipped
         }
+        let settings = snapshot.settings
+        let description: String? = destination.capabilities.supportsDescription
+            ? try await env.store.read { db in try OrganizationLookups.descriptionText(db, asset: plan.asset, settings: settings) } : nil
         await staging.lease(path)
         let outcome: UploadOutcome
         do {
-            outcome = try await transfer(resource, plan: plan, content: StagedContent(file: URL(fileURLWithPath: path), size: size, md5: md5, sha256: sha256))
+            outcome = try await transfer(
+                generation: resource.stagingGen, plan: plan, description: description,
+                content: StagedContent(file: URL(fileURLWithPath: path), size: size, md5: md5, sha256: sha256))
         } catch {
             await staging.unlease(path)
             throw error
@@ -79,7 +91,7 @@ struct UploadAttempt: Sendable {
         return outcome
     }
 
-    private func transfer(_ resource: ResourceRecord, plan: UploadPlan, content staged: StagedContent) async throws -> UploadOutcome {
+    func transfer(generation: Int, plan: UploadPlan, description: String?, content staged: StagedContent) async throws -> UploadOutcome {
         let parent = try await ensurer.ensure(plan.chain)
         var job = ready.job
         if destination.capabilities.reservesIds, job.remoteId == nil {
@@ -90,23 +102,26 @@ struct UploadAttempt: Sendable {
             job = try await apply(.reserved(remoteId: reserved))
             try env.reach(.afterFileIdPersisted)
         }
-        job = try await apply(.startUpload(generation: resource.stagingGen))
+        job = try await apply(.startUpload(generation: generation))
         try env.reach(.afterStartUpload)
         env.logJob(.info, "upload", jobId: job.id, "start type=\(job.resType.rawValue) bytes=\(staged.size)")
         let content = try await env.transform.apply(to: staged)
         let request = UploadRequest(
             job: identity, jobId: job.id, kind: job.kind, reservedRemoteId: job.remoteId, parent: parent,
-            fileName: plan.fileName, content: content, appProperties: plan.properties, expectedPriorHash: job.uploadedHash)
+            fileName: plan.fileName, content: content, appProperties: plan.properties, description: description,
+            expectedPriorHash: job.uploadedHash)
         guard let result = try await deliver(request, job: job) else { return .skipped }
         try env.reach(.afterUploadBeforeCommit)
         let now = env.clock.now
         let layout = env.layout
         let id = identity
-        let parentLogical = plan.parentLogical
+        // A refresh replaces the file where it is; only a first upload lands in the folder just ensured.
+        let replacedInPlace = job.doneGen > 0 && job.remoteId != nil
+        let parentLogical = replacedInPlace ? (job.remoteLogicalParent ?? plan.parentLogical) : plan.parentLogical
         _ = try await env.store.write { db in
             try UploadCompletion.commit(
                 db, identity: id, remoteId: result.remoteId, finalName: result.finalName, uploadedParent: parentLogical,
-                verifiedHash: result.verifiedHash, layout: layout, now: now)
+                verifiedHash: result.verifiedHash, layout: layout, description: description, now: now)
         }
         await runner.noteSuccess(record.id)
         env.logJob(.info, "upload", jobId: job.id, "done")
@@ -206,7 +221,7 @@ struct UploadAttempt: Sendable {
     // MARK: Job transitions
 
     @discardableResult
-    private func apply(_ event: JobEvent) async throws -> UploadJob {
+    func apply(_ event: JobEvent) async throws -> UploadJob {
         let id = identity
         let now = env.clock.now
         return try await env.store.write { db in try JobRepository.apply(db, event, to: id, now: now) }

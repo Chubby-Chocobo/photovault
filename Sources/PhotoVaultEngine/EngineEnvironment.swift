@@ -75,13 +75,16 @@ public struct EngineEnvironment: Sendable {
     public var settings: SettingsStore
     public var tuning: EngineTuning
     public var faults: (any FaultInjecting)?
+    /// Reverse geocoder for place names; nil disables geocoding (FR-85).
+    public var geocoder: (any ReverseGeocoding)?
 
     public init(
         store: Store, photos: any PhotosSource, destinations: DestinationRegistry, metadataReader: any MetadataReading,
         utiResolver: any UTIResolver, clock: any Clock = SystemClock(), disk: any DiskSpaceProvider,
         system: any SystemConditions, log: any LogSink = NullLogSink(), layout: any LayoutPolicy = DynamicLayout(),
         transform: any Transform = IdentityTransform(), stagingDirectory: URL, containerDirectory: URL,
-        settings: SettingsStore, tuning: EngineTuning = EngineTuning(), faults: (any FaultInjecting)? = nil
+        settings: SettingsStore, tuning: EngineTuning = EngineTuning(), faults: (any FaultInjecting)? = nil,
+        geocoder: (any ReverseGeocoding)? = nil
     ) {
         self.store = store
         self.photos = photos
@@ -99,6 +102,7 @@ public struct EngineEnvironment: Sendable {
         self.settings = settings
         self.tuning = tuning
         self.faults = faults
+        self.geocoder = geocoder
     }
 
     func reach(_ point: CrashPoint) throws { try faults?.reach(point) }

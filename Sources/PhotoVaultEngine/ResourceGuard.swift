@@ -143,6 +143,27 @@ actor ResourceGuard {
         bucket = current
     }
 
+    /// Takes `bytes` from the backfill bucket's upload lane (edit-gate fallback re-exports).
+    func tryConsumeBackfill(bytes: Int64) async -> Bool {
+        let settings = await env.settingsSnapshot().settings
+        var current = currentBucket(settings)
+        let allowed = current.tryConsume(bytes: max(bytes, 1), lane: .upload, at: env.clock.now)
+        bucket = current
+        return allowed
+    }
+
+    /// Nominal cost of one Drive metadata or view write against the shared bucket (FR-49).
+    static let metadataWriteCost: Int64 = 16 << 10
+
+    /// Admits one Drive metadata or view write; uploads keep the reserved part of the bucket.
+    func admitMetadataWrite() async -> Bool {
+        let settings = await env.settingsSnapshot().settings
+        var current = currentBucket(settings)
+        let allowed = current.tryConsume(bytes: Self.metadataWriteCost, lane: .metadata, at: env.clock.now)
+        bucket = current
+        return allowed
+    }
+
     /// Re-evaluates the disk (called at every cycle step): below the critical watermark every
     /// running export is cancelled so its partial file can be removed.
     @discardableResult

@@ -39,9 +39,17 @@ enum AssetFinalizer {
             if let day = placed.day { dirtyDays.insert(day) }
         }
         try EligibilityService.recompute(db, asset: asset, context: context, extensions: extensions)
+        // Sidecars, views and descriptions follow the asset only once something of it is at a destination.
+        if try OrganizationQueries.hasDoneJob(db, key: key) { try DirtyQueue.mark(db, asset: key) }
     }
 
-    static func recount(_ db: Database, days: Set<ArchiveDay>, settings: GlobalSettings) throws {
-        for day in days { try EngineQueries.recountDay(db, day: day, settings: settings) }
+    /// Recounts the days and promotes those that crossed the threshold; a promoted day is queued
+    /// for place naming again because its asset set may have changed (FR-83).
+    static func recount(_ db: Database, days: Set<ArchiveDay>, context: PipelineContext) throws {
+        for day in days {
+            try EngineQueries.recountDay(db, day: day, settings: context.settings)
+            try DayFolderPromoter.promoteIfNeeded(db, day: day, context: context)
+            if try DayStatRepository.fetch(db, day: day)?.promoted == true { try DirtyQueue.mark(db, [.place], id: day.description) }
+        }
     }
 }

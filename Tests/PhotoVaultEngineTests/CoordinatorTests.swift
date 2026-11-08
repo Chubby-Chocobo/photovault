@@ -96,7 +96,7 @@ private final class ReasonBox: @unchecked Sendable {
         await h.fakePhotos.expireHistory()
         let box = ReasonBox()
         let coordinator = SyncCoordinator(env: h.env, reconciler: Reconciler(box: box))
-        await coordinator.run(trigger: .manual)
+        _ = await coordinator.run(trigger: .manual)
         #expect(box.all == [.tokenExpired])
     }
 

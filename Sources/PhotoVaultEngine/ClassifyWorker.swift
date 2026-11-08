@@ -154,7 +154,7 @@ actor ClassifyWorker {
             var dirty = Set<ArchiveDay>()
             if let creation = asset.creationDate { dirty.insert(ArchiveDay(date: creation, timeZone: context.timeZone)) }
             try AssetFinalizer.finalize(db, key: key, context: context, dirtyDays: &dirty, extensions: extensions)
-            try AssetFinalizer.recount(db, days: dirty, settings: context.settings)
+            try AssetFinalizer.recount(db, days: dirty, context: context)
             return kept
         }
         if let staged, !adopted { staging.remove(staged.url) }

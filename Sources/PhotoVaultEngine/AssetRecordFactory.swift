@@ -27,7 +27,10 @@ enum AssetRecordFactory {
     /// `inserted_at` and `first_seen_at` are preserved (placement is fixed once).
     static func merged(_ existing: AssetRecord, with snapshot: AssetSnapshot, now: Date) -> AssetRecord {
         var record = existing
-        if let old = existing.modificationDate, let new = snapshot.modificationDate, old != new { record.editCheckPending = true }
+        // A changed modification date or a flipped adjustment flag queues the edit gate (FR-46); the
+        // gate itself runs outside this transaction.
+        if let new = snapshot.modificationDate, existing.modificationDate != new { record.editCheckPending = true }
+        if existing.hasAdjustments != snapshot.hasAdjustments { record.editCheckPending = true }
         record.localId = snapshot.localId
         if record.cloudId == nil { record.cloudId = snapshot.cloudId }
         copyScanFields(snapshot, into: &record)

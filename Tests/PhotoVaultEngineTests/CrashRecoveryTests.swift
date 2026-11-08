@@ -192,8 +192,11 @@ import Testing
             }
         }
         await h.run()
-        let moves = try h.read { db in try MoveJobRepository.fetch(db, destinationId: .googleDrive, state: .pending) }
+        // The move worker runs later in the same cycle and finishes the move the completion queued.
+        let moves = try h.read { db in try MoveJobRepository.fetch(db, destinationId: .googleDrive, state: .done) }
         #expect(moves.count == 1)
+        let file = try #require(await h.drive.files.first)
+        #expect(await h.drive.path(of: file.id).contains("/\(day)/"))
         #expect(moves[0].operation == .moveFile)
         #expect(moves[0].fromValue == "camera/\(day.yearString)/\(day.monthString)")
         #expect(moves[0].toValue == "camera/\(day.yearString)/\(day.monthString)/\(day)")
