@@ -107,6 +107,12 @@ public actor LocalFolderDestination: Destination {
         return try await Task.detached { try ops.contentHash(remoteId) }.value
     }
 
+    /// Bytes of a small file (a sidecar) at `remoteId`, nil when absent; larger than `maxBytes` throws.
+    public func readSmallFile(remoteId: String, maxBytes: Int = 1 << 20) async throws -> Data? {
+        let ops = self.ops
+        return try await Task.detached { try ops.readSmallFile(remoteId, maxBytes: maxBytes) }.value
+    }
+
     public func replaceContent(remoteId: String, _ request: UploadRequest) async throws -> UploadResult {
         let ops = self.ops
         let (parent, _) = try LocalPath.split(remoteId)

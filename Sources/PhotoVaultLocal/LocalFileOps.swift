@@ -129,4 +129,29 @@ struct LocalFileOps: Sendable {
             return try FileHashing.sha256(fd: fd).hex
         }
     }
+
+    /// Bytes of a small file at `path` (relative, no symlinks followed); nil when it does not exist.
+    /// Files larger than `maxBytes` throw `DestinationError.itemRejected` instead of being read.
+    func readSmallFile(_ path: String, maxBytes: Int) throws -> Data? {
+        try LocalPath.requireUserPath(path)
+        let (parentPath, name) = try LocalPath.split(path)
+        return try withRoot { root in
+            let parent: DirectoryHandle
+            do { parent = try root.openDirectory(parentPath) } catch DestinationError.notFound { return nil }
+            guard let info = try parent.status(name) else { return nil }
+            guard Int(info.st_size) <= maxBytes else { throw DestinationError.itemRejected(reason: "file too large") }
+            let fd = try parent.openFile(name)
+            defer { close(fd) }
+            var data = Data()
+            var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+            while true {
+                let count = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
+                if count < 0 { throw ErrorClassifier.destinationError(errno: errno) }
+                if count == 0 { break }
+                data.append(contentsOf: buffer[0..<count])
+                guard data.count <= maxBytes else { throw DestinationError.itemRejected(reason: "file too large") }
+            }
+            return data
+        }
+    }
 }

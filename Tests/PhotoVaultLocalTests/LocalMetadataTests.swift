@@ -137,3 +137,26 @@ actor EventLog {
     private(set) var items: [String] = []
     func add(_ item: String) { items.append(item) }
 }
+
+@Suite struct LocalSmallFileReadTests {
+    @Test func readsSmallFilesAndRefusesLargeOnes() async throws {
+        let fx = try LocalFixture()
+        try FileManager.default.createDirectory(at: fx.root.appendingPathComponent("2024/2024-05"), withIntermediateDirectories: true)
+        try fx.write("2024/2024-05/IMG_0001.json", "{\"schema\":1}")
+        #expect(try await fx.destination.readSmallFile(remoteId: "2024/2024-05/IMG_0001.json") == Data("{\"schema\":1}".utf8))
+        #expect(try await fx.destination.readSmallFile(remoteId: "2024/2024-05/missing.json") == nil)
+        #expect(try await fx.destination.readSmallFile(remoteId: "2025/none.json") == nil)
+        await #expect(throws: DestinationError.self) {
+            _ = try await fx.destination.readSmallFile(remoteId: "2024/2024-05/IMG_0001.json", maxBytes: 4)
+        }
+    }
+
+    @Test func doesNotFollowSymlinks() async throws {
+        let fx = try LocalFixture()
+        let outside = try TestFiles.temporaryDirectory()
+        try Data("secret".utf8).write(to: outside.appendingPathComponent("x.json"))
+        try FileManager.default.createSymbolicLink(at: fx.root.appendingPathComponent("link.json"),
+                                                   withDestinationURL: outside.appendingPathComponent("x.json"))
+        await #expect(throws: (any Error).self) { _ = try await fx.destination.readSmallFile(remoteId: "link.json") }
+    }
+}
