@@ -7,9 +7,11 @@ public struct DriveAPI: Sendable {
     static let maxIdsPerRequest = 1000
 
     let http: DriveHTTP
+    let writeLimiter: DriveWriteLimiter?
 
-    public init(transport: any HTTPTransport, auth: any DriveAuthorizing) {
+    public init(transport: any HTTPTransport, auth: any DriveAuthorizing, writeLimiter: DriveWriteLimiter? = nil) {
         http = DriveHTTP(transport: transport, auth: auth)
+        self.writeLimiter = writeLimiter
     }
 
     private func fileURL(_ id: String, _ extra: [(String, String)] = []) -> URL {
@@ -33,6 +35,7 @@ public struct DriveAPI: Sendable {
 
     /// Creates metadata-only items (folders, shortcuts). 409 becomes `alreadyExists`; never assume success.
     func create(_ write: DriveFileWrite) async throws -> DriveFile {
+        try await writeLimiter?.acquire(lane: .metadata)
         do {
             return try await http.sendJSON(DriveFile.self, DriveURL.make(DriveURL.api, "/files", [("fields", Self.fileFields)]),
                                            method: "POST", payload: write)
@@ -46,6 +49,7 @@ public struct DriveAPI: Sendable {
     }
 
     func update(_ id: String, _ write: DriveFileWrite, addParents: [String] = [], removeParents: [String] = []) async throws -> DriveFile {
+        try await writeLimiter?.acquire(lane: .metadata)
         var extra: [(String, String)] = []
         if !addParents.isEmpty { extra.append(("addParents", addParents.joined(separator: ","))) }
         if !removeParents.isEmpty { extra.append(("removeParents", removeParents.joined(separator: ","))) }

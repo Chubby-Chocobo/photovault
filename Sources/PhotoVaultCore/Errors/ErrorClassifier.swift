@@ -17,6 +17,8 @@ public enum ErrorClass: Hashable, Sendable {
 
 public enum ErrorClassifier {
     public static let transientRetries = 3
+    /// `DestinationError.itemRejected` reasons starting with this prefix are permanent (skipped at once).
+    public static let permanentReasonPrefix = "permanent:"
     /// Consecutive 5xx or repeated 429 responses after which the whole destination backs off.
     public static let destinationBackoffThreshold = 3
 
@@ -34,6 +36,7 @@ public enum ErrorClassifier {
             consecutiveFailures >= destinationBackoffThreshold ? .destinationLevel(nil) : .transient
         case .transient: .transient
         case .folderMissing, .alreadyExists, .sessionExpired: .verify
+        case .itemRejected(let reason) where reason.hasPrefix(permanentReasonPrefix): .permanent(.permanentError)
         case .notFound, .checksumMismatch, .itemRejected: .itemLevel
         case .foreignFile: .permanent(.foreignFile)
         case .foreignModified: .permanent(.foreignModified)
@@ -52,13 +55,18 @@ public enum ErrorClassifier {
         }
     }
 
+    /// 403 reasons that are throttling, not a permission problem.
+    private static let rateLimitReasons: Set<String> = [
+        "dailyLimitExceeded", "sharingRateLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded",
+    ]
+
     /// HTTP status → destination error (Drive). 401 is passed in only after one refresh failed.
     public static func destinationError(httpStatus: Int, reason: String?, retryAfter: TimeInterval? = nil) -> DestinationError? {
         switch httpStatus {
         case 200..<300, 308: nil
         case 401: .unauthorized
         case 403 where reason == "storageQuotaExceeded" || reason == "quotaExceeded": .quotaExceeded
-        case 403 where reason == "userRateLimitExceeded" || reason == "rateLimitExceeded": .rateLimited(retryAfter: retryAfter)
+        case 403 where reason.map(rateLimitReasons.contains) == true: .rateLimited(retryAfter: retryAfter)
         case 404: .notFound
         case 409: .alreadyExists(remoteId: "")
         case 410: .sessionExpired
@@ -69,14 +77,19 @@ public enum ErrorClassifier {
     }
 
     /// POSIX errno → destination error (local destinations).
-    public static func destinationError(errno code: Int32) -> DestinationError {
+    /// `atRoot` is true only when opening the destination root: there a permission error means the
+    /// bookmark/grant is no longer valid. Below the root it only affects the one item.
+    public static func destinationError(errno code: Int32, atRoot: Bool = false) -> DestinationError {
         switch code {
         case ENOSPC, EDQUOT: .noSpace
         case ENOENT: .notFound
         case EEXIST: .foreignFile
         case ENXIO, ENODEV, EIO, ETIMEDOUT, EHOSTDOWN, EHOSTUNREACH, ENETDOWN, ENETUNREACH, ESTALE: .offline
-        case EACCES, EPERM: .bookmarkInvalid
-        case EINTR, EAGAIN: .transient(reason: "errno \(code)")
+        case EACCES, EPERM: atRoot ? .bookmarkInvalid : .itemRejected(reason: "permission")
+        case EROFS: .offline
+        case EFBIG: .itemRejected(reason: permanentReasonPrefix + " file too large")
+        case EILSEQ: .itemRejected(reason: permanentReasonPrefix + " invalid name")
+        case EINTR, EAGAIN, EMFILE, ENFILE: .transient(reason: "errno \(code)")
         case ELOOP: .itemRejected(reason: "symlink")
         default: .itemRejected(reason: "errno \(code)")
         }

@@ -10,18 +10,24 @@ struct Harness {
     let root: RemoteFolderRef
     let scratch: URL
     let clock: FixedClock
+    var interceptor: InterceptingTransport?
 
     static func make(chunkSize: Int = 256 * 1024, sessionPrefix: String = "up", cap: DailyUploadCap = DailyUploadCap(),
+                     dailyCapState: DailyCapState? = nil, onDailyCapChange: (@Sendable (DailyCapState) -> Void)? = nil,
+                     writeLimiter: DriveWriteLimiter? = DriveWriteLimiter.standard(),
                      transport: ((FakeDriveServer) -> any HTTPTransport)? = nil, log: any LogSink = NullLogSink()) async throws -> Harness {
         let server = FakeDriveServer(sessionPrefix: sessionPrefix)
         let clock = FixedClock()
-        let destination = GoogleDriveDestination(transport: transport?(server) ?? server, auth: StaticAuth(), cap: cap,
+        let made = transport?(server) ?? server
+        let destination = GoogleDriveDestination(transport: made, auth: StaticAuth(), cap: cap, dailyCapState: dailyCapState,
+                                                 onDailyCapChange: onDailyCapChange, writeLimiter: writeLimiter,
                                                  chunkSize: chunkSize, clock: clock, log: log)
         let id = try await destination.reserveIds(count: 1, kind: .files)[0]
         let item = try await destination.createRoot(reservedId: id, name: "Camera Uploads",
                                                     appProperties: AppPropertyCodec.rootProperties(archiveTimezone: TimeZone(identifier: "Asia/Ho_Chi_Minh")!))
         await destination.setRootId(item.remoteId)
-        return Harness(server: server, destination: destination, root: .root(remoteId: item.remoteId), scratch: try tempDir(), clock: clock)
+        return Harness(server: server, destination: destination, root: .root(remoteId: item.remoteId), scratch: try tempDir(),
+                       clock: clock, interceptor: made as? InterceptingTransport)
     }
 
     func folder(_ name: String, parent: RemoteFolderRef? = nil) async throws -> RemoteFolderRef {

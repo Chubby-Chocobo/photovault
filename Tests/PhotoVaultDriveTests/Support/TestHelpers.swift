@@ -49,3 +49,23 @@ func tempDir() throws -> URL {
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
+
+/// Forwards to `base` except where `override` answers; overriding can be armed after set-up traffic.
+final class InterceptingTransport: HTTPTransport, @unchecked Sendable {
+    private let base: any HTTPTransport
+    private let override: @Sendable (URLRequest) -> StubResponse?
+    private let lock = NSLock()
+    private var armed = false
+
+    init(base: any HTTPTransport, override: @escaping @Sendable (URLRequest) -> StubResponse?) {
+        self.base = base
+        self.override = override
+    }
+
+    func arm() { lock.withLock { armed = true } }
+
+    func send(_ request: URLRequest, body: HTTPBody) async throws -> (Data, HTTPURLResponse) {
+        if lock.withLock({ armed }), let reply = override(request) { return (reply.body, reply.http(for: request.url!)) }
+        return try await base.send(request, body: body)
+    }
+}

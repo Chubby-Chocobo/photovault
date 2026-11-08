@@ -15,17 +15,25 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
     let log: any LogSink
     private(set) var rootId: String?
     private var cap: DailyUploadCap
+    private let onDailyCapChange: (@Sendable (DailyCapState) -> Void)?
 
+    /// - Parameters:
+    ///   - dailyCapState: persisted cap entries to restore at launch (FR-49).
+    ///   - onDailyCapChange: called synchronously on every reserve/release with the state to persist; keep it fast.
+    ///   - writeLimiter: shared token bucket for write calls; nil disables limiting.
     public init(id: DestinationID = .googleDrive, transport: any HTTPTransport, auth: any DriveAuthorizing,
                 rootId: String? = nil, cap: DailyUploadCap = DailyUploadCap(),
+                dailyCapState: DailyCapState? = nil, onDailyCapChange: (@Sendable (DailyCapState) -> Void)? = nil,
+                writeLimiter: DriveWriteLimiter? = DriveWriteLimiter.standard(),
                 chunkSize: Int = 8 * 1024 * 1024,
                 clock: any Clock = SystemClock(), log: any LogSink = NullLogSink()) {
-        let api = DriveAPI(transport: transport, auth: auth)
+        let api = DriveAPI(transport: transport, auth: auth, writeLimiter: writeLimiter)
         self.id = id
         self.api = api
-        self.uploader = ResumableUploader(http: api.http, chunkSize: chunkSize)
+        self.uploader = ResumableUploader(http: api.http, chunkSize: chunkSize, writeLimiter: writeLimiter)
         self.rootId = rootId
-        self.cap = cap
+        self.cap = dailyCapState.map { DailyUploadCap(limit: cap.limit, state: $0) } ?? cap
+        self.onDailyCapChange = onDailyCapChange
         self.clock = clock
         self.log = log
     }
@@ -36,7 +44,7 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
     public func dailyUsage() -> Int64 { cap.usage(at: clock.now) }
 
     /// Snapshot for the engine to persist.
-    public func dailyCapState() -> DailyUploadCap { cap }
+    public func dailyCapState() -> DailyCapState { cap.state }
 
     // MARK: Availability and IDs
 
@@ -84,23 +92,36 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
 
     public func upload(_ request: UploadRequest, onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
         guard let reserved = request.reservedRemoteId else { throw DestinationError.itemRejected(reason: "id not reserved") }
-        try checkCap(request.content.size)
+        let reservation = try reserveCap(request.content.size)
         let write = DriveFileWrite(id: reserved, name: request.fileName, parents: [request.parent.remoteId],
                                    appProperties: try Self.prepared(request.appProperties), description: request.description)
         let file: DriveFile
         do {
             file = try await uploader.upload(.create(write), file: request.content.file, size: request.content.size,
                                              md5: request.content.md5, onSession: onSession)
-        } catch DestinationError.notFound {
-            throw parentMissing(request.parent)
+        } catch {
+            releaseCap(reservation)
+            // Only the session-start request can mean "parent missing"; transfer errors never reach here as notFound.
+            if case DestinationError.notFound = error { throw parentMissing(request.parent) }
+            throw error
         }
         return try finish(file, request, parent: request.parent)
     }
 
     public func resumeUpload(_ request: UploadRequest, session: SessionCheckpoint,
                              onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
-        try checkCap(request.content.size)
-        let file = try await uploader.resume(sessionRef: session.sessionRef, file: request.content.file, size: request.content.size)
+        // The persisted session belongs to other bytes (re-export differs, file changed): never resume it.
+        guard session.md5 == request.content.md5, session.totalBytes == request.content.size else {
+            throw DestinationError.sessionExpired
+        }
+        let reservation = try reserveCap(request.content.size)
+        let file: DriveFile
+        do {
+            file = try await uploader.resume(sessionRef: session.sessionRef, file: request.content.file, size: request.content.size)
+        } catch {
+            releaseCap(reservation)
+            throw error
+        }
         return try finish(file, request, parent: request.parent)
     }
 
@@ -109,9 +130,15 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
     }
 
     public func replaceContent(remoteId: String, _ request: UploadRequest) async throws -> UploadResult {
-        try checkCap(request.content.size)
-        let file = try await uploader.upload(.update(id: remoteId), file: request.content.file, size: request.content.size,
+        let reservation = try reserveCap(request.content.size)
+        let file: DriveFile
+        do {
+            file = try await uploader.upload(.update(id: remoteId), file: request.content.file, size: request.content.size,
                                              md5: request.content.md5, onSession: { _ in })
+        } catch {
+            releaseCap(reservation)
+            throw error
+        }
         return try finish(file, request, parent: nil)
     }
 
@@ -169,8 +196,20 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
         parent.remoteId == rootId ? .rootMissing : .folderMissing(logicalPath: parent.logicalPath)
     }
 
-    private func checkCap(_ bytes: Int64) throws {
-        guard cap.canUpload(bytes: bytes, at: clock.now) else { throw DestinationError.dailyCapReached }
+    private struct CapReservation { var bytes: Int64; var at: Date }
+
+    /// Counts the bytes before the first request so parallel uploads cannot overshoot the limit.
+    private func reserveCap(_ bytes: Int64) throws -> CapReservation {
+        let now = clock.now
+        guard cap.reserve(bytes: bytes, at: now) else { throw DestinationError.dailyCapReached }
+        onDailyCapChange?(cap.state)
+        return CapReservation(bytes: bytes, at: now)
+    }
+
+    /// An upload that failed before completing did not consume the day's budget.
+    private func releaseCap(_ reservation: CapReservation) {
+        cap.release(bytes: reservation.bytes, at: reservation.at)
+        onDailyCapChange?(cap.state)
     }
 
     private func finish(_ file: DriveFile, _ request: UploadRequest, parent: RemoteFolderRef?) throws -> UploadResult {
@@ -180,7 +219,6 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
         guard actual == request.content.md5 else {
             throw DestinationError.checksumMismatch(expected: request.content.md5, actual: actual)
         }
-        cap.record(bytes: request.content.size, at: clock.now)
         return UploadResult(remoteId: file.id, finalName: file.name ?? request.fileName, verifiedHash: actual,
                             parentIds: file.parents ?? [], trashed: file.trashed ?? false,
                             size: file.size.flatMap { Int64($0) } ?? request.content.size)

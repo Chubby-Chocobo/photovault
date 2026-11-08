@@ -78,10 +78,16 @@ public struct OAuthClient: Sendable {
                 ? DestinationError.transient(reason: "sign-in \(error == .timeout ? "timed out" : "cancelled")")
                 : DestinationError.itemRejected(reason: "sign-in \(error)")
         }
-        let tokens = try await exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
-        guard let idToken = tokens.idToken else { throw DestinationError.itemRejected(reason: "id token missing") }
-        let identity = try IDToken.identity(from: idToken, clientID: config.clientID, now: clock.now)
-        return SignInResult(identity: identity, tokens: tokens)
+        do {
+            let tokens = try await exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
+            guard let idToken = tokens.idToken else { throw DestinationError.itemRejected(reason: "id token missing") }
+            let identity = try IDToken.identity(from: idToken, clientID: config.clientID, now: clock.now)
+            server.respond(success: true)
+            return SignInResult(identity: identity, tokens: tokens)
+        } catch {
+            server.respond(success: false)
+            throw error
+        }
     }
 
     public func exchange(code: String, verifier: String, redirectURI: String) async throws -> OAuthTokens {
@@ -90,8 +96,17 @@ public struct OAuthClient: Sendable {
     }
 
     /// `invalid_grant` means the refresh token is dead: the user must sign in again.
+    /// Any failure that is not invalid_grant, 401, 429, 5xx or a network problem means the stored
+    /// grant cannot be used (bad client, scope dropped, malformed reply): destination-level `reauthRequired`.
     public func refresh(refreshToken: String) async throws -> OAuthTokens {
-        try await tokenRequest([("grant_type", "refresh_token"), ("refresh_token", refreshToken)])
+        do {
+            return try await tokenRequest([("grant_type", "refresh_token"), ("refresh_token", refreshToken)])
+        } catch let error as DestinationError {
+            switch error {
+            case .reauthRequired, .unauthorized, .rateLimited, .server, .offline, .transient: throw error
+            default: throw DestinationError.reauthRequired
+            }
+        }
     }
 
     public func revoke(token: String) async throws {
