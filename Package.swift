@@ -35,7 +35,7 @@ let package = Package(
         .target(name: "PhotoVaultLocal", dependencies: ["PhotoVaultCore"], swiftSettings: strictSwift),
         .target(
             name: "PhotoVaultEngine",
-            dependencies: ["PhotoVaultCore", "PhotoVaultStore"],
+            dependencies: ["PhotoVaultCore", "PhotoVaultStore", .product(name: "GRDB", package: "GRDB.swift")],
             swiftSettings: strictSwift
         ),
         .target(name: "PhotoVaultTestSupport", dependencies: ["PhotoVaultCore"], swiftSettings: strictSwift),
