@@ -27,11 +27,21 @@ enum RootState {
             return volumes.mountedVolume(containing: standardized).uuid == bookmarkVolumeUUID ? .rootMissing : .offline
         }
         if let bookmarkRemountURL {
-            return volumes.mountedVolume(containing: standardized).remountURL == bookmarkRemountURL ? .rootMissing : .offline
+            let mounted = volumes.mountedVolume(containing: standardized).remountURL.flatMap(shareIdentity)
+            return mounted != nil && mounted == shareIdentity(bookmarkRemountURL) ? .rootMissing : .offline
         }
         let parts = URL(fileURLWithPath: standardized).pathComponents
         guard parts.count >= 3, parts[1] == "Volumes" else { return .rootMissing }
         return FileManager.default.fileExists(atPath: "/Volumes/" + parts[2]) ? .rootMissing : .offline
+    }
+
+    /// Scheme, host and share path of a remount URL, without the user name or password and with the
+    /// host lower-cased: the same share mounted by another user is the same volume.
+    static func shareIdentity(_ remountURL: String) -> String? {
+        guard let components = URLComponents(string: remountURL), let host = components.host, !host.isEmpty else { return nil }
+        var path = components.percentEncodedPath
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return "\((components.scheme ?? "").lowercased())://\(host.lowercased())\(path)"
     }
 }
 

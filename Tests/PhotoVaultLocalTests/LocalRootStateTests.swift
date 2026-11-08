@@ -48,6 +48,15 @@ import Testing
         #expect(RootState.missingError(path: path, bookmarkRemountURL: stored, volumes: unmounted) == .offline)
     }
 
+    @Test func theSameShareMountedByAnotherUserIsTheSameVolume() {
+        let path = "/Volumes/photo/backup"
+        let stored = "smb://alice@NAS-A.local/photo/"
+        let otherUser = FakeVolumes(uuids: ["/": "BOOT"], remountURLs: ["/Volumes/photo": "smb://bob@nas-a.local/photo"])
+        #expect(RootState.missingError(path: path, bookmarkRemountURL: stored, volumes: otherUser) == .rootMissing)
+        #expect(RootState.shareIdentity("smb://alice:secret@NAS/photo") == "smb://nas/photo")
+        #expect(RootState.shareIdentity("not a url") == nil)
+    }
+
     @Test func bookmarkCarriesTheRemountURLWhenTheVolumeHasOne() throws {
         let fixture = try makeRoot()
         let stored = URL.resourceValues(forKeys: [.volumeURLForRemountingKey], fromBookmarkData: fixture.bookmark)
