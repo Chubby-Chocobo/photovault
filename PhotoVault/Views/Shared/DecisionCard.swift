@@ -97,7 +97,7 @@ struct DecisionCard: View {
             }
         case (.integrityMissing(let count, _, _), .confirmReupload):
             VStack(alignment: .leading, spacing: 6) {
-                Text("File được ghi lại đúng chỗ và đúng tên cũ. PhotoVault export lại từ Photos, tính vào giới hạn tốc độ. Không đụng tới file nào khác.")
+                Text("File đã mất được ghi lại đúng chỗ và đúng tên cũ; với file lệch checksum, bản đúng được ghi bên cạnh, file lệch giữ nguyên. PhotoVault export lại từ Photos, tính vào giới hạn tốc độ. Không đụng tới file nào khác.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Upload lại \(VietnameseFormat.integer(count)) file") { model.confirmReupload(decision) }

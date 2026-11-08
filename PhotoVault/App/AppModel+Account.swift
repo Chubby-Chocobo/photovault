@@ -167,7 +167,8 @@ extension AppModel {
                         try await env.auth.commitAccountChange(staged)
                     } catch {
                         await env.drive.setRootId(previousRoot)
-                        try? await setAccountChangePauseMarker(env, .paused)
+                        // Back to what this change started from: only a pause it set itself is undone later.
+                        try? await setAccountChangePauseMarker(env, change.resumeDrive ? .paused : nil)
                         throw error
                     }
                     committed.set()
