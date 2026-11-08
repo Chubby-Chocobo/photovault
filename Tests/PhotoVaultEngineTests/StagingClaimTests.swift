@@ -5,6 +5,11 @@ import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultEngine
 
+private actor SweepFlag {
+    private(set) var value = false
+    func set() { value = true }
+}
+
 /// A staged file is deleted only when nobody holds or takes a claim on it between the check and the unlink.
 @Suite struct StagingClaimTests {
     @Test func aClaimTakenWhileTheReleaseWaitsForTheDatabaseIsRefusedOrKeepsTheFile() async throws {
@@ -19,12 +24,18 @@ import Testing
             let store = h.store
             let blocker = Task.detached { try store.write { _ in Thread.sleep(forTimeInterval: 0.2) } }
             try await Task.sleep(nanoseconds: 50_000_000)
-            let sweep = Task { try await staging.releaseUnneeded() }
+            let finished = SweepFlag()
+            let sweep = Task { let n = try await staging.releaseUnneeded(); await finished.set(); return n }
             try await Task.sleep(nanoseconds: 80_000_000)
+            let sweepAlreadyDone = await finished.value
             let claimed = await staging.lease(url.path)
             try await blocker.value
             _ = try await sweep.value
-            if claimed {
+            if claimed && sweepAlreadyDone {
+                // On a slow machine the whole release can finish before the claim; claiming a file that
+                // is already gone is allowed (the upload then finds the staging lost).
+                await staging.unlease(url.path)
+            } else if claimed {
                 #expect(FileManager.default.fileExists(atPath: url.path), "a file with a claim is not deleted (round \(index))")
                 await staging.unlease(url.path)
             } else {

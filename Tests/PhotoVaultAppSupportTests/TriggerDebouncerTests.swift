@@ -18,7 +18,8 @@ private func eventually(timeout: Duration = .seconds(5), _ condition: () -> Bool
 struct TriggerDebouncerTests {
     @Test func burstFiresOnceAfterQuietPeriod() async throws {
         let counter = Counter()
-        let debouncer = TriggerDebouncer(quiet: 0.1, maxWait: 1) { counter.increment() }
+        // Generous quiet period: on a loaded CI runner a 20 ms sleep can take far longer.
+        let debouncer = TriggerDebouncer(quiet: 1, maxWait: 10) { counter.increment() }
         for _ in 0..<5 {
             await debouncer.signal()
             try await Task.sleep(for: .milliseconds(20))
@@ -36,6 +37,21 @@ struct TriggerDebouncerTests {
             await debouncer.signal()
             try await Task.sleep(for: .milliseconds(30))
         }
+        try await eventually { counter.count >= 1 }
+        #expect(counter.count >= 1)
+        await debouncer.cancel()
+    }
+
+    /// Signals arriving faster than the fire task can run must not keep cancelling the deadline fire.
+    @Test func deadlineFireIsNotCancelledByLaterSignals() async throws {
+        let counter = Counter()
+        let debouncer = TriggerDebouncer(quiet: 0.05, maxWait: 0.1) { counter.increment() }
+        let start = ContinuousClock.now
+        while start.duration(to: .now) < .milliseconds(400) {
+            await debouncer.signal()
+            await Task.yield()
+        }
+        try await eventually { counter.count >= 1 }
         #expect(counter.count >= 1)
         await debouncer.cancel()
     }

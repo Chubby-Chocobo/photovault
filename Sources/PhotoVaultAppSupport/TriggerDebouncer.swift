@@ -8,6 +8,8 @@ public actor TriggerDebouncer {
     private let fire: @Sendable () async -> Void
     private var burstStart: ContinuousClock.Instant?
     private var pending: Task<Void, Never>?
+    /// The pending fire is already pinned to the burst's `maxWait` deadline; later signals keep it.
+    private var pinnedToDeadline = false
 
     public init(quiet: TimeInterval = 30, maxWait: TimeInterval = 60, fire: @escaping @Sendable () async -> Void) {
         self.quiet = quiet
@@ -19,8 +21,11 @@ public actor TriggerDebouncer {
         let now = ContinuousClock.now
         let start = burstStart ?? now
         burstStart = start
+        if pinnedToDeadline, pending != nil { return }
         let elapsed = Self.seconds(start.duration(to: now))
-        let delay = max(0, min(quiet, maxWait - elapsed))
+        let untilDeadline = maxWait - elapsed
+        let delay = max(0, min(quiet, untilDeadline))
+        pinnedToDeadline = untilDeadline <= quiet
         pending?.cancel()
         pending = Task { [fire] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
@@ -32,12 +37,14 @@ public actor TriggerDebouncer {
         pending?.cancel()
         pending = nil
         burstStart = nil
+        pinnedToDeadline = false
     }
 
     private func deliver(_ fire: @Sendable () async -> Void) async {
         guard !Task.isCancelled else { return }
         burstStart = nil
         pending = nil
+        pinnedToDeadline = false
         await fire()
     }
 
