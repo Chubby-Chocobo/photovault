@@ -62,11 +62,11 @@ extension AppModel {
         guard let env else { throw EngineError.invalidState("no environment") }
         let wasActive = driveRecord?.status == .active
         if driveRecord != nil, wasActive {
-            try await setAccountChangePauseMarker(env, true)
+            try await setAccountChangePauseMarker(env, .paused)
             do {
                 try await env.coordinator.pause(destination: .googleDrive)
             } catch {
-                try? await setAccountChangePauseMarker(env, false)
+                try? await setAccountChangePauseMarker(env, nil)
                 throw error
             }
         }
@@ -91,7 +91,7 @@ extension AppModel {
                 await resumeAfterAccountChange(env, wasActive)
                 throw error
             }
-            try? await setAccountChangePauseMarker(env, false)
+            try? await setAccountChangePauseMarker(env, nil)
             return AccountChange(staged: nil, identity: staged.identity, resumeDrive: false)
         }
         let change = AccountChange(staged: staged, identity: staged.identity, resumeDrive: wasActive)
@@ -116,21 +116,26 @@ extension AppModel {
     /// Lifts the pause this change set (if any) and forgets the marker.
     private func resumeAfterAccountChange(_ env: AppEnvironment, _ wasPaused: Bool) async {
         if wasPaused { try? await env.coordinator.resume(destination: .googleDrive) }
-        try? await setAccountChangePauseMarker(env, false)
+        try? await setAccountChangePauseMarker(env, nil)
     }
 
-    private func setAccountChangePauseMarker(_ env: AppEnvironment, _ on: Bool) async throws {
-        try await env.store.write { db in try AppQueries.setAccountChangePause(db, on) }
+    private func setAccountChangePauseMarker(_ env: AppEnvironment, _ marker: AppQueries.AccountChangeMarker?) async throws {
+        try await env.store.write { db in try AppQueries.setAccountChangePause(db, marker) }
     }
 
-    /// At launch: a pause left by a change the app never finished (quit mid-sign-in) is lifted, but only
-    /// while it is still the owner-pause that change set.
+    /// At launch, for a change the app never finished. Quit before the Keychain write: the old account
+    /// is intact, so the pause that change set is lifted. Quit after it: the Keychain may hold the new
+    /// account while the database still describes the old one, so Drive waits for a new sign-in.
     func clearStaleAccountChangePause() async {
         guard let env else { return }
-        let marked = (try? await env.store.read { db in try AppQueries.accountChangePause(db) }) ?? false
-        guard marked else { return }
-        if driveRecord?.status == .paused(.userPaused) { try? await env.coordinator.resume(destination: .googleDrive) }
-        try? await setAccountChangePauseMarker(env, false)
+        guard let marker = (try? await env.store.read({ db in try AppQueries.accountChangePause(db) })) ?? nil else { return }
+        switch marker {
+        case .paused:
+            if driveRecord?.status == .paused(.userPaused) { try? await env.coordinator.resume(destination: .googleDrive) }
+            try? await setAccountChangePauseMarker(env, nil)
+        case .committing:
+            if await markDriveSignedOut(env) { try? await setAccountChangePauseMarker(env, nil) }
+        }
         await refresh()
     }
 
@@ -153,12 +158,22 @@ extension AppModel {
                 .googleDrive, rootId: root.id, rootName: root.name, account: account, rootHasContent: root.reused,
                 checkRootWith: stagedDrive,
                 commitAccount: {
-                    try await env.auth.commitAccountChange(staged)
+                    // The live destination must point at the new root the moment it holds the new token,
+                    // still inside the lane, or the next health check would look for the old root with it.
+                    try await setAccountChangePauseMarker(env, .committing)
+                    let previousRoot = await env.drive.currentRootId()
+                    await env.drive.setRootId(root.id)
+                    do {
+                        try await env.auth.commitAccountChange(staged)
+                    } catch {
+                        await env.drive.setRootId(previousRoot)
+                        try? await setAccountChangePauseMarker(env, .paused)
+                        throw error
+                    }
                     committed.set()
                 })
             openAccountChanges.remove(change.token)
-            try? await setAccountChangePauseMarker(env, false)
-            await env.drive.setRootId(root.id)
+            try? await setAccountChangePauseMarker(env, nil)
             await env.registry.add(env.drive)
             requestSync(.manual)
             await refresh()
@@ -167,9 +182,10 @@ extension AppModel {
             if committed.isSet {
                 // The Keychain holds the new account but the reset did not finish: sign in again to continue.
                 openAccountChanges.remove(change.token)
-                try? await setAccountChangePauseMarker(env, false)
                 await env.registry.add(env.drive)
-                await markDriveSignedOut(env)
+                // The marker is cleared only once Drive is safely signed out, so a failed write is retried
+                // at the next launch instead of leaving Drive paused with nothing to resume it.
+                if await markDriveSignedOut(env) { try? await setAccountChangePauseMarker(env, nil) }
             } else {
                 await cancelAccountChange(change)
             }
@@ -186,12 +202,19 @@ extension AppModel {
         func set() { lock.withLock { value = true } }
     }
 
-    private func markDriveSignedOut(_ env: AppEnvironment) async {
+    @discardableResult
+    private func markDriveSignedOut(_ env: AppEnvironment) async -> Bool {
         let now = Date()
-        try? await env.store.write { db in
-            if try DestinationRepository.fetch(db, id: .googleDrive) != nil {
-                try DestinationRepository.setStatus(db, id: .googleDrive, status: .paused(.signedOut), now: now)
+        do {
+            try await env.store.write { db in
+                if try DestinationRepository.fetch(db, id: .googleDrive) != nil {
+                    try DestinationRepository.setStatus(db, id: .googleDrive, status: .paused(.signedOut), now: now)
+                }
             }
+            return true
+        } catch {
+            env.log.log(.error, category: "account", "could not mark Drive signed out: \(type(of: error))")
+            return false
         }
     }
 

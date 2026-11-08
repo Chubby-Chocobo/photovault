@@ -98,11 +98,11 @@ extension AppModel {
     }
 
     /// Recovery runs only after the scan is complete (FR-51).
-    /// Stops when the task is cancelled, Photos access is lost, or nothing in the engine snapshot (scan
-    /// state, counts, destination statuses) has changed for `scanStallLimit`. Only the timestamp and ETA,
-    /// which move on their own, are left out of the comparison.
+    /// Stops when the task is cancelled, Photos access is lost, or there has been no progress for
+    /// `scanStallLimit`. Progress is the number of assets the scan has stored (each batch adds some) or
+    /// any change in the engine snapshot; the timestamp and ETA, which move on their own, are left out.
     private func waitForScan(_ env: AppEnvironment) async throws {
-        var watchdog = ProgressWatchdog<EngineSnapshot>(limit: Self.scanStallLimit, now: Date())
+        var watchdog = ProgressWatchdog<ScanProgress>(limit: Self.scanStallLimit, now: Date())
         while true {
             try Task.checkCancellation()
             let snapshot = await env.coordinator.currentSnapshot()
@@ -111,15 +111,21 @@ extension AppModel {
             if snapshot.overall == .photosUnauthorized || env.photos.authorizationStatus().allowsReading == false {
                 throw FirstStartError.photosAccessLost
             }
-            var signature = snapshot
-            signature.updatedAt = .distantPast
-            signature.etaSeconds = nil
-            if watchdog.isStalled(signature, now: Date()) { throw FirstStartError.scanStalled }
+            var stable = snapshot
+            stable.updatedAt = .distantPast
+            stable.etaSeconds = nil
+            let assets = (try? await env.store.read { db in try AssetRepository.count(db) }) ?? -1
+            if watchdog.isStalled(ScanProgress(snapshot: stable, assets: assets), now: Date()) { throw FirstStartError.scanStalled }
             try await Task.sleep(for: .seconds(1))
         }
     }
 
     static let scanStallLimit: TimeInterval = 30 * 60
+
+    private struct ScanProgress: Equatable, Sendable {
+        var snapshot: EngineSnapshot
+        var assets: Int
+    }
 
     private func recoverReusedDestinations(_ plan: FirstStartPlan) async throws {
         guard let hardening else { throw EngineError.invalidState("recovery unavailable") }

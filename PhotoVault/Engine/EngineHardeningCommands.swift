@@ -82,14 +82,27 @@ struct EngineHardeningCommands: HardeningCommands {
         guard !decisions.isEmpty else { return [] }
         let records = (try? await store.read { db in try DestinationRepository.fetchAll(db) }) ?? []
         let byId = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Mismatched files are also waiting for re-upload: fold their count into the missing-files card
+        // so the owner sees one card with one "Upload lại" action.
+        var mismatched: [DestinationID: Int] = [:]
+        var hasMissing: Set<DestinationID> = []
+        for decision in decisions {
+            switch decision {
+            case .checksumMismatch(let id, let count): mismatched[id] = count
+            case .integrityMissing(let id, _): hasMissing.insert(id)
+            default: break
+            }
+        }
         return decisions.compactMap { decision in
+            if case .checksumMismatch(let id, _) = decision, hasMissing.contains(id) { return nil }
             guard let record = byId[decision.destinationId] else { return nil }
             let rootName = record.config.driveRootName ?? record.config.displayPath ?? record.displayName
             let kind: OwnerDecisionItem.Kind = switch decision {
             case .rootMissing: .rootMissing(rootName: rootName)
             case .rootTrashed: .rootTrashed(rootName: rootName)
             case .folderTrashed: .folderTrashed
-            case .integrityMissing(_, let count): .integrityMissing(fileCount: count, folderHints: [])
+            case .integrityMissing(let id, let count):
+                .integrityMissing(fileCount: count, folderHints: [], mismatched: min(count, mismatched[id] ?? 0))
             case .recoveryNeedsDecision: .recoveryNeedsDecision
             case .checksumMismatch(_, let count): .checksumMismatch(fileCount: count)
             }

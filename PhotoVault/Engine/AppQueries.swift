@@ -107,13 +107,20 @@ enum AppQueries {
 
     static let accountChangePauseKey = "app_account_change_pause"
 
-    /// Set while "Đổi tài khoản" holds Drive paused, so a quit in the middle can be undone at the next launch.
-    static func accountChangePause(_ db: Database) throws -> Bool {
-        try KeyValueRepository.int(db, accountChangePauseKey) != nil
+    /// How far an unfinished "Đổi tài khoản" got: `paused` before the new account was written to the
+    /// Keychain, `committing` once that write may have happened.
+    enum AccountChangeMarker: Int {
+        case paused = 1
+        case committing = 2
     }
 
-    static func setAccountChangePause(_ db: Database, _ on: Bool) throws {
-        try KeyValueRepository.set(db, accountChangePauseKey, on ? 1 : nil)
+    /// Set while "Đổi tài khoản" holds Drive paused, so a quit in the middle can be undone at the next launch.
+    static func accountChangePause(_ db: Database) throws -> AccountChangeMarker? {
+        try KeyValueRepository.int(db, accountChangePauseKey).flatMap(AccountChangeMarker.init(rawValue:))
+    }
+
+    static func setAccountChangePause(_ db: Database, _ marker: AccountChangeMarker?) throws {
+        try KeyValueRepository.set(db, accountChangePauseKey, marker?.rawValue)
     }
 
     static func baselineTaken(_ db: Database) throws -> Bool {

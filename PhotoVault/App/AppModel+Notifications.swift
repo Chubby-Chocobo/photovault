@@ -15,7 +15,9 @@ extension AppModel {
         var mismatches: [DestinationID: Int] = [:]
         for decision in decisions {
             switch decision.kind {
-            case .integrityMissing(let count, _): missing[decision.destinationId] = count
+            case .integrityMissing(let count, _, let mismatched):
+                if count - mismatched > 0 { missing[decision.destinationId] = count - mismatched }
+                if mismatched > 0 { mismatches[decision.destinationId] = mismatched }
             case .checksumMismatch(let count): mismatches[decision.destinationId] = count
             default: break
             }

@@ -72,7 +72,8 @@ struct OwnerDecisionItem: Identifiable, Equatable, Sendable {
         case folderTrashed
         /// Recovery found content at the destination but matched too little of it (zero-match guard).
         case recoveryNeedsDecision
-        case integrityMissing(fileCount: Int, folderHints: [String])
+        /// Files to upload again; `mismatched` of them are there but differ from what was uploaded.
+        case integrityMissing(fileCount: Int, folderHints: [String], mismatched: Int)
         case checksumMismatch(fileCount: Int)
     }
 

@@ -39,6 +39,7 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
     }
 
     public func setRootId(_ remoteId: String?) { rootId = remoteId }
+    public func currentRootId() -> String? { rootId }
 
     /// Bytes uploaded in the last 24 hours by this process.
     public func dailyUsage() -> Int64 { cap.usage(at: clock.now) }

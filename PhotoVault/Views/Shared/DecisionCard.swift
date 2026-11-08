@@ -36,7 +36,10 @@ struct DecisionCard: View {
         case .rootMissing(let name): "Không tìm thấy thư mục gốc “\(name)”"
         case .folderTrashed: "Một thư mục backup trên \(decision.destinationName) đang ở Thùng rác"
         case .recoveryNeedsDecision: "Không nhận ra dữ liệu cũ trên \(decision.destinationName)"
-        case .integrityMissing(let count, _): "Kiểm tra toàn vẹn: thiếu \(VietnameseFormat.integer(count)) file trên \(decision.destinationName)"
+        case .integrityMissing(let count, _, let mismatched):
+            mismatched == count
+                ? "Kiểm tra toàn vẹn: \(VietnameseFormat.integer(count)) file lệch checksum trên \(decision.destinationName)"
+                : "Kiểm tra toàn vẹn: thiếu \(VietnameseFormat.integer(count)) file trên \(decision.destinationName)"
         case .checksumMismatch: "Checksum lệch trên \(decision.destinationName)"
         }
     }
@@ -52,10 +55,11 @@ struct DecisionCard: View {
         case .recoveryNeedsDecision:
             "Đích đã có dữ liệu nhưng PhotoVault ghép được chưa tới một nửa với thư viện Photos (chi tiết trong Hoạt động gần đây). PhotoVault tạm dừng đích này và không đụng tới file nào."
                 + " Nếu đây đúng là thư mục backup cũ, hãy thử khôi phục lại; nếu không, tiếp tục mà không dùng dữ liệu cũ (file mới được ghi bên cạnh, không ghi đè)."
-        case .integrityMissing(let count, let hints):
-            "\(VietnameseFormat.integer(count)) file PhotoVault đã ghi không còn ở đích"
-                + (hints.isEmpty ? "" : " (chủ yếu ở \(hints.joined(separator: ", ")))")
-                + ". PhotoVault chưa upload lại; bạn quyết định."
+        case .integrityMissing(let count, let hints, let mismatched):
+            "\(VietnameseFormat.integer(count)) file PhotoVault đã ghi không còn ở đích hoặc không khớp checksum"
+                + (mismatched > 0 ? " (trong đó \(VietnameseFormat.integer(mismatched)) file lệch checksum)" : "")
+                + (hints.isEmpty ? "" : ", chủ yếu ở \(hints.joined(separator: ", "))")
+                + ". PhotoVault chưa upload lại; bạn quyết định. File lệch không bị ghi đè."
         case .checksumMismatch(let count):
             "\(VietnameseFormat.integer(count)) file ở đích không khớp checksum. PhotoVault không ghi đè; xem Hoạt động gần đây để biết chi tiết."
         }
@@ -86,12 +90,12 @@ struct DecisionCard: View {
                     Button("Huỷ") { step = .choices }
                 }
             }
-        case (.integrityMissing(let count, _), .choices):
+        case (.integrityMissing(let count, _, _), .choices):
             HStack {
                 Button("Upload lại \(VietnameseFormat.integer(count)) file…") { step = .confirmReupload }
                 Button("Để sau") { model.snooze(decision) }
             }
-        case (.integrityMissing(let count, _), .confirmReupload):
+        case (.integrityMissing(let count, _, _), .confirmReupload):
             VStack(alignment: .leading, spacing: 6) {
                 Text("File được ghi lại đúng chỗ và đúng tên cũ. PhotoVault export lại từ Photos, tính vào giới hạn tốc độ. Không đụng tới file nào khác.")
                     .font(.caption).foregroundStyle(.secondary)
