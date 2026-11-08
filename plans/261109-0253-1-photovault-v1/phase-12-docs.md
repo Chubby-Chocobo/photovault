@@ -1,7 +1,7 @@
 ---
 phase: 12
 title: "Docs: README, sidecar schema, decisions, spikes, test report"
-status: in-progress
+status: done
 priority: P2
 size: M
 human_effort: 2-3h

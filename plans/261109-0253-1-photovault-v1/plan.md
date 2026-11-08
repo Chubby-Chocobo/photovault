@@ -61,7 +61,7 @@ Dependencies: Core ← Store, Photos, Drive, Local; Engine ← Core + Store; App
 | 09 | [Organization & metadata: day folders, places, sidecars, edits, views](phase-09-organization-metadata.md) | done | L | 03b, 08 |
 | 10 | [Hardening: recovery, reconciliation, integrity, rebuild](phase-10-recovery-integrity.md) | done | L | 07, 09 |
 | 11 | [App: menu bar, onboarding, Settings, notifications](phase-11-app-ui.md) | done | L | 02, 05, 06, 07, 10 |
-| 12 | [Docs: README, sidecar schema, decisions, spikes, test report](phase-12-docs.md) | in-progress | M | 11 |
+| 12 | [Docs: README, sidecar schema, decisions, spikes, test report](phase-12-docs.md) | done | M | 11 |
 
 Phase 03 (contracts) is written by the controller as code; it is the contract. Phases 03b and 04–07 then run in parallel (separate folders, separate `--scratch-path`); none of them may change Core contract types. Phase 02 runs in parallel with 01–03.
 
