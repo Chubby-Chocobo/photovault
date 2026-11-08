@@ -15,10 +15,24 @@ Create a folder only when it has content. Each one answers one question and has 
 |---|---|---|---|---|
 | `requirements/` | What do we build, for whom, and why? | BA / PO | `prd.md`, `srs.md`, `brd.md` (optional), `roadmap.md`, `usecases/{module}/` | `/specs`, `business-analyst` |
 | `design/` | What does the user see and do? | UI/UX | `design-system/`, `mockups/{flow}/`, `wireframes/` | `/design-system`, `/design-mockup-create`, `ui-ux-designer` |
-| `architecture/` | How is it built? | Tech lead | `system-architecture.md`, `codebase-summary.md`, `decisions/` (ADRs) | `/docs`, `docs-manager`, `planner` |
+| `architecture/` | How is it built? | Tech lead | `system-architecture.md`, `codebase-summary.md` | `/docs`, `docs-manager`, `planner` |
+| `decisions/` | Why is it built this way, and what would reopen it? | Tech lead | `README.md` (index), `0001-….md` … (one per decision) | the agent that makes the decision |
+| `spikes/` | What must the owner measure before a default is trusted? | Owner | `README.md` (index), `m0-*.md` (procedure and results) | `docs-manager`; results filled in by the owner |
 | `testing/` | How do we know it works? | QA | `testcases/{module}/`, `test-summary.md`, `exports/` | `/test-cases`, `testcase-writer` |
 | `conventions/` | How do the team and its agents work? | Whole team | `code-standards.md`, `git-workflow.md`, `deployment.md`, one file per topic | the team; `/docs` starts `code-standards.md` |
 | `guides/` | How do users of the product use it? | Docs owner | setup guides, user manuals, API usage | `docs-manager` |
+
+## Project files
+
+PhotoVault keeps these at the paths its spec names (see [decision 0005](decisions/0005-docs-paths.md)):
+
+| File | Answers |
+|---|---|
+| [requirements/photovault-spec-v1.md](requirements/photovault-spec-v1.md) | What the app must do: the FR, NFR and T codes used everywhere else |
+| [sidecar-schema.md](sidecar-schema.md) | What the JSON and XMP sidecars contain, and how they are written |
+| [decisions/](decisions/README.md) | Why the code is built the way it is |
+| [spikes/](spikes/README.md) | The M0 measurements the owner runs before defaults are final |
+| [design/](design/README.md) | The screens, as interactive mockups |
 
 ## Cases that look ambiguous
 
@@ -26,7 +40,7 @@ Create a folder only when it has content. Each one answers one question and has 
 |---|---|---|
 | Non-functional requirements (performance, security, availability) | `requirements/srs.md` | they are requirements to meet |
 | API contract, data model | `architecture/` | technical design; the SRS only says what data the system must provide |
-| A decision and its trade-offs | `architecture/decisions/` | stays true until superseded by a newer decision |
+| A decision and its trade-offs | `decisions/` (this project; ADF's default is `architecture/decisions/`, see [decision 0005](decisions/0005-docs-paths.md)) | stays true until superseded by a newer decision |
 | Deploy steps, incident runbooks | `conventions/` | how the team operates |
 | Design tokens, component catalog | `design/design-system/` | |
 | Release notes | `CHANGELOG.md` at the repo root | |
