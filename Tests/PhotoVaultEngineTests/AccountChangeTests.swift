@@ -189,11 +189,11 @@ import Testing
         #expect(await h.coordinator.pendingOwnerDecisions().isEmpty)
     }
 
-    @Test func mismatchedFilesAreNotAlsoCountedAsMissing() async throws {
+    @Test func mismatchedFilesStayReUploadableFromTheMissingDecision() async throws {
         let h = try await rottedLocal(rotted: 3)
         _ = try await h.coordinator.runIntegrityCheck(h.nasId)
         let decisions = await h.coordinator.pendingOwnerDecisions()
-        #expect(decisions == [.checksumMismatch(h.nasId, count: 3)])
+        #expect(Set(decisions) == [.integrityMissing(h.nasId, count: 3), .checksumMismatch(h.nasId, count: 3)])
         #expect(try h.jobs().filter { $0.state == .missingRemote }.count == 3, "all of them are still re-queued on confirm")
     }
 
@@ -201,7 +201,7 @@ import Testing
         let h = try await rottedLocal(rotted: 2)
         _ = try await h.coordinator.runIntegrityCheck(h.nasId)
         let decisions = await h.coordinator.pendingOwnerDecisions()
-        #expect(decisions.contains(.integrityMissing(h.nasId, count: 1)))
+        #expect(decisions.contains(.integrityMissing(h.nasId, count: 3)), "one gone plus two mismatched, all re-uploadable")
         #expect(decisions.contains(.checksumMismatch(h.nasId, count: 2)))
     }
 }

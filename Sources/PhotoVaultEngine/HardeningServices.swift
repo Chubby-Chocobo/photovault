@@ -46,9 +46,11 @@ struct HardeningServices: Sendable {
                 case .paused(.folderTrashed): decisions.append(.folderTrashed(record.id))
                 default: break
                 }
-                // Mismatched files are `missingRemote` too; they show as one card, not two.
+                // Every `missingRemote` job is counted, mismatched ones included: confirming re-uploads all of
+                // them, so a stale mismatch count can never hide a file that is really gone. The checksum
+                // decision tells how many of them are mismatches; the app shows both in one card.
                 let mismatches = try KeyValueRepository.int(db, IntegrityChecker.resultMismatchKey + record.id.rawValue) ?? 0
-                let missing = max(0, try JobRepository.count(db, destinationId: record.id, state: .missingRemote) - mismatches)
+                let missing = try JobRepository.count(db, destinationId: record.id, state: .missingRemote)
                 if missing > 0 { decisions.append(.integrityMissing(record.id, count: missing)) }
                 if mismatches > 0, try KeyValueRepository.int(db, IntegrityChecker.mismatchDismissedKey + record.id.rawValue) != 1 {
                     decisions.append(.checksumMismatch(record.id, count: mismatches))
