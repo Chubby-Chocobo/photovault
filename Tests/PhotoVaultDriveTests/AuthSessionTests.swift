@@ -3,9 +3,10 @@ import Testing
 import PhotoVaultCore
 @testable import PhotoVaultDrive
 
-private let clock = FixedClock()
-
-private func session(keychain: InMemoryKeychainStore, _ handler: @escaping @Sendable (RecordedRequest) throws -> StubResponse)
+/// Each session gets its own clock: tests run in parallel, and one test advancing a shared clock
+/// would expire another test's cached token.
+private func session(keychain: InMemoryKeychainStore, clock: FixedClock = FixedClock(),
+                     _ handler: @escaping @Sendable (RecordedRequest) throws -> StubResponse)
     -> (GoogleAuthSession, StubTransport) {
     let transport = StubTransport(handler)
     let oauth = OAuthClient(config: OAuthConfig(clientID: "client-1"), transport: transport, clock: clock, openURL: { _ in true })
@@ -18,7 +19,8 @@ private let okToken: @Sendable (RecordedRequest) throws -> StubResponse = { r in
 
 @Suite struct AuthSessionTests {
     @Test func refreshesLazilyAndCaches() async throws {
-        let (auth, transport) = session(keychain: InMemoryKeychainStore(refreshToken: "r1"), okToken)
+        let clock = FixedClock()
+        let (auth, transport) = session(keychain: InMemoryKeychainStore(refreshToken: "r1"), clock: clock, okToken)
         #expect(try await auth.accessToken() == "access-r1")
         #expect(try await auth.accessToken() == "access-r1")
         #expect(transport.requests.count == 1)

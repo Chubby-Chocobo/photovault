@@ -9,6 +9,12 @@ private final class Counter: @unchecked Sendable {
     var count: Int { lock.withLock { value } }
 }
 
+/// Polls until `condition` holds or `timeout` passes; keeps timing tests stable on a loaded machine.
+private func eventually(timeout: Duration = .seconds(5), _ condition: () -> Bool) async throws {
+    let start = ContinuousClock.now
+    while !condition(), start.duration(to: .now) < timeout { try await Task.sleep(for: .milliseconds(10)) }
+}
+
 struct TriggerDebouncerTests {
     @Test func burstFiresOnceAfterQuietPeriod() async throws {
         let counter = Counter()
@@ -18,7 +24,7 @@ struct TriggerDebouncerTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(counter.count == 0)
-        try await Task.sleep(for: .milliseconds(300))
+        try await eventually { counter.count == 1 }
         #expect(counter.count == 1)
     }
 
@@ -38,9 +44,10 @@ struct TriggerDebouncerTests {
         let counter = Counter()
         let debouncer = TriggerDebouncer(quiet: 0.05, maxWait: 0.5) { counter.increment() }
         await debouncer.signal()
-        try await Task.sleep(for: .milliseconds(250))
+        try await eventually { counter.count == 1 }
+        #expect(counter.count == 1)
         await debouncer.signal()
-        try await Task.sleep(for: .milliseconds(250))
+        try await eventually { counter.count == 2 }
         #expect(counter.count == 2)
     }
 
