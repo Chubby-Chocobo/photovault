@@ -93,13 +93,38 @@ extension SyncCoordinator {
         await publish()
     }
 
-    /// The owner asks for recovery now. Needs a complete scan; otherwise `.notReady`.
-    public func startRecovery(_ id: DestinationID) async throws -> RecoveryOutcome {
-        // Read before waiting for the lane: if the cycle recovers the destination meanwhile, this
-        // request must not list the root a second time.
-        let required = try await env.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired ?? false }
-        let outcome = try await exclusive { try await hardening.recovery.recover(id, onlyIfStillRequired: required) }
-        if case .recovered = outcome { _ = await run(trigger: .manual) }
+    /// FR-08 with another Google account: inside the lane (no cycle runs meanwhile) the transfers
+    /// of the destination stop, `checker` (the staged account's Drive; the registry is never
+    /// touched) must find the root, `commitAccount` persists the account (when it throws nothing
+    /// is written), and only then is the destination reset like `changeDriveRoot`.
+    public func changeDriveAccount(
+        _ id: DestinationID, rootId: String, rootName: String, account: DriveAccount, rootHasContent: Bool,
+        checkRootWith checker: any RootManaging, commitAccount: @Sendable () async throws -> Void
+    ) async throws {
+        await uploader.cancelUploads(of: id)
+        try await exclusive {
+            try await hardening.triggers.changeDriveAccount(
+                id, rootId: rootId, rootName: rootName, account: account, rootHasContent: rootHasContent,
+                checker: checker, commit: commitAccount)
+        }
+        await publish()
+    }
+
+    /// Recovery of a destination. Needs a complete scan; otherwise `.notReady`.
+    /// - Parameter onlyIfRequired: first start. The flag is read inside the lane, so a recovery
+    ///   that a cycle finished before this request is not repeated (an empty `.recovered`). The
+    ///   owner's own request (`false`) always runs.
+    public func startRecovery(_ id: DestinationID, onlyIfRequired: Bool = false) async throws -> RecoveryOutcome {
+        let env = env
+        let result = try await exclusive { () async throws -> (outcome: RecoveryOutcome, skipped: Bool) in
+            if onlyIfRequired {
+                let required = try await env.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired ?? false }
+                if !required { return (.recovered(RecoveryStats()), true) }
+            }
+            return (try await hardening.recovery.recover(id), false)
+        }
+        let outcome = result.outcome
+        if !result.skipped, case .recovered = outcome { _ = await run(trigger: .manual) }
         await publish()
         return outcome
     }

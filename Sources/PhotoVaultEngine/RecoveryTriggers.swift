@@ -76,17 +76,38 @@ struct RecoveryTriggers: Sendable {
         try await reset(id, root: rootId, name: rootName, account: account, expectsContent: rootHasContent)
     }
 
+    /// FR-08 with a new account: `checker` belongs to the staged account, never to the registry.
+    /// Nothing is written unless the root is fine and `commit` succeeds.
+    func changeDriveAccount(
+        _ id: DestinationID, rootId: String, rootName: String, account: DriveAccount, rootHasContent: Bool,
+        checker: any RootManaging, commit: @Sendable () async throws -> Void
+    ) async throws {
+        try Self.requireOk(try await checker.checkRoot(remoteId: rootId))
+        try await commit()
+        try await apply(id, root: rootId, name: rootName, account: account, expectsContent: rootHasContent)
+    }
+
+    @discardableResult
+    private static func requireOk(_ check: RootCheck) throws -> RemoteItem {
+        switch check {
+        case .ok(let item): return item
+        case .missing: throw RootProblemError.stillMissing
+        case .trashed: throw RootProblemError.stillTrashed
+        }
+    }
+
     private func reset(_ id: DestinationID, root: String, name: String?, account: DriveAccount?, expectsContent: Bool) async throws {
         guard let destination = await env.destinations.destination(for: id) else { throw EngineError.invalidState("unknown destination") }
         var rootName = name
         if destination.capabilities.supportsAppProperties {
             guard let managing = destination as? any RootManaging else { throw RootProblemError.unsupported }
-            switch try await managing.checkRoot(remoteId: root) {
-            case .ok(let item): rootName = rootName ?? item.name
-            case .missing: throw RootProblemError.stillMissing
-            case .trashed: throw RootProblemError.stillTrashed
-            }
+            let item = try Self.requireOk(try await managing.checkRoot(remoteId: root))
+            rootName = rootName ?? item.name
         }
+        try await apply(id, root: root, name: rootName, account: account, expectsContent: expectsContent)
+    }
+
+    private func apply(_ id: DestinationID, root: String, name rootName: String?, account: DriveAccount?, expectsContent: Bool) async throws {
         let now = env.clock.now
         let rootText = rootName
         try await env.store.write { db in
@@ -120,7 +141,9 @@ struct RecoveryTriggers: Sendable {
     static func dropDestinationKnowledge(_ db: Database, id: DestinationID) throws {
         try DestinationRepository.resetState(db, id: id)
         let exact = ["views_disabled:", RecoveryService.decisionKey, RecoveryService.expectsKey, RecoveryService.enqueueKey,
-                     RecoveryVerifier.cursorKey, RecoveryVerifier.limitKey, IntegrityChecker.lastRunKey]
+                     RecoveryVerifier.cursorKey, RecoveryVerifier.limitKey, IntegrityChecker.lastRunKey,
+                     IntegrityChecker.resultMissingKey, IntegrityChecker.resultMismatchKey, IntegrityChecker.resultAtKey,
+                     IntegrityChecker.mismatchDismissedKey]
         for prefix in exact { try KeyValueRepository.set(db, prefix + id.rawValue, nil) }
         for prefix in ["desc:", "viewhold:"] {
             let head = prefix + id.rawValue + ":"

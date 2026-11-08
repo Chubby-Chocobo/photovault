@@ -236,7 +236,7 @@ import Testing
 
         // The owner's request is made while the destination still needs recovery, then waits for the lane.
         await coordinator.lane.beginCommand()
-        let request = Task { try await coordinator.startRecovery(.googleDrive) }
+        let request = Task { try await coordinator.startRecovery(.googleDrive, onlyIfRequired: true) }
         var waiting = false
         for _ in 0..<2_000 where !waiting {
             waiting = await coordinator.lane.hasWaitingCommands

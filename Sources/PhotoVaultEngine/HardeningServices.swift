@@ -46,9 +46,10 @@ struct HardeningServices: Sendable {
                 case .paused(.folderTrashed): decisions.append(.folderTrashed(record.id))
                 default: break
                 }
-                let missing = try JobRepository.count(db, destinationId: record.id, state: .missingRemote)
-                if missing > 0 { decisions.append(.integrityMissing(record.id, count: missing)) }
+                // Mismatched files are `missingRemote` too; they show as one card, not two.
                 let mismatches = try KeyValueRepository.int(db, IntegrityChecker.resultMismatchKey + record.id.rawValue) ?? 0
+                let missing = max(0, try JobRepository.count(db, destinationId: record.id, state: .missingRemote) - mismatches)
+                if missing > 0 { decisions.append(.integrityMissing(record.id, count: missing)) }
                 if mismatches > 0, try KeyValueRepository.int(db, IntegrityChecker.mismatchDismissedKey + record.id.rawValue) != 1 {
                     decisions.append(.checksumMismatch(record.id, count: mismatches))
                 }
