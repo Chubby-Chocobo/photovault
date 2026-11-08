@@ -50,10 +50,10 @@ Counts are tests reported by `swift test list` on 2026-11-09. Parameterised and 
 | `PhotoVaultStoreTests` | 52 | Schema and migration, repositories, backups, placement and name allocation, job and resource state |
 | `PhotoVaultPhotosTests` | 25 | Header classifier, metadata reader, UTI and RAW detection, streaming writer |
 | `PhotoVaultDriveTests` | 103 | OAuth (PKCE, loopback, token handling), Keychain query, Drive REST and query escaping, resumable upload, Drive destination, redaction |
-| `PhotoVaultLocalTests` | 50 | Atomic writes, symlink refusal, folder safety, root state (trash, missing, offline), metadata marker, small-file reads, conformance suite |
-| `PhotoVaultEngineTests` | 250 | Sync cycle, scan and change tracking, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
+| `PhotoVaultLocalTests` | 52 | Atomic writes, symlink refusal, folder safety, root state (trash, missing, offline), metadata marker, small-file reads, conformance suite |
+| `PhotoVaultEngineTests` | 261 | Sync cycle, scan and change tracking, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
 | `PhotoVaultAppSupportTests` | 105 | Notification policy, log redaction and rotation, status and progress text, onboarding flow, settings form, Vietnamese formatting, debouncer |
-| **Total** | **718** | 115 suites in the full run |
+| **Total** | **731** | 118 suites in the full run |
 
 The app target has no tests. Its logic is kept in packages where it can be tested; the remaining app code is UI and launch glue.
 

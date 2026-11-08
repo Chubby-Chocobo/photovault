@@ -168,6 +168,12 @@ Phase 03 (contracts) is written by the controller as code; it is the contract. P
 - Why: a lost reserved-ID commit after power loss re-creates the file on Drive; a single lane is the simplest way to stop integrity checks and root changes racing uploads
 - Review later: yes (measure write throughput on a large backfill)
 
+### Account change runs as one engine command
+- Chosen: the new Google account stays staged in memory; `SyncCoordinator.changeDriveAccount` checks the root with a destination built on the staged account (never registered), commits the Keychain and resets the Drive state inside the exclusive lane; the owner's "Thử khôi phục lại" always runs recovery, first start only when still required
+- Alternatives: commit the account first and reset after (old account lost on failure); register a temporary staged destination (visible to the sync cycle, bypasses the daily cap)
+- Why: FR-08 requires confirm-then-reset with no window where uploads use one account against the other account's state
+- Review later: no
+
 ## Audit Review
 
 ### Session — 2026-11-09
