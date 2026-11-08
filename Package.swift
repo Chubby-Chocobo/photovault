@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "PhotoVaultDrive", targets: ["PhotoVaultDrive"]),
         .library(name: "PhotoVaultLocal", targets: ["PhotoVaultLocal"]),
         .library(name: "PhotoVaultEngine", targets: ["PhotoVaultEngine"]),
+        .library(name: "PhotoVaultAppSupport", targets: ["PhotoVaultAppSupport"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.12.0"),
@@ -38,6 +39,11 @@ let package = Package(
             dependencies: ["PhotoVaultCore", "PhotoVaultStore", .product(name: "GRDB", package: "GRDB.swift")],
             swiftSettings: strictSwift
         ),
+        .target(
+            name: "PhotoVaultAppSupport",
+            dependencies: ["PhotoVaultCore", "PhotoVaultEngine"],
+            swiftSettings: strictSwift
+        ),
         .target(name: "PhotoVaultTestSupport", dependencies: ["PhotoVaultCore"], swiftSettings: strictSwift),
 
         .testTarget(name: "PhotoVaultCoreTests", dependencies: ["PhotoVaultCore", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
@@ -48,6 +54,11 @@ let package = Package(
         .testTarget(
             name: "PhotoVaultEngineTests",
             dependencies: ["PhotoVaultEngine", "PhotoVaultStore", "PhotoVaultLocal", "PhotoVaultTestSupport"],
+            swiftSettings: strictSwift
+        ),
+        .testTarget(
+            name: "PhotoVaultAppSupportTests",
+            dependencies: ["PhotoVaultAppSupport", "PhotoVaultTestSupport"],
             swiftSettings: strictSwift
         ),
     ],

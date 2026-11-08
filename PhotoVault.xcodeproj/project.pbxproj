@@ -13,6 +13,7 @@
 		A1B2C3D4E5F600000000001A /* PhotoVaultDrive in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000019 /* PhotoVaultDrive */; };
 		A1B2C3D4E5F600000000001C /* PhotoVaultLocal in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000001B /* PhotoVaultLocal */; };
 		A1B2C3D4E5F600000000001E /* PhotoVaultEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000001D /* PhotoVaultEngine */; };
+		A1B2C3D4E5F6000000000102 /* PhotoVaultAppSupport in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000101 /* PhotoVaultAppSupport */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +40,7 @@
 				A1B2C3D4E5F600000000001A /* PhotoVaultDrive in Frameworks */,
 				A1B2C3D4E5F600000000001C /* PhotoVaultLocal in Frameworks */,
 				A1B2C3D4E5F600000000001E /* PhotoVaultEngine in Frameworks */,
+				A1B2C3D4E5F6000000000102 /* PhotoVaultAppSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,6 +98,7 @@
 				A1B2C3D4E5F6000000000019 /* PhotoVaultDrive */,
 				A1B2C3D4E5F600000000001B /* PhotoVaultLocal */,
 				A1B2C3D4E5F600000000001D /* PhotoVaultEngine */,
+				A1B2C3D4E5F6000000000101 /* PhotoVaultAppSupport */,
 			);
 			productName = PhotoVault;
 			productReference = A1B2C3D4E5F6000000000004 /* PhotoVault.app */;
@@ -261,6 +264,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F6000000000012 /* XCLocalSwiftPackageReference "." */;
 			productName = PhotoVaultEngine;
+		};
+		A1B2C3D4E5F6000000000101 /* PhotoVaultAppSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F6000000000012 /* XCLocalSwiftPackageReference "." */;
+			productName = PhotoVaultAppSupport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
