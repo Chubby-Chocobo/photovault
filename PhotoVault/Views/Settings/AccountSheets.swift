@@ -35,7 +35,7 @@ struct AccountChangeSheet: View {
             NoticeBanner()
             HStack {
                 Spacer()
-                Button("Huỷ") { Task { await cancel() } }.keyboardShortcut(.cancelAction)
+                Button("Huỷ") { Task { await cancel() } }.keyboardShortcut(.cancelAction).disabled(working)
                 switch stage {
                 case .confirm: Button("Tiếp tục") { signInTask = Task { await signIn() } }.keyboardShortcut(.defaultAction)
                 case .signingIn: EmptyView()
@@ -48,7 +48,7 @@ struct AccountChangeSheet: View {
         }
         .padding(20)
         .frame(width: 520)
-        .onDisappear { Task { await cancel(dismissing: false) } }
+        .onDisappear { if !working { Task { await cancel(dismissing: false) } } }
     }
 
     private func signIn() async {
@@ -75,7 +75,9 @@ struct AccountChangeSheet: View {
     }
 
     /// Stops a sign-in still waiting for the browser; a stage that arrives anyway is discarded by the model.
+    /// Does nothing once Áp dụng has started: the engine finishes or fails the change by itself.
     private func cancel(dismissing: Bool = true) async {
+        guard !working else { return }
         signInTask?.cancel()
         signInTask = nil
         if let change { await model.cancelAccountChange(change) }

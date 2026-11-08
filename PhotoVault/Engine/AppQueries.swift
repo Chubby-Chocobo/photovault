@@ -105,6 +105,17 @@ enum AppQueries {
         try KeyValueRepository.set(db, lastIntegrityKey, date)
     }
 
+    static let accountChangePauseKey = "app_account_change_pause"
+
+    /// Set while "Đổi tài khoản" holds Drive paused, so a quit in the middle can be undone at the next launch.
+    static func accountChangePause(_ db: Database) throws -> Bool {
+        try KeyValueRepository.int(db, accountChangePauseKey) != nil
+    }
+
+    static func setAccountChangePause(_ db: Database, _ on: Bool) throws {
+        try KeyValueRepository.set(db, accountChangePauseKey, on ? 1 : nil)
+    }
+
     static func baselineTaken(_ db: Database) throws -> Bool {
         try KeyValueRepository.data(db, KeyValueRepository.Key.baselineToken) != nil
     }

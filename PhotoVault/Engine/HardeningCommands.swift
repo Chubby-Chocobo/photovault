@@ -24,11 +24,19 @@ protocol HardeningCommands: Sendable {
     /// recovering state from it before uploads resume.
     func adoptExistingRoot(_ id: DestinationID, rootId: String) async throws
     /// "Khôi phục giúp tôi" in Settings › Nâng cao: rebuilds database state from the destination (FR-51).
-    func startRecovery(_ id: DestinationID) async throws -> RecoveryReport
+    /// `onlyIfRequired`: do nothing when the destination no longer needs recovery (first start, where a cycle may have done it).
+    func startRecovery(_ id: DestinationID, onlyIfRequired: Bool) async throws -> RecoveryReport
     /// The owner accepts that nothing found at the destination is reused (zero-match guard, 8.15).
     func proceedWithoutRecovery(_ id: DestinationID) async throws
     /// Prompts the engine is waiting on, for the menu bar and the activity window.
     func pendingOwnerDecisions() async -> [OwnerDecisionItem]
+}
+
+extension HardeningCommands {
+    /// The owner's own request: always runs, even for a destination that never needed recovery.
+    func startRecovery(_ id: DestinationID) async throws -> RecoveryReport {
+        try await startRecovery(id, onlyIfRequired: false)
+    }
 }
 
 enum RootProblemResolution: Equatable, Sendable {

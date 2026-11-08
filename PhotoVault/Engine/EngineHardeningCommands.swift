@@ -7,6 +7,7 @@ import PhotoVaultStore
 struct EngineHardeningCommands: HardeningCommands {
     let coordinator: SyncCoordinator
     let store: Store
+    var log: any LogSink = NullLogSink()
 
     func runReconciliation() async throws { try await coordinator.runReconciliation() }
 
@@ -21,7 +22,17 @@ struct EngineHardeningCommands: HardeningCommands {
         }
         var summary = IntegrityCheckSummary(missingFiles: [:], checksumMismatches: [:], skipped: [])
         for destination in ids {
-            let report: PhotoVaultEngine.IntegrityReport = try await coordinator.runIntegrityCheck(destination)
+            let report: PhotoVaultEngine.IntegrityReport
+            do {
+                report = try await coordinator.runIntegrityCheck(destination)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // One unreachable destination (a Drive 5xx, a timeout) must not hide the others' results.
+                log.log(.error, category: "integrity", "check skipped for a destination: \(type(of: error))")
+                summary.skipped.append(destination)
+                continue
+            }
             if report.skippedDestinations.contains(destination) {
                 summary.skipped.append(destination)
                 continue
@@ -53,8 +64,8 @@ struct EngineHardeningCommands: HardeningCommands {
         try await coordinator.adoptExistingRoot(id, rootId: rootId)
     }
 
-    func startRecovery(_ id: DestinationID) async throws -> RecoveryReport {
-        switch try await coordinator.startRecovery(id) {
+    func startRecovery(_ id: DestinationID, onlyIfRequired: Bool) async throws -> RecoveryReport {
+        switch try await coordinator.startRecovery(id, onlyIfRequired: onlyIfRequired) {
         case .recovered(let stats):
             return RecoveryReport(matchedFiles: stats.matched, unmatchedFiles: stats.unmatched)
         case .needsOwnerDecision:

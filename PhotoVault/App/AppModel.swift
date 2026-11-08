@@ -108,10 +108,11 @@ final class AppModel {
         }
         env = environment
         hardening = hardeningFactory?(environment)
-            ?? EngineHardeningCommands(coordinator: environment.coordinator, store: environment.store)
+            ?? EngineHardeningCommands(coordinator: environment.coordinator, store: environment.store, log: environment.log)
         notificationService.configure()
         environment.log.log(.info, category: "launch", "container ready, dev=\(environment.layout.isDevContainer)")
         await refresh()
+        await clearStaleAccountChangePause()
         let baselined = (try? await environment.store.read { db in try AppQueries.baselineTaken(db) }) ?? false
         if baselined {
             await goLive()

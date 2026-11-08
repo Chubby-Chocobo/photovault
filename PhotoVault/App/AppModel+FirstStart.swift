@@ -19,7 +19,7 @@ enum FirstStartError: Error {
 
     var message: String {
         switch self {
-        case .scanStalled: "Việc quét thư viện không tiến triển trong 10 phút. Kiểm tra quyền Photos rồi thử lại."
+        case .scanStalled: "Việc quét thư viện không tiến triển trong 30 phút. Kiểm tra quyền Photos rồi thử lại."
         case .photosAccessLost: "PhotoVault mất quyền đọc thư viện Photos giữa chừng. Cấp lại quyền rồi thử lại."
         }
     }
@@ -98,14 +98,11 @@ extension AppModel {
     }
 
     /// Recovery runs only after the scan is complete (FR-51).
-    /// Stops when the task is cancelled, Photos access is lost, or the scan has added no asset for `scanStallLimit`.
-    /// Upload jobs are not a progress signal here: none exist until the scan has finished.
+    /// Stops when the task is cancelled, Photos access is lost, or nothing in the engine snapshot (scan
+    /// state, counts, destination statuses) has changed for `scanStallLimit`. Only the timestamp and ETA,
+    /// which move on their own, are left out of the comparison.
     private func waitForScan(_ env: AppEnvironment) async throws {
-        struct Signature: Equatable, Sendable {
-            var scan: ScanState
-            var assetsScanned: Int
-        }
-        var watchdog = ProgressWatchdog<Signature>(limit: Self.scanStallLimit, now: Date())
+        var watchdog = ProgressWatchdog<EngineSnapshot>(limit: Self.scanStallLimit, now: Date())
         while true {
             try Task.checkCancellation()
             let snapshot = await env.coordinator.currentSnapshot()
@@ -114,14 +111,15 @@ extension AppModel {
             if snapshot.overall == .photosUnauthorized || env.photos.authorizationStatus().allowsReading == false {
                 throw FirstStartError.photosAccessLost
             }
-            let scanned = (try? await env.store.read { db in try AssetRepository.count(db) }) ?? 0
-            let signature = Signature(scan: snapshot.scanState, assetsScanned: scanned)
+            var signature = snapshot
+            signature.updatedAt = .distantPast
+            signature.etaSeconds = nil
             if watchdog.isStalled(signature, now: Date()) { throw FirstStartError.scanStalled }
             try await Task.sleep(for: .seconds(1))
         }
     }
 
-    static let scanStallLimit: TimeInterval = 10 * 60
+    static let scanStallLimit: TimeInterval = 30 * 60
 
     private func recoverReusedDestinations(_ plan: FirstStartPlan) async throws {
         guard let hardening else { throw EngineError.invalidState("recovery unavailable") }
@@ -129,10 +127,10 @@ extension AppModel {
         if case .reuse = plan.root { ids.append(.googleDrive) }
         if let nas = plan.nas, nas.isReuse { ids.append(nas.destinationId) }
         for id in ids {
-            // A cycle may have recovered this destination already; the engine then does nothing and
+            // A cycle may have recovered this destination already; the engine then skips it and
             // reports no matches, which leaves the onboarding line without a count.
             do {
-                let report = try await hardening.startRecovery(id)
+                let report = try await hardening.startRecovery(id, onlyIfRequired: true)
                 firstStart?.matchedFiles += report.matchedFiles
             } catch RecoveryCommandError.notReady(.alreadyRunning) {
                 continue
