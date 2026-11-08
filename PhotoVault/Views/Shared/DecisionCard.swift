@@ -34,7 +34,8 @@ struct DecisionCard: View {
         switch decision.kind {
         case .rootTrashed(let name): "Thư mục gốc “\(name)” đang ở Thùng rác"
         case .rootMissing(let name): "Không tìm thấy thư mục gốc “\(name)”"
-        case .folderTrashed(let path, _): "Thư mục “\(path)” trên Drive đang ở Thùng rác"
+        case .folderTrashed: "Một thư mục backup trên \(decision.destinationName) đang ở Thùng rác"
+        case .recoveryNeedsDecision: "Không nhận ra dữ liệu cũ trên \(decision.destinationName)"
         case .integrityMissing(let count, _): "Kiểm tra toàn vẹn: thiếu \(VietnameseFormat.integer(count)) file trên \(decision.destinationName)"
         case .checksumMismatch: "Checksum lệch trên \(decision.destinationName)"
         }
@@ -46,8 +47,11 @@ struct DecisionCard: View {
             "PhotoVault đã tạm dừng đích \(decision.destinationName) và sẽ không tự tạo lại thư mục gốc. Các đích khác vẫn chạy bình thường."
         case .rootMissing:
             "Thư mục đã bị xoá hoặc không còn truy cập được. PhotoVault đã tạm dừng \(decision.destinationName) và sẽ không tự tạo lại."
-        case .folderTrashed(_, let count):
-            "Thư mục này chứa \(VietnameseFormat.integer(count)) file backup. PhotoVault đã tạm dừng \(decision.destinationName) cho tới khi bạn quyết định."
+        case .folderTrashed:
+            "PhotoVault đã tạm dừng \(decision.destinationName) cho tới khi bạn quyết định. Các đích khác vẫn chạy bình thường."
+        case .recoveryNeedsDecision:
+            "Đích đã có dữ liệu nhưng PhotoVault ghép được chưa tới một nửa với thư viện Photos (chi tiết trong Hoạt động gần đây). PhotoVault tạm dừng đích này và không đụng tới file nào."
+                + " Nếu đây đúng là thư mục backup cũ, hãy thử khôi phục lại; nếu không, tiếp tục mà không dùng dữ liệu cũ (file mới được ghi bên cạnh, không ghi đè)."
         case .integrityMissing(let count, let hints):
             "\(VietnameseFormat.integer(count)) file PhotoVault đã ghi không còn ở đích"
                 + (hints.isEmpty ? "" : " (chủ yếu ở \(hints.joined(separator: ", ")))")
@@ -95,6 +99,11 @@ struct DecisionCard: View {
                     Button("Upload lại \(VietnameseFormat.integer(count)) file") { model.confirmReupload(decision) }
                     Button("Huỷ") { step = .choices }
                 }
+            }
+        case (.recoveryNeedsDecision, _):
+            HStack {
+                Button("Thử khôi phục lại") { model.startRecovery(decision.destinationId) }
+                Button("Tiếp tục không dùng dữ liệu cũ") { model.proceedWithoutRecovery(decision) }
             }
         case (.checksumMismatch, _):
             HStack {

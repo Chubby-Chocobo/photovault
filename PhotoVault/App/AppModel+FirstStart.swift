@@ -5,7 +5,7 @@ import PhotoVaultDrive
 import PhotoVaultEngine
 import PhotoVaultStore
 
-/// Everything the owner decided in onboarding, applied when he presses "Bắt đầu".
+/// Everything the owner decided in onboarding, applied when they press "Bắt đầu".
 struct FirstStartPlan {
     var identity: GoogleIdentity
     var root: RootChoice
@@ -101,8 +101,18 @@ extension AppModel {
         if case .reuse = plan.root { ids.append(.googleDrive) }
         if let nas = plan.nas, nas.isReuse { ids.append(nas.destinationId) }
         for id in ids {
-            let report = try await hardening.startRecovery(id)
-            firstStart?.matchedFiles += report.matchedFiles
+            // The engine may already have recovered this destination during a cycle.
+            let stillRequired = try await env?.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired } ?? nil
+            guard stillRequired == true else { continue }
+            do {
+                let report = try await hardening.startRecovery(id)
+                firstStart?.matchedFiles += report.matchedFiles
+            } catch RecoveryCommandError.notReady(.alreadyRunning) {
+                continue
+            } catch RecoveryCommandError.needsOwnerDecision {
+                // The decision card in the menu bar takes over; the other destinations keep going.
+                continue
+            }
         }
     }
 

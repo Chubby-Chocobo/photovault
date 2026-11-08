@@ -84,7 +84,8 @@ final class AppModel {
     }
 
     func showError(_ error: any Error) {
-        notice = Notice(text: ErrorText.message(for: error), isError: true)
+        let text = (error as? RecoveryCommandError)?.message ?? ErrorText.message(for: error)
+        notice = Notice(text: text, isError: true)
         env?.log.log(.error, category: "ui", "action failed: \(type(of: error))")
     }
 
@@ -105,6 +106,7 @@ final class AppModel {
         }
         env = environment
         hardening = hardeningFactory?(environment)
+            ?? EngineHardeningCommands(coordinator: environment.coordinator, store: environment.store)
         notificationService.configure()
         environment.log.log(.info, category: "launch", "container ready, dev=\(environment.layout.isDevContainer)")
         await refresh()

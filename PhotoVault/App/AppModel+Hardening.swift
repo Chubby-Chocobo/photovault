@@ -100,6 +100,13 @@ extension AppModel {
         }
     }
 
+    func proceedWithoutRecovery(_ decision: OwnerDecisionItem) {
+        withHardening("Tiếp tục không dùng dữ liệu cũ") { commands in
+            try await commands.proceedWithoutRecovery(decision.destinationId)
+            return "\(decision.destinationName) chạy lại; file mới được ghi bên cạnh dữ liệu cũ."
+        }
+    }
+
     /// "Để sau": hides the card for this session; the jobs stay `missingRemote`.
     func snooze(_ decision: OwnerDecisionItem) {
         snoozedDecisions.insert(decision.id)

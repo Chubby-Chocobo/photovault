@@ -130,7 +130,8 @@ struct AppEnvironment: Sendable {
         let environment = EngineEnvironment(
             store: store, photos: photos, destinations: registry, metadataReader: ImageIOMetadataReader(),
             utiResolver: UTTypeResolver(), disk: disk, system: system, log: log, stagingDirectory: layout.staging,
-            containerDirectory: layout.root, settings: settings, geocoder: CLGeocoderReverseGeocoder())
+            containerDirectory: layout.root, settings: settings, geocoder: CLGeocoderReverseGeocoder(),
+            localContent: LocalContentReader(registry: registry))
         return AppEnvironment(
             layout: layout, instanceLock: lock, store: store, settings: settings, registry: registry,
             coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth,

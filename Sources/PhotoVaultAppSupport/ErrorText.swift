@@ -21,6 +21,14 @@ public enum ErrorText {
             case .invalidState: return "Trạng thái hiện tại không cho phép thao tác này."
             }
         }
+        if let error = error as? RootProblemError {
+            switch error {
+            case .notRootProblem: return "Đích này không còn lỗi thư mục gốc."
+            case .stillMissing: return "Vẫn chưa thấy thư mục gốc. Hãy khôi phục nó rồi thử lại."
+            case .stillTrashed: return "Thư mục gốc vẫn đang ở Thùng rác."
+            case .unsupported: return "Đích này không hỗ trợ thao tác này."
+            }
+        }
         return "Có lỗi xảy ra. Xem log để biết thêm chi tiết."
     }
 

@@ -36,3 +36,10 @@ struct ErrorTextTests {
         #expect(ErrorText.message(for: Unknown()).contains("log"))
     }
 }
+
+@Test func rootProblemErrorsHaveOwnerMessages() {
+    for error in [RootProblemError.notRootProblem, .stillMissing, .stillTrashed, .unsupported] {
+        let text = ErrorText.message(for: error)
+        #expect(!text.isEmpty && !text.contains("Có lỗi xảy ra"))
+    }
+}

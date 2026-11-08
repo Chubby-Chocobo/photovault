@@ -23,6 +23,8 @@ protocol HardeningCommands: Sendable {
     func adoptExistingRoot(_ id: DestinationID, rootId: String) async throws
     /// "Khôi phục giúp tôi" in Settings › Nâng cao: rebuilds database state from the destination (FR-51).
     func startRecovery(_ id: DestinationID) async throws -> RecoveryReport
+    /// The owner accepts that nothing found at the destination is reused (zero-match guard, 8.15).
+    func proceedWithoutRecovery(_ id: DestinationID) async throws
     /// Prompts the engine is waiting on, for the menu bar and the activity window.
     func pendingOwnerDecisions() async -> [OwnerDecisionItem]
 }
@@ -53,7 +55,10 @@ struct OwnerDecisionItem: Identifiable, Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case rootTrashed(rootName: String)
         case rootMissing(rootName: String)
-        case folderTrashed(folderPath: String, fileCount: Int)
+        /// A folder the app created under the root is in the trash; the engine does not keep its name.
+        case folderTrashed
+        /// Recovery found content at the destination but matched too little of it (zero-match guard).
+        case recoveryNeedsDecision
         case integrityMissing(fileCount: Int, folderHints: [String])
         case checksumMismatch(fileCount: Int)
     }
@@ -68,7 +73,8 @@ struct OwnerDecisionItem: Identifiable, Equatable, Sendable {
         switch kind {
         case .rootTrashed: "rootTrashed"
         case .rootMissing: "rootMissing"
-        case .folderTrashed(let path, _): "folderTrashed:" + path
+        case .folderTrashed: "folderTrashed"
+        case .recoveryNeedsDecision: "recoveryNeedsDecision"
         case .integrityMissing: "integrityMissing"
         case .checksumMismatch: "checksumMismatch"
         }
