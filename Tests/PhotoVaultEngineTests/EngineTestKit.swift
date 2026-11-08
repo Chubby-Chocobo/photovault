@@ -50,6 +50,8 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
     var beforeExport: (@Sendable (String, ResourceType, ExportControl) async throws -> Void)?
     private var mappingBatchSizes: [Int] = []
     var failFetch: (any Error)?
+    /// Runs before every page of the library scan is fetched.
+    var onFetch: (@Sendable () async -> Void)?
     var headerOverride: (@Sendable (String, URL, ExportControl) async throws -> HeaderResult)?
 
     init(_ inner: FakePhotosSource) { self.inner = inner }
@@ -60,6 +62,7 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
     func currentChangeToken() async throws -> ChangeToken { try await inner.currentChangeToken() }
     func fetchAllAssets(after cursor: AssetCursor?, limit: Int) async throws -> AssetPage {
         if let failFetch { throw failFetch }
+        await onFetch?()
         return try await inner.fetchAllAssets(after: cursor, limit: limit)
     }
     func assets(localIds: [String]) async throws -> [AssetSnapshot] { try await inner.assets(localIds: localIds) }
@@ -292,6 +295,9 @@ final class WrappedDestination: Destination, @unchecked Sendable {
     nonisolated(unsafe) var beforeUpload: (@Sendable (UploadRequest) async throws -> Void)?
     /// Runs when the destination is listed (an integrity check); receives the uploads running at that moment.
     nonisolated(unsafe) var onList: (@Sendable (Int) -> Void)?
+    /// When set, every listing records `enter` and `exit` here and takes `listDuration` in between.
+    nonisolated(unsafe) var listEvents: Box<[String]>?
+    nonisolated(unsafe) var listDuration: UInt64 = 0
     private var uploadedNameLog: [String] = []
     var uploadedNames: [String] { lock.withLock { uploadedNameLog } }
     var uploadsRunning: Int { lock.withLock { running } }
@@ -302,7 +308,13 @@ final class WrappedDestination: Destination, @unchecked Sendable {
 
     var id: DestinationID { inner.id }
     var capabilities: DestinationCapabilities { inner.capabilities }
-    func checkAvailability() async -> DestinationStatus { await inner.checkAvailability() }
+    private var availabilityCount = 0
+    /// How often the destination's availability was asked; the cycle asks once per run.
+    var availabilityChecks: Int { lock.withLock { availabilityCount } }
+    func checkAvailability() async -> DestinationStatus {
+        lock.withLock { availabilityCount += 1 }
+        return await inner.checkAvailability()
+    }
     func reserveIds(count: Int, kind: ReservedIdKind) async throws -> [String] { try await inner.reserveIds(count: count, kind: kind) }
     func ensureFolder(_ request: FolderRequest) async throws -> RemoteFolderRef { try await inner.ensureFolder(request) }
 
@@ -348,7 +360,24 @@ final class WrappedDestination: Destination, @unchecked Sendable {
     func renameFolder(_ folder: RemoteFolderRef, newName: String) async throws -> RemoteFolderRef { try await inner.renameFolder(folder, newName: newName) }
     func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> {
         onList?(uploadsRunning)
-        return inner.list(under: folder)
+        guard let events = listEvents else { return inner.list(under: folder) }
+        let duration = listDuration
+        let source = inner.list(under: folder)
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                events.mutate { $0.append("enter") }
+                try? await Task.sleep(nanoseconds: duration)
+                do {
+                    for try await item in source { continuation.yield(item) }
+                    events.mutate { $0.append("exit") }
+                    continuation.finish()
+                } catch {
+                    events.mutate { $0.append("exit") }
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
     func quota() async throws -> Quota? { try await inner.quota() }
 }

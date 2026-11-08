@@ -19,14 +19,17 @@ final class ExportPermit: @unchecked Sendable {
     let isRateLimited: Bool
     let freeBytesAtStart: Int64
     let estimatedBytes: Int64
+    /// Memory or disk the work may hold before bytes are counted as received (a header read buffers up to its cap).
+    let reservedBytes: Int64
     private let lock = NSLock()
     private var cancelReason: ExportCancelReason?
 
-    init(isRateLimited: Bool, freeBytesAtStart: Int64, estimatedBytes: Int64, checkpointBytes: Int64,
+    init(isRateLimited: Bool, freeBytesAtStart: Int64, estimatedBytes: Int64, reservedBytes: Int64 = 0, checkpointBytes: Int64,
          checkpoint: @escaping @Sendable (ExportPermit, Int64) -> Bool) {
         self.isRateLimited = isRateLimited
         self.freeBytesAtStart = freeBytesAtStart
         self.estimatedBytes = estimatedBytes
+        self.reservedBytes = reservedBytes
         let box = WeakPermit()
         control = ExportControl(checkpointBytes: checkpointBytes) { received in
             guard let permit = box.permit else { return true }
@@ -79,7 +82,8 @@ actor ResourceGuard {
     ///   - rateLimited: backfill, re-export (`export_count >= 1`) or non-incremental classification.
     ///   - estimatedBytes: size used for the token bucket until the real size is known.
     ///   - sizeLimit: FR-33 cap; the stream is cancelled when every needing destination's cap is exceeded.
-    func admit(rateLimited: Bool, estimatedBytes: Int64, sizeLimit: Int64?) async -> Admission {
+    ///   - reservedBytes: counted as in flight (against the staging cap) until the work has received more.
+    func admit(rateLimited: Bool, estimatedBytes: Int64, sizeLimit: Int64?, reservedBytes: Int64 = 0) async -> Admission {
         let settings = await env.settingsSnapshot().settings
         var system = await env.system.snapshot()
         let stagedBytes = (try? await staging.stagedBytes()) ?? 0
@@ -89,7 +93,7 @@ actor ResourceGuard {
             return .denied(.stopAll(.criticalDisk))
         }
         if !settings.backfillOnlyOnACPower { system.onACPower = true }
-        let inFlight = active.values.reduce(Int64(0)) { $0 + max($1.control.bytesReceived, 0) }
+        let inFlight = active.values.reduce(Int64(0)) { $0 + max($1.control.bytesReceived, $1.reservedBytes, 0) }
         let input = DiskGuardInput(
             capacity: capacity, stagingBytes: stagedBytes, inFlightBytes: inFlight, activeExportCount: active.count,
             settings: settings, isRateLimited: rateLimited, system: system, rateLimitedPaused: rateLimitedPaused)
@@ -114,7 +118,7 @@ actor ResourceGuard {
         let disk = env.disk
         let url = env.stagingDirectory
         let permit = ExportPermit(
-            isRateLimited: rateLimited, freeBytesAtStart: capacity.available, estimatedBytes: estimatedBytes,
+            isRateLimited: rateLimited, freeBytesAtStart: capacity.available, estimatedBytes: estimatedBytes, reservedBytes: reservedBytes,
             checkpointBytes: env.tuning.exportCheckpointBytes
         ) { permit, received in
             if let sizeLimit, received > sizeLimit {

@@ -78,12 +78,16 @@ actor RecoveryService {
 
     // MARK: Recovery
 
-    func recover(_ id: DestinationID) async throws -> RecoveryOutcome {
+    /// - Parameter onlyIfStillRequired: the caller decided to recover because the destination
+    ///   needed it; when another run has settled that meanwhile, nothing is listed or changed and
+    ///   the result is an empty `.recovered`.
+    func recover(_ id: DestinationID, onlyIfStillRequired: Bool = false) async throws -> RecoveryOutcome {
         guard !active.contains(id) else { return .notReady(.alreadyRunning) }
         active.insert(id)
         defer { active.remove(id) }
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }),
               let destination = await env.destinations.destination(for: id) else { return .notReady(.unknownDestination) }
+        if onlyIfStillRequired, !record.recoveryRequired { return .recovered(RecoveryStats()) }
         guard try await env.store.read({ db in try KeyValueRepository.scanState(db) }) == .complete else { return .notReady(.scanIncomplete) }
         do {
             try await backfill.runAll(force: true)

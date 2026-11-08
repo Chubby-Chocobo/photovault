@@ -44,9 +44,10 @@ public actor Scanner {
         return ScanProgress(state: next == nil ? .complete : .running, scanned: page.assets.count)
     }
 
-    /// Scans to the end (or until `maxBatches`).
+    /// Scans to the end (or until `maxBatches`). `afterBatch` runs between batches, where a long
+    /// scan lets waiting owner commands in.
     @discardableResult
-    public func run(maxBatches: Int = .max) async throws -> ScanProgress {
+    public func run(maxBatches: Int = .max, afterBatch: (@Sendable () async -> Void)? = nil) async throws -> ScanProgress {
         var total = 0
         var last = ScanProgress(state: try state(), scanned: 0)
         var batches = 0
@@ -55,6 +56,7 @@ public actor Scanner {
             last = try await runBatch()
             total += last.scanned
             batches += 1
+            if last.state != .complete { await afterBatch?() }
         }
         return ScanProgress(state: last.state, scanned: total)
     }

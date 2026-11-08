@@ -118,8 +118,9 @@ import Testing
         try await h.baseline(.googleDrive, h.nasId)
         let entered = Flag()
         wrapper.beforeUpload = { _ in
-            _ = entered.takeFirst()
-            try await Task.sleep(nanoseconds: 60_000_000_000)
+            // Only the first transfer hangs; cancelling it ends the sleep at once.
+            guard entered.takeFirst() else { return }
+            try await Task.sleep(nanoseconds: 10_000_000_000)
         }
         let coordinator = h.coordinator
         let cycle = Task { await h.run() }
@@ -159,8 +160,8 @@ import Testing
         try await h.baseline(.googleDrive, h.nasId)
         let entered = Flag()
         wrapper.beforeUpload = {
-            _ = entered.takeFirst()
-            try await Task.sleep(nanoseconds: 60_000_000_000)
+            guard entered.takeFirst() else { return }
+            try await Task.sleep(nanoseconds: 10_000_000_000)
         }
         let coordinator = h.coordinator
         let cycle = Task { await h.run() }
@@ -176,13 +177,76 @@ import Testing
     }
 
     @Test func commandsRunOneAfterTheOtherWhenNoCycleIsRunning() async throws {
-        let (h, _) = try await harness(photos: 2)
+        let (h, wrapper) = try await harness(photos: 2)
         await h.run()
+        let events = Box<[String]>([])
+        wrapper.listEvents = events
+        wrapper.listDuration = 20_000_000
         let coordinator = h.coordinator
         async let first = coordinator.runIntegrityCheck(.googleDrive)
-        async let second = coordinator.runIntegrityCheck(nil)
-        let reports = try await [first, second]
+        async let second = coordinator.runIntegrityCheck(.googleDrive)
+        async let third = coordinator.runIntegrityCheck(nil)
+        let reports = try await [first, second, third]
         #expect(reports.allSatisfy { $0.missing == 0 })
+        #expect(events.get() == ["enter", "exit", "enter", "exit", "enter", "exit"], "no command started before the previous one ended: \(events.get())")
+    }
+
+    @Test func aCommandIsServedBetweenScanBatchesNotAfterTheWholeScan() async throws {
+        let h = try await Harness { $0.maxConcurrentUploadsPerDestination = 1; $0.scanBatchSize = 2 }
+        let wrapper = WrappedDestination(h.drive)
+        await h.useWrapped(wrapper)
+        h.overrides = [wrapper]
+        try h.addDrive(scope: .full)
+        for index in 0..<6 { await h.add(h.snapshot("p\(index)", daysAgo: Double(index + 1)), recordChange: false) }
+        try await h.baseline(.googleDrive)
+        let coordinator = h.coordinator
+        let store = h.store
+        let scannedAtCheck = Box<Int?>(nil)
+        wrapper.onList = { _ in
+            scannedAtCheck.set((try? store.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM asset") }) ?? nil)
+        }
+        let fired = Flag()
+        let check = Box<Task<IntegrityReport, any Error>?>(nil)
+        h.photos.onFetch = {
+            guard fired.takeFirst() else { return }
+            check.set(Task { try await coordinator.runIntegrityCheck(.googleDrive) })
+            _ = await self.eventually { await coordinator.lane.hasWaitingCommands }
+        }
+        await h.run()
+        _ = try await check.get()?.value
+        let scanned = try #require(scannedAtCheck.get())
+        #expect(scanned < 6, "the check ran while the scan was still going, not after all 6 assets were read: \(scanned)")
+        #expect(try h.jobs(.done).count == 6, "the scan and the uploads carried on afterwards")
+    }
+
+    @Test func aCommandThatStopsTheUploadGateGetsExactlyOneFollowUpRun() async throws {
+        let (h, wrapper) = try await harness()
+        let coordinator = h.coordinator
+        // Everything is exported and queued first, so the run below has nothing but uploads to do.
+        h.system.set(SystemSnapshot(networkExpensive: true))
+        await h.run()
+        h.system.set(SystemSnapshot())
+        #expect(await h.drive.files.isEmpty)
+        let fired = Flag()
+        let check = Box<Task<IntegrityReport, any Error>?>(nil)
+        let checksBefore = wrapper.availabilityChecks
+        wrapper.beforeUpload = { _ in
+            guard fired.takeFirst() else { return }
+            check.set(Task { try await coordinator.runIntegrityCheck(.googleDrive) })
+            _ = await self.eventually { await coordinator.lane.hasWaitingCommands }
+            // The one upload in flight fails, so the round ends without progress.
+            throw DestinationError.itemRejected(reason: "rejected")
+        }
+        let outcome = await h.run()
+        guard case .completed = outcome else {
+            Issue.record("expected a completed cycle, got \(outcome)")
+            return
+        }
+        let report = try #require(try await check.get()?.value)
+        #expect(report.skippedDestinations.isEmpty)
+        let cycles = wrapper.availabilityChecks - checksBefore
+        #expect(cycles == 2, "the run and exactly one follow-up run, not one per refused upload: \(cycles)")
+        #expect(await h.drive.files.count == 5, "the backlog went on after the command without waiting for the next trigger")
     }
 }
 

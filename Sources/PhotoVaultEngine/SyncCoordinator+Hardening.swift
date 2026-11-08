@@ -34,6 +34,13 @@ extension SyncCoordinator {
         await publish()
     }
 
+    /// The owner has seen the "checksum differs" notice of a destination; it stays away until a
+    /// later check finds mismatches again.
+    public func dismissChecksumMismatch(_ id: DestinationID) async throws {
+        try await exclusive { try await hardening.integrity.dismissMismatch(id) }
+        await publish()
+    }
+
     // MARK: Retries
 
     /// Deferred jobs go back to `pending` now instead of after 24 hours.
@@ -88,7 +95,10 @@ extension SyncCoordinator {
 
     /// The owner asks for recovery now. Needs a complete scan; otherwise `.notReady`.
     public func startRecovery(_ id: DestinationID) async throws -> RecoveryOutcome {
-        let outcome = try await exclusive { try await hardening.recovery.recover(id) }
+        // Read before waiting for the lane: if the cycle recovers the destination meanwhile, this
+        // request must not list the root a second time.
+        let required = try await env.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired ?? false }
+        let outcome = try await exclusive { try await hardening.recovery.recover(id, onlyIfStillRequired: required) }
         if case .recovered = outcome { _ = await run(trigger: .manual) }
         await publish()
         return outcome

@@ -19,8 +19,17 @@ actor ClassifyWorker {
     private let extensions: [any JobPlanningExtension]
     private var retryAfter: [AssetKey: Date] = [:]
 
-    /// A header read is small; the real size of a fully downloaded file is trued up afterwards.
+    /// What the header classifier may hold in memory per read (`HeaderClassifier.maxBuffered`).
+    static let headerBufferBytes: Int64 = 32 << 20
+
+    /// A header read is small on the wire; the real size of a fully downloaded file is trued up afterwards.
     private static let estimatedBytes: Int64 = 1 << 20
+
+    /// Bytes a header read holds against the guard's staging cap while it runs: the file size when
+    /// known and smaller than the classifier's buffer, else the buffer.
+    static func headerBudget(fileSize: Int64?) -> Int64 {
+        max(1, min(fileSize ?? headerBufferBytes, headerBufferBytes))
+    }
     private static let inconclusiveRetry: TimeInterval = 15 * 60
 
     init(env: EngineEnvironment, resourceGuard: ResourceGuard, staging: StagingManager, extensions: [any JobPlanningExtension] = []) {
@@ -77,7 +86,9 @@ actor ClassifyWorker {
     private func classify(_ key: AssetKey) async throws -> Outcome {
         if let after = retryAfter[key], after > env.clock.now { return .skipped }
         guard let work = try await loadWork(key) else { return .skipped }
-        let admission = await resourceGuard.admit(rateLimited: work.asset.insertedAt == nil, estimatedBytes: Self.estimatedBytes, sizeLimit: nil)
+        let admission = await resourceGuard.admit(
+            rateLimited: work.asset.insertedAt == nil, estimatedBytes: Self.estimatedBytes, sizeLimit: nil,
+            reservedBytes: Self.headerBudget(fileSize: work.primary.sizeBytes))
         let permit: ExportPermit
         switch admission {
         case .denied(.stopAll): return .blocked

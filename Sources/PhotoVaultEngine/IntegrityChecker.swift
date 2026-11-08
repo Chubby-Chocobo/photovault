@@ -9,6 +9,12 @@ import PhotoVaultStore
 /// ever deleted; the only thing trashed is a stray shortcut of the app's own views.
 struct IntegrityChecker: Sendable {
     static let lastRunKey = "integrity_last:"
+    /// The latest result per destination: files gone, files that differ, and when it was made.
+    static let resultMissingKey = "integrity_result_missing:"
+    static let resultMismatchKey = "integrity_result_mismatch:"
+    static let resultAtKey = "integrity_result_at:"
+    /// Set when the owner dismissed the mismatch notice of the latest result.
+    static let mismatchDismissedKey = "integrity_mismatch_dismissed:"
     /// Strays trashed per run at most: a mismatch between listing and database must not empty a view.
     static let strayShortcutCap = 200
 
@@ -23,19 +29,29 @@ struct IntegrityChecker: Sendable {
 
     // MARK: Entry points
 
-    /// One destination, or every available destination when `id` is nil.
+    /// One destination, or every available destination when `id` is nil. A destination that
+    /// cannot be reached is skipped and named in the report: it never ends the check of the others.
     func run(_ id: DestinationID?) async throws -> IntegrityReport {
         var report = IntegrityReport()
         let records = try await env.store.read { db in try DestinationRepository.fetchAll(db) }
         for record in records where id == nil || record.id == id {
-            guard !record.recoveryRequired, let destination = await env.destinations.destination(for: record.id) else { continue }
+            guard !record.recoveryRequired, let destination = await env.destinations.destination(for: record.id) else {
+                report.skippedDestinations.append(record.id)
+                continue
+            }
             do {
                 report.add(try await check(record, destination: destination))
-            } catch let error as DestinationError where id == nil {
+            } catch let error as DestinationError where id == nil || Self.isUnreachable(error) {
                 env.log.log(.notice, category: "integrity", "check skipped destination=\(record.id) error=\(error)")
+                report.skippedDestinations.append(record.id)
             }
         }
         return report
+    }
+
+    private static func isUnreachable(_ error: DestinationError) -> Bool {
+        if case .destinationLevel = ErrorClassifier.classify(error) { return true }
+        return false
     }
 
     func check(_ record: DestinationRecord, destination: any Destination) async throws -> IntegrityReport {
@@ -45,10 +61,15 @@ struct IntegrityChecker: Sendable {
         let id = record.id
         let now = env.clock.now
         report.failedMoves = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .failed).count }
-        report.missingByDestination[id] = report.missing + report.sizeMismatch + report.hashMismatch
+        report.missingByDestination[id] = report.missing
+        if report.sizeMismatch + report.hashMismatch > 0 { report.mismatchByDestination[id] = report.sizeMismatch + report.hashMismatch }
         let summary = report
         try await env.store.write { db in
             try KeyValueRepository.set(db, Self.lastRunKey + id.rawValue, now)
+            try KeyValueRepository.set(db, Self.resultMissingKey + id.rawValue, summary.missing)
+            try KeyValueRepository.set(db, Self.resultMismatchKey + id.rawValue, summary.sizeMismatch + summary.hashMismatch)
+            try KeyValueRepository.set(db, Self.resultAtKey + id.rawValue, now)
+            try KeyValueRepository.set(db, Self.mismatchDismissedKey + id.rawValue, nil)
             if summary.totalProblems > 0 {
                 try ActivityRepository.record(db, ActivityEvent(
                     at: now, kind: .missingFile, destinationId: id,
@@ -65,6 +86,7 @@ struct IntegrityChecker: Sendable {
         let now = env.clock.now
         return try await env.store.write { db in
             var count = 0
+            try KeyValueRepository.set(db, Self.resultMismatchKey + id.rawValue, nil)
             for job in try JobRepository.fetch(db, state: .missingRemote, destinationId: id) {
                 _ = try JobRepository.apply(db, .reuploadConfirmed, to: job.identity, now: now)
                 try DirtyQueue.mark(db, asset: job.assetKey)
@@ -72,6 +94,11 @@ struct IntegrityChecker: Sendable {
             }
             return count
         }
+    }
+
+    /// The owner has seen the mismatch notice of the latest result.
+    func dismissMismatch(_ id: DestinationID) async throws {
+        try await env.store.write { db in try KeyValueRepository.set(db, Self.mismatchDismissedKey + id.rawValue, 1) }
     }
 
     // MARK: Shared

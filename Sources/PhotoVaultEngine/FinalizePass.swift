@@ -15,7 +15,8 @@ struct FinalizePass: Sendable {
     }
 
     /// Finalizes every live asset once after the scan completed; later passes only place leftovers.
-    func runAfterScan() async throws {
+    /// `afterPage` runs between pages, where waiting owner commands can be let in.
+    func runAfterScan(afterPage: (@Sendable () async -> Void)? = nil) async throws {
         if isScanFinalized {
             try await placeLeftovers()
             return
@@ -38,6 +39,7 @@ struct FinalizePass: Sendable {
             }
             guard let last else { break }
             cursor = last
+            await afterPage?()
         }
         try await env.store.write { db in try KeyValueRepository.set(db, Self.finalizedKey, 1) }
     }

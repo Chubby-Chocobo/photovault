@@ -81,7 +81,11 @@ extension SyncCoordinator {
     /// picked up (new photos go first).
     private func mayStartUpload() async -> Bool {
         guard !globallyPaused, !changesPending else { return false }
-        if await lane.hasWaitingCommands { return false }
+        if await lane.hasWaitingCommands {
+            // The backlog was not finished: one more run after the command, not the next timer.
+            followUp = true
+            return false
+        }
         return await uploadsAllowedNow()
     }
 
@@ -109,7 +113,9 @@ extension SyncCoordinator {
         await lane.yieldToCommands()
 
         // 2. scan, change tracking
-        let scan = try await scanner.run()
+        let yieldToCommands: @Sendable () async -> Void = { [lane] in await lane.yieldToCommands() }
+        let scan = try await scanner.run(afterBatch: yieldToCommands)
+        await lane.yieldToCommands()
         report.scanned = scan.scanned
         if scan.state == .complete {
             switch try await tracker.process() {
@@ -127,7 +133,9 @@ extension SyncCoordinator {
                 }
             case .scanIncomplete: break
             }
-            try await finalize.runAfterScan()
+            await lane.yieldToCommands()
+            try await finalize.runAfterScan(afterPage: yieldToCommands)
+            await lane.yieldToCommands()
             // FR-51: a destination waiting for recovery gets it now, before any upload.
             if await hardening.recovery.hasWork() { try await hardening.recovery.runPending() }
         }

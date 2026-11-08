@@ -38,11 +38,12 @@ import Testing
         #expect(try h.jobs(.missingRemote).count == 1)
     }
 
-    @Test func aProbeThatFailsEndsTheCheckWithoutMarkingAnything() async throws {
+    @Test func aProbeThatFailsSkipsTheDestinationWithoutMarkingAnything() async throws {
         let (h, drive) = try await driveLife()
         drive.hidesListing = true
         await h.drive.failNext(.probe, with: .offline)
-        await #expect(throws: DestinationError.self) { try await h.coordinator.runIntegrityCheck(.googleDrive) }
+        let report = try await h.coordinator.runIntegrityCheck(.googleDrive)
+        #expect(report.skippedDestinations == [.googleDrive])
         #expect(try h.jobs(.missingRemote).isEmpty)
     }
 

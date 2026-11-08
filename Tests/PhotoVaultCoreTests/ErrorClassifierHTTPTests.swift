@@ -35,7 +35,7 @@ import Foundation
     }
 
     @Test func tooLargeAndInvalidNameArePermanent() {
-        for code in [EFBIG, EILSEQ] {
+        for code in [EFBIG, EILSEQ, ENAMETOOLONG] {
             #expect(ErrorClassifier.classify(ErrorClassifier.destinationError(errno: code)) == .permanent(.permanentError))
         }
         #expect(ErrorClassifier.classify(.itemRejected(reason: "other")) == .itemLevel)

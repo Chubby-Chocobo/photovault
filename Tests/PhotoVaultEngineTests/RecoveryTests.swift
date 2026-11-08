@@ -222,3 +222,51 @@ import Testing
         #expect(await h.drive.items.values.allSatisfy { !$0.trashed })
     }
 }
+
+/// A recovery the cycle already did is not repeated by a command that waited behind it.
+@Suite struct RecoveryRepeatTests {
+    @Test func aRecoveryRequestedBeforeAnotherRecoveryFinishedDoesNothingWhenItsTurnComes() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive)
+        try await h.coordinator.scanner.run()
+        try h.updateDestination(.googleDrive) { $0.recoveryRequired = true }
+        let coordinator = h.coordinator
+
+        // The owner's request is made while the destination still needs recovery, then waits for the lane.
+        await coordinator.lane.beginCommand()
+        let request = Task { try await coordinator.startRecovery(.googleDrive) }
+        var waiting = false
+        for _ in 0..<2_000 where !waiting {
+            waiting = await coordinator.lane.hasWaitingCommands
+            if !waiting { try await Task.sleep(nanoseconds: 1_000_000) }
+        }
+        #expect(waiting)
+        // Meanwhile the cycle's own recovery finishes.
+        let first = try await coordinator.hardening.recovery.recover(.googleDrive)
+        guard case .recovered = first else {
+            Issue.record("expected the first recovery to finish, got \(first)")
+            return
+        }
+        let lists = await h.count(of: .list, on: h.drive)
+        let activities = try h.activity().filter { $0.kind == .recovered }.count
+        await coordinator.lane.endCommand()
+
+        #expect(try await request.value == .recovered(RecoveryStats()))
+        #expect(await h.count(of: .list, on: h.drive) == lists, "the root was not listed again")
+        #expect(try h.activity().filter { $0.kind == .recovered }.count == activities)
+        #expect(try h.destinationRecord(.googleDrive).status == .active)
+    }
+
+    @Test func anOwnerRequestForADestinationThatNeverNeededRecoveryStillRuns() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive)
+        try await h.coordinator.scanner.run()
+        let before = await h.count(of: .list, on: h.drive)
+        _ = try await h.coordinator.startRecovery(.googleDrive)
+        #expect(await h.count(of: .list, on: h.drive) > before)
+    }
+}

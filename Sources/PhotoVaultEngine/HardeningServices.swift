@@ -48,6 +48,10 @@ struct HardeningServices: Sendable {
                 }
                 let missing = try JobRepository.count(db, destinationId: record.id, state: .missingRemote)
                 if missing > 0 { decisions.append(.integrityMissing(record.id, count: missing)) }
+                let mismatches = try KeyValueRepository.int(db, IntegrityChecker.resultMismatchKey + record.id.rawValue) ?? 0
+                if mismatches > 0, try KeyValueRepository.int(db, IntegrityChecker.mismatchDismissedKey + record.id.rawValue) != 1 {
+                    decisions.append(.checksumMismatch(record.id, count: mismatches))
+                }
                 if try KeyValueRepository.int(db, RecoveryService.decisionKey + record.id.rawValue) == 1 {
                     decisions.append(.recoveryNeedsDecision(record.id))
                 }

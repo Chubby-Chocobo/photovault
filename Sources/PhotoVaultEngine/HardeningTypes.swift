@@ -53,11 +53,14 @@ public enum OwnerDecision: Sendable, Equatable, Hashable {
     /// Files the integrity check could not find; re-upload only after confirmation (T20).
     case integrityMissing(DestinationID, count: Int)
     case recoveryNeedsDecision(DestinationID)
+    /// The latest integrity check found files whose size or checksum differs; shown until dismissed
+    /// or the next check replaces the result.
+    case checksumMismatch(DestinationID, count: Int)
 
     public var destinationId: DestinationID {
         switch self {
         case .rootMissing(let id), .rootTrashed(let id), .folderTrashed(let id), .recoveryNeedsDecision(let id): id
-        case .integrityMissing(let id, _): id
+        case .integrityMissing(let id, _), .checksumMismatch(let id, _): id
         }
     }
 }
@@ -75,8 +78,12 @@ public struct IntegrityReport: Sendable, Equatable {
     /// Shortcuts the app made but the database does not know, now trashed.
     public var shortcutsTrashed = 0
     public var failedMoves = 0
-    /// Files found missing per destination.
+    /// Files found missing per destination (gone from the destination; mismatches are not included).
     public var missingByDestination: [DestinationID: Int] = [:]
+    /// Files whose size or checksum differs, per destination.
+    public var mismatchByDestination: [DestinationID: Int] = [:]
+    /// Destinations that could not be checked (offline, unavailable); nothing was judged there.
+    public var skippedDestinations: [DestinationID] = []
 
     public init() {}
 
@@ -92,6 +99,8 @@ public struct IntegrityReport: Sendable, Equatable {
         shortcutsTrashed += other.shortcutsTrashed
         failedMoves += other.failedMoves
         missingByDestination.merge(other.missingByDestination, uniquingKeysWith: +)
+        mismatchByDestination.merge(other.mismatchByDestination, uniquingKeysWith: +)
+        skippedDestinations.append(contentsOf: other.skippedDestinations)
     }
 }
 

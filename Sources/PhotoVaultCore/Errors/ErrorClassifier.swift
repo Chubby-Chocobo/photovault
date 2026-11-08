@@ -89,6 +89,7 @@ public enum ErrorClassifier {
         case EROFS: .offline
         case EFBIG: .itemRejected(reason: permanentReasonPrefix + " file too large")
         case EILSEQ: .itemRejected(reason: permanentReasonPrefix + " invalid name")
+        case ENAMETOOLONG: .itemRejected(reason: permanentReasonPrefix + " name too long")
         case EINTR, EAGAIN, EMFILE, ENFILE: .transient(reason: "errno \(code)")
         case ELOOP: .itemRejected(reason: "symlink")
         default: .itemRejected(reason: "errno \(code)")
