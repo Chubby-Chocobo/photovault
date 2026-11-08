@@ -19,6 +19,17 @@ public struct StagedAccount: Sendable, CustomStringConvertible {
     public var description: String { "StagedAccount(<redacted>)" }
 }
 
+/// Lets the owner's choice of root be made with the new account before it goes live: a temporary
+/// destination built on the staged account lists and creates roots. The token is not refreshed:
+/// a 401 on an expired stage asks for sign-in again.
+extension StagedAccount: DriveAuthorizing {
+    public func accessToken() async throws -> String { accessToken }
+
+    public func refreshAfterUnauthorized(rejected: String) async throws -> String {
+        throw DestinationError.reauthRequired
+    }
+}
+
 /// Holds the access token in memory and the refresh token in the Keychain.
 public actor GoogleAuthSession: DriveAuthorizing {
     public static let refreshAccount = "refresh-token"

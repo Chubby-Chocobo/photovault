@@ -105,6 +105,11 @@ private struct FailingWriteKeychain: KeychainStore {
         #expect(try await auth.accessToken() == "stale-access")
         #expect(!"\(staged)".contains("refresh-B") && !"\(staged)".contains("access-B"))
 
+        // The staged account authorizes requests on its own (root choice before commit) without going live.
+        #expect(try await staged.accessToken() == "access-B")
+        await #expect(throws: DestinationError.self) { _ = try await staged.refreshAfterUnauthorized(rejected: "access-B") }
+        #expect(try await auth.accessToken() == "stale-access")
+
         try await auth.commitAccountChange(staged)
         #expect(keychain.refreshToken == "refresh-B")
         #expect(try await auth.accessToken() == "access-B")

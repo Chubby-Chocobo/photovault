@@ -47,6 +47,8 @@ struct AppEnvironment: Sendable {
     /// Always exists; it joins the registry when a Drive destination row does.
     let drive: GoogleDriveDestination
     let auth: GoogleAuthSession
+    /// Shared HTTP stack; also used for temporary Drive clients during an account change (FR-08).
+    let transport: any HTTPTransport
     let googleConfigured: Bool
     let fileLog: RotatingFileLog
     let log: AppLogSink
@@ -111,8 +113,10 @@ struct AppEnvironment: Sendable {
             throw LaunchFailure.other("Không đọc được danh sách đích: \(error.localizedDescription)")
         }
         let driveRecord = records.first { $0.id == .googleDrive }
+        let capFile = DailyCapFile(url: layout.root.appendingPathComponent("drive-daily-cap.json"))
         let drive = GoogleDriveDestination(
-            transport: transport, auth: auth, rootId: driveRecord?.config.driveRootId, log: log)
+            transport: transport, auth: auth, rootId: driveRecord?.config.driveRootId,
+            dailyCapState: capFile.load(), onDailyCapChange: { capFile.record($0) }, log: log)
         let disk = VolumeDiskSpaceProvider()
         var live: [any Destination] = []
         if driveRecord != nil { live.append(drive) }
@@ -134,7 +138,7 @@ struct AppEnvironment: Sendable {
             localContent: LocalContentReader(registry: registry))
         return AppEnvironment(
             layout: layout, instanceLock: lock, store: store, settings: settings, registry: registry,
-            coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth,
+            coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth, transport: transport,
             googleConfigured: !clientID.isEmpty, fileLog: fileLog, log: log, system: system, disk: disk, backups: backups,
             notificationLedger: NotificationLedgerFile(url: layout.root.appendingPathComponent("notification-ledger.json")))
     }

@@ -8,7 +8,7 @@ struct AccountChangeSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var stage: Stage = .confirm
-    @State private var identity: GoogleIdentity?
+    @State private var change: AccountChange?
     @State private var roots: [RootChooser.RemoteItemSummary] = []
     @State private var reuseRootId: String?
     @State private var newName = "Camera Uploads"
@@ -26,13 +26,15 @@ struct AccountChangeSheet: View {
             case .signingIn:
                 HStack { ProgressView().controlSize(.small); Text("Đang chờ trình duyệt…") }
             case .chooseRoot:
-                Text("Đã đăng nhập: \(identity?.email ?? "tài khoản mới")").fontWeight(.medium)
+                Text("Đã đăng nhập: \(change?.identity.email ?? "tài khoản mới")").fontWeight(.medium)
+                Text("Tài khoản mới chỉ được dùng sau khi bạn bấm Áp dụng. Trong lúc chọn, đích Drive tạm dừng.")
+                    .font(.caption).foregroundStyle(.secondary)
                 RootChooser(roots: roots, canReuse: model.hardeningAvailable, reuseRootId: $reuseRootId, newName: $newName)
             }
             NoticeBanner()
             HStack {
                 Spacer()
-                Button("Huỷ") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Huỷ") { Task { await cancel() } }.keyboardShortcut(.cancelAction)
                 switch stage {
                 case .confirm: Button("Tiếp tục") { Task { await signIn() } }.keyboardShortcut(.defaultAction)
                 case .signingIn: EmptyView()
@@ -50,22 +52,30 @@ struct AccountChangeSheet: View {
     private func signIn() async {
         stage = .signingIn
         do {
-            let result = try await model.reauthenticate()
-            if !result.accountChanged {
+            let result = try await model.beginAccountChange()
+            if result.staged == nil {
                 model.showNotice("Vẫn là tài khoản cũ nên đích Drive chạy tiếp.")
                 dismiss()
                 return
             }
-            identity = result.identity
-            let found = try await model.driveRoots()
+            change = result
+            let found = try await model.driveRoots(for: result)
             roots = found.map { .init(id: $0.remoteId, name: $0.name) }
             reuseRootId = canReuseFirst(found)
             newName = model.driveRecord?.config.driveRootName ?? "Camera Uploads"
             stage = .chooseRoot
         } catch {
             model.showError(error)
+            if let change { await model.cancelAccountChange(change) }
+            change = nil
             stage = .confirm
         }
+    }
+
+    private func cancel() async {
+        if let change { await model.cancelAccountChange(change) }
+        change = nil
+        dismiss()
     }
 
     private func canReuseFirst(_ found: [RemoteItem]) -> String? {
@@ -82,7 +92,9 @@ struct AccountChangeSheet: View {
             choice = .createNew(name: newName)
         }
         do {
-            try await model.applyDriveRoot(choice, identity: identity)
+            guard let change else { return }
+            try await model.applyAccountChange(change, choice: choice)
+            self.change = nil
             dismiss()
         } catch {
             model.showError(error)
