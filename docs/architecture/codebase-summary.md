@@ -46,14 +46,14 @@ Counts are tests reported by `swift test list` on 2026-11-09. Parameterised and 
 
 | Target | Tests | Main subjects |
 |---|---|---|
-| `PhotoVaultCoreTests` | 124 | Job transitions, eligibility, classification, naming, layout, rate limiting, disk guard, sidecar builders, place naming, view rules, device names, models and codecs |
-| `PhotoVaultStoreTests` | 48 | Schema and migration, repositories, backups, placement and name allocation, job and resource state |
-| `PhotoVaultPhotosTests` | 23 | Header classifier, metadata reader, UTI and RAW detection, streaming writer |
-| `PhotoVaultDriveTests` | 71 | OAuth (PKCE, loopback, token handling), Keychain query, Drive REST and query escaping, resumable upload, Drive destination, redaction |
-| `PhotoVaultLocalTests` | 36 | Atomic writes, symlink refusal, folder safety, integrity walk, metadata marker, conformance suite |
-| `PhotoVaultEngineTests` | 199 | Sync cycle, scan and change tracking, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
-| `PhotoVaultAppSupportTests` | 93 | Notification policy, log redaction and rotation, status and progress text, onboarding flow, settings form, Vietnamese formatting, debouncer |
-| **Total** | **594** | 85 suites in the full run |
+| `PhotoVaultCoreTests` | 133 | Job transitions, eligibility, classification, naming, layout, rate limiting, disk guard, sidecar builders, place naming, view rules, device names, models and codecs |
+| `PhotoVaultStoreTests` | 52 | Schema and migration, repositories, backups, placement and name allocation, job and resource state |
+| `PhotoVaultPhotosTests` | 25 | Header classifier, metadata reader, UTI and RAW detection, streaming writer |
+| `PhotoVaultDriveTests` | 103 | OAuth (PKCE, loopback, token handling), Keychain query, Drive REST and query escaping, resumable upload, Drive destination, redaction |
+| `PhotoVaultLocalTests` | 44 | Atomic writes, symlink refusal, folder safety, root state (trash, missing, offline), metadata marker, small-file reads, conformance suite |
+| `PhotoVaultEngineTests` | 234 | Sync cycle, scan and change tracking, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
+| `PhotoVaultAppSupportTests` | 99 | Notification policy, log redaction and rotation, status and progress text, onboarding flow, settings form, Vietnamese formatting, debouncer |
+| **Total** | **690** | 110 suites in the full run |
 
 The app target has no tests. Its logic is kept in packages where it can be tested; the remaining app code is UI and launch glue.
 

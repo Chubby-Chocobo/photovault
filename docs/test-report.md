@@ -13,17 +13,16 @@ Status meanings:
 
 ## Automated run
 
-Snapshot: the working tree as it was at the rerun (2026-11-09). The tree was still changing during this task: other work added and moved Engine, Store and Drive files, so these totals may not match the final tree.
+Final run on the branch head after the review fixes (2026-11-09):
 
 ```text
-swift test --scratch-path .build-docs
-✘ Test run with 603 tests in 87 suites failed after 320.178 seconds with 3 issues.
+swift test --scratch-path .build-main
+✔ Test run with 690 tests in 110 suites passed after 127.262 seconds.
 ```
 
-- Tests: 603 in 87 suites. 600 passed, 3 failed.
-- Failing tests (all in the loopback OAuth listener): `OAuthPrimitivesTests.bindsLoopbackAndDeliversCode`, `OAuthPrimitivesTests.listenerStopsAfterFirstCallback` (both time out with `NSURLErrorDomain -1001`), and `OAuthPrimitivesTests.stateMismatchFailsTheFlow` (`timeout` thrown where `stateMismatch` was expected).
-- A focused rerun of those tests (`--filter OAuthPrimitivesTests|LoopbackServerTests`) fails the same way: 12 tests in 3 suites, 3 issues. The failure is deterministic on this tree, not flaky. Not fixed here (code is out of scope for this task). Owner: investigate the loopback listener and its test timeouts before the T-status of the OAuth rows is trusted.
-- The earlier run (594 tests) had one timing flake, `TriggerDebouncerTests.separateBurstsFireSeparately`, which passed 5 of 5 when rerun alone. It did not reproduce in the rerun.
+- Tests: 690 in 110 suites, all passing. The unsigned app build (`xcodebuild … CODE_SIGNING_ALLOWED=NO`) also succeeds.
+- An earlier snapshot taken while the Drive fixes were half applied showed 3 loopback OAuth failures; they do not reproduce on the final tree (`OAuthPrimitivesTests` 8 of 8 pass on their own and in the full run).
+- Two timing-sensitive tests were made deterministic: `AuthSessionTests` no longer shares one fake clock between parallel tests, and `TriggerDebouncerTests` polls for the expected fire instead of fixed sleeps.
 - Per-target counts: [codebase-summary.md](./architecture/codebase-summary.md#test-targets).
 
 ## Spec §11 coverage
