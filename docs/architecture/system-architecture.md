@@ -156,11 +156,13 @@ The rule is "write the database before the side effect". Each step below is pers
 | Folder ID reserved and persisted before `ensureFolder` | `FolderEnsurer`: `remote_folder` row saved with the reserved ID, `created = false` | `CrashRecoveryTests.crashBeforeRecoveryOfAFolderKeepsTheReservedFolderId`, `recoveryConfirmsAFolderCreatedJustBeforeTheCrash` |
 | Shortcut ID reserved and persisted before create | `ViewExecutor`: `shortcut` row saved as `pending` with the reserved ID, then the create call | `OrganizationCrashTests.crashRightAfterTheShortcutWasCreatedDoesNotCreateItTwice` |
 | Startup recovery | `StartupRecovery.run()`: `exporting` resources reset to `none`, orphan staging files removed, `uploading` jobs probed by remote ID (completed, requeued, or left for later when the destination is unreachable), unconfirmed folders confirmed, then participants (`MoveRecovery`) | `CrashRecoveryTests.recoveryResetsExportingAndRemovesOrphans`, `uploadFinishedButNotCommittedIsCompletedByRecoveryWithoutUploadingAgain` |
-| Move jobs | `move_job` pending → inProgress → done, failed after 8 errors. `MoveRecovery` (engine) and `FolderRenameRecovery` (local) resume them. | `OrganizationCrashTests.crashWhileMovingAFileIntoThePromotedDayFolder`, `crashWhileRenamingTheDayFolder` |
+| Move jobs | `move_job` pending → inProgress → done, failed after 8 errors. `MoveRecovery` resumes them. | `OrganizationCrashTests.crashWhileMovingAFileIntoThePromotedDayFolder`, `crashWhileRenamingTheDayFolder` |
 | Local atomic write | `AtomicFileWriter` writes `.photovault/tmp/<UUID>.part`, syncs and reads back, then places it without overwrite. Orphan sweep removes only names matching the `.part` pattern. | `LocalWriteTests.atomicWriteLeavesNoTempFiles`, `LocalRecoveryTests.crashingAtEveryStepLeavesNoPartFileNoDuplicateAndNoSplitFolder` |
 | Single engine per container | `InstanceLock` takes an exclusive, non-blocking `flock` on `photovault.lock`. The kernel releases it when the process dies. | `InstanceLockTests.t41SecondInstanceIsRefused`, `lockIsReleasedWhenTheHolderGoesAway` |
 | Database backups | `DatabaseBackup`: `VACUUM INTO` every 24 hours and before a migration, newest 7 kept | `DatabaseBackupTests.keepsSevenNewest`, `backsUpBeforePendingMigration` |
-| Database durability | `DatabasePool`, WAL journal, `PRAGMA synchronous = NORMAL` | `SchemaAndAssetTests.fileDatabaseUsesWal` |
+| Planned path before a local write | Destinations without reserved IDs: an `upload_intent` row (planned relative path + content SHA-256) is written in the same transaction as `startUpload` and deleted on completion; `StartupRecovery` probes and hashes that exact path | `PathAddressedCrashTests.aDayPromotedBetweenTheCrashAndTheRetryDoesNotLeaveACopyBehind`, `anEditedFileWrittenBeforeTheCrashIsReplacedByTheNewerEditNotSkipped` |
+| Owner commands vs. the cycle | `ExclusiveLane`: owner commands (integrity check, recovery, root changes, retries, resort, view rebuild, reconciliation…) wait for the cycle's next pass boundary; the cycle re-checks pause, network, power and destination status at every boundary and before every upload | `ExclusiveLaneTests`, `IntegrityRobustnessTests` |
+| Database durability (power loss included) | `DatabasePool`, WAL journal, `PRAGMA synchronous = FULL`, `fullfsync = ON`, `checkpoint_fullfsync = ON` on every connection | `DurabilityTests.everyConnectionIsFullySynchronous`, `SchemaAndAssetTests.fileDatabaseUsesWal` |
 
 Lost database: `RecoveryService` rebuilds state from the destination. It runs only after a complete scan. It matches remote files to assets (`RecoveryMatcher`, three ways), and nothing uploads while the destination is recovering (`RecoveryTests`, `LocalRecoveryTests`).
 
@@ -210,7 +212,7 @@ Both destination implementations pass `DestinationConformanceSuite` in `PhotoVau
 
 ### Database (`photovault.sqlite`)
 
-Schema: migration `v1` in [Schema.swift](../../Sources/PhotoVaultStore/Schema.swift). It is final once shipped; later changes are new migrations. Columns differ slightly from spec 8.2. The migration is the source of truth. Extra columns include `asset.asset_key_hash`, `asset.creation_day`, `resource.next_export_attempt_at`, `resource.too_large_for_disk`, `upload_job.uploading_gen`, and `remote_folder.created`.
+Schema: migrations `v1` and `v2-upload-intent` in [Schema.swift](../../Sources/PhotoVaultStore/Schema.swift). A shipped migration is final; later changes are new migrations. Columns differ slightly from spec 8.2. The migration is the source of truth. Extra columns include `asset.asset_key_hash`, `asset.creation_day`, `resource.next_export_attempt_at`, `resource.too_large_for_disk`, `upload_job.uploading_gen`, and `remote_folder.created`.
 
 | Table | Holds |
 |---|---|
@@ -221,6 +223,7 @@ Schema: migration `v1` in [Schema.swift](../../Sources/PhotoVaultStore/Schema.sw
 | `album_member` | Album membership of each asset |
 | `resource` | One row per asset and resource type: kind, RAW flag, filename, UTI, size, `content_gen`, MD5, SHA-256, staging generation, path and state, export counters, last error |
 | `upload_job` | One row per destination, asset and resource type: kind, origin, state and reason, remote parent, name and ID, session reference, uploaded hash, `target_gen`, `done_gen`, `uploading_gen`, attempt and mismatch counters, retry times |
+| `upload_intent` | Planned path and content hash of a local/NAS write in progress (crash recovery) |
 | `day_stat` | Count, promotion flag, and place name state of each `camera` day |
 | `geo_cache` | Reverse-geocode results per cell and locale (kept without expiry) |
 | `remote_folder` | Logical folder path to remote ID and display name, per destination |
@@ -236,11 +239,12 @@ Schema: migration `v1` in [Schema.swift](../../Sources/PhotoVaultStore/Schema.sw
 | Path (container root) | Holds |
 |---|---|
 | `photovault.sqlite` | Database |
-| `Staging/<first 32 hex of SHA-256(asset key)>/<resType>.<generation>` | Exported originals awaiting upload |
+| `Staging/<first 32 hex of SHA-256(asset key)>/<resType>.<generation>` | Exported originals awaiting upload; sidecars use `<resType>.<destination>.<generation>` |
 | `Backups/` | `VACUUM INTO` copies, newest 7 |
 | `Logs/photovault.log` and rotated files | File log, at most 5 files |
 | `photovault.lock` | Instance lock |
 | `notification-ledger.json` | Notification throttle state (12-hour windows) |
+| `drive-daily-cap.json` | Drive 24-hour upload byte accounting (FR-49), restored at launch |
 | Destination folder: `.photovault/destination.json` | Marker that identifies the owning destination |
 | Destination folder: `.photovault/tmp/` | In-flight `.part` files |
 
