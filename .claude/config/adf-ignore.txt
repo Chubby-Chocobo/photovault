@@ -1,0 +1,22 @@
+# ADF Ignore File - dependency/cache directories that are never worth reading
+# scout-block refuses Read/Glob/Grep and read-style Bash commands (cat, ls, find, grep, ...)
+# that target these paths, so generated content does not fill the LLM context.
+# Edit/Write and other commands (rm, npm, git, ...) are never blocked.
+#
+# Extend it with one gitignore-style pattern per line, e.g. `.gradle` or `**/.terraform`.
+# Use a ! prefix to allow a path again (e.g. !node_modules/my-local-pkg).
+
+# JS/TS
+node_modules
+**/.next/cache
+
+# Python
+__pycache__
+.pytest_cache
+.mypy_cache
+.venv
+venv
+
+# Allow reading these files
+!.env
+!.env.*

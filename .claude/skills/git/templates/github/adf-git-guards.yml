@@ -1,0 +1,118 @@
+# Git workflow guards and release tagger, scaffolded by ADF (git-flow.cjs setup-ci). This copy belongs
+# to the project: add your own jobs here. Rules come from the git section of .claude/config/adf-config.json.
+name: Git workflow
+
+on:
+  pull_request:
+    branches: [__MAIN_BRANCH__]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  push:
+    branches: [__MAIN_BRANCH__]
+
+permissions:
+  contents: read
+
+# A PR keeps only its newest run. Each push to main gets its own group, so a queued tag run is never
+# dropped for a later push (tag-release is safe to run twice).
+concurrency:
+  group: git-workflow-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Only release and hotfix branches may open PRs into main (release train), and their committed
+  # version must be the one the merge will tag. Runs on drafts too.
+  guard-main-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Check the pull request against the git workflow
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE" "+refs/heads/$HEAD:refs/remotes/origin/$HEAD"
+          node .claude/skills/git/scripts/git-flow.cjs check-pr --base "$BASE" --head "$HEAD" --remote origin
+
+  # A direct push to main may only carry chore commits on git.directPush.paths. Pushes made by
+  # merging a PR were checked by guard-main-pr and are skipped.
+  guard-main-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Check a direct push to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: node .claude/skills/git/scripts/git-flow.cjs check-push --range "$BEFORE..$AFTER" --skip-merged-pr --remote origin
+
+  # Replace this job with the project's checks (tests, lint, build). tag-release waits for it, so
+  # nothing is tagged or deployed behind a red check.
+  verify:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Add the project's checks here."
+
+  # Tags vX.Y.Z when a release/x.y.z or hotfix/* merge lands on main. It checks the merge again first
+  # and fails loudly on one that broke the workflow, because without branch protection nothing else
+  # stops it.
+  tag-release:
+    if: github.event_name == 'push'
+    needs: [guard-main-push, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Tag the release
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node .claude/skills/git/scripts/git-flow.cjs tag-release --sha "$GITHUB_SHA" --remote origin --json > tag.json
+          cat tag.json
+          echo "tag=$(node -p "require('./tag.json').tag || ''")" >> "$GITHUB_OUTPUT"
+      - name: Publish the GitHub release
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          node .claude/skills/git/scripts/git-flow.cjs release-notes --tag "$TAG" > notes.md
+          # A re-run after a failed publish finds the tag already there and publishes it now
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag
+
+  # Deploy and migrate jobs go here, after the tag. Tags pushed with GITHUB_TOKEN do not start other
+  # workflows, so a separate "on: push: tags" workflow would never run (see the template README).
+  # deploy:
+  #   needs: tag-release
+  #   if: needs.tag-release.outputs.tag != ''
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - run: echo "deploy ${{ needs.tag-release.outputs.tag }}"

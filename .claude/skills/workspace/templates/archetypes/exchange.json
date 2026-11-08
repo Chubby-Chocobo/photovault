@@ -1,0 +1,13 @@
+{
+  "id": "exchange",
+  "description": "A trading exchange: gateway and auth in front, order and trading services, a matching engine, web and admin front ends, mobile apps and infra.",
+  "roles": {
+    "gateway": ["gateway", "gw"],
+    "auth": ["auth", "iam", "sso"],
+    "backend": ["order", "trading"],
+    "engine": ["matching"],
+    "admin": ["admin", "backoffice"]
+  },
+  "expectedRoles": ["gateway", "auth", "backend", "engine", "frontend", "admin", "mobile", "infra"],
+  "expectedContractKinds": ["proto", "json-schema"]
+}

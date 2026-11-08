@@ -1,0 +1,8 @@
+# Default adf-ignore.txt for testing (mirrors .claude/config/adf-ignore.txt)
+node_modules
+**/.next/cache
+__pycache__
+.pytest_cache
+.mypy_cache
+.venv
+venv

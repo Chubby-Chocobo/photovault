@@ -1,0 +1,21 @@
+# >>> ADF (managed by install.sh) >>>
+**/.env
+**/.env.*
+!**/.env.example
+.mcp.json
+/backups
+skills/.venv/
+skills/.install-state.json
+skills/**/node_modules/
+hooks/.logs/
+skills/**/package-lock.json
+**/__pycache__/
+*.pyc
+**/.coverage
+agent-memory/
+agent-memory-local/
+worktrees/
+settings.local.json
+scheduled_tasks.lock
+!.adf-manifest
+# <<< ADF <<<

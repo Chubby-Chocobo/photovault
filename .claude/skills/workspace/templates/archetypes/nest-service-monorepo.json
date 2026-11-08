@@ -1,0 +1,10 @@
+{
+  "id": "nest-service-monorepo",
+  "description": "A NestJS service monorepo: an API gateway in front of backend services and workers, shared contracts as proto or OpenAPI.",
+  "roles": {
+    "backend": ["service", "worker"],
+    "gateway": ["gateway"]
+  },
+  "expectedRoles": ["gateway", "backend"],
+  "expectedContractKinds": ["proto", "openapi"]
+}

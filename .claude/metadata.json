@@ -1,0 +1,16 @@
+{
+  "deletions": [],
+  "version": "1.4.0",
+  "name": "agentic-development-framework",
+  "description": "Agentic Development Framework — a comprehensive boilerplate template for building professional software projects with CLI Coding Agents (Claude Code).",
+  "buildDate": "2026-10-16T01:37:01.222Z",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sotatek-dev/adf.git"
+  },
+  "download": {
+    "lastDownloadedAt": null,
+    "downloadedBy": null,
+    "installCount": 0
+  }
+}

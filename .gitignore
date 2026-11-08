@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Xcode / SwiftPM
+build/
+DerivedData/
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+
+# Secrets (OAuth client id/secret); copy Config/Secrets.xcconfig.example
+Config/Secrets.xcconfig
+
+# Local env
+.env
+.env.*
+!.env.example

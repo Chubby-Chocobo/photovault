@@ -1,0 +1,28 @@
+# ADF Quality Gates — gitleaks config
+# Extends built-in ruleset. Add project-specific allowlists below.
+
+[extend]
+useDefault = true
+
+# Example: allowlist for test fixtures
+# [[allowlists]]
+#   description = "Test fixture keys"
+#   paths = ["tests/fixtures/.*"]
+
+# Example: custom rule
+# [[rules]]
+#   description = "Internal API token"
+#   id = "internal-api-token"
+#   regex = '''MYAPP_[A-Z0-9]{32}'''
+#   tags = ["key", "internal"]
+
+# Credentials embedded in a URL (https://<token>@host/...) in manifests and config files.
+# Same pattern as the ADF hooks (manifest-credential-redactor.cjs, CREDENTIAL_URL_SOURCE); keep them identical.
+[[rules]]
+  id = "url-embedded-credential"
+  description = "Credential embedded in a URL in a manifest or config file"
+  regex = '''((?:git\+)?https?://)([A-Za-z0-9_.~%+-]+:[^\s/"'@:$<{][^\s/"']*|(?:ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|glcbt-|gldt-|glrt-|xox)[A-Za-z0-9_-]+|[A-Za-z0-9_-]{20,})@'''
+  secretGroup = 2
+  keywords = ["://"]
+  path = '''(^|/)(Cargo\.toml|package\.json|pom\.xml|build\.gradle(\.kts)?|go\.mod|pyproject\.toml|requirements\.txt|composer\.json|Gemfile|\.gitmodules|\.npmrc|\.git-credentials)$'''
+  tags = ["credential", "manifest"]

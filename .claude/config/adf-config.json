@@ -1,0 +1,78 @@
+{
+  "$schema": "./adf-config.schema.json",
+  "statusline": "full",
+  "privacyBlock": true,
+  "docs": {
+    "maxLoc": 800
+  },
+  "plan": {
+    "namingFormat": "{date}-{issue}-{slug}",
+    "dateFormat": "YYMMDD-HHmm",
+    "issuePrefix": null,
+    "reportsDir": "reports",
+    "resolution": {
+      "order": [
+        "session",
+        "branch"
+      ],
+      "branchPattern": "(?:feat|fix|chore|refactor|docs|hotfix|release)/(?:[^/]+/)?(.+)"
+    },
+    "validation": {
+      "mode": "prompt",
+      "minQuestions": 3,
+      "maxQuestions": 8,
+      "focusAreas": [
+        "assumptions",
+        "risks",
+        "tradeoffs",
+        "architecture"
+      ]
+    }
+  },
+  "paths": {
+    "docs": "docs",
+    "plans": "plans"
+  },
+  "locale": {
+    "thinkingLanguage": null,
+    "responseLanguage": null
+  },
+  "trust": {
+    "passphrase": null,
+    "enabled": false
+  },
+  "project": {
+    "type": "auto",
+    "packageManager": "auto",
+    "framework": "auto"
+  },
+  "skills": {
+    "research": {
+      "useGemini": false
+    }
+  },
+  "hooks": {},
+  "assertions": [],
+  "git": {
+    "flow": "release-train",
+    "enforcement": "ask",
+    "mainBranch": "main",
+    "directPush": {
+      "paths": [
+        "docs/**",
+        ".github/**",
+        "README.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ]
+    },
+    "versionFiles": [
+      {
+        "path": "Config/Version.xcconfig",
+        "regex": "^MARKETING_VERSION\\s*=\\s*(\\S+)"
+      }
+    ]
+  },
+  "mode": "auto"
+}

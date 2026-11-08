@@ -1,0 +1,187 @@
+---
+name: design-mockup-create
+description: "Creates interactive HTML mockups (Alpine.js, Tailwind) from requirements and design-system tokens."
+when_to_use: "Invoke to turn requirements and tokens into clickable mockups."
+user-invocable: true
+argument-hint: "create|update [flow-name] [description]"
+category: frontend
+keywords: [design, mockup, html, ui, prototype]
+metadata:
+  author: adf
+  version: "1.0.0"
+---
+
+# Design Mockup Creator
+
+Generate interactive multi-page HTML mockups from requirements and design system tokens using HTML + Alpine.js + Tailwind CSS.
+
+## Default (No Arguments)
+
+If invoked without arguments, use `AskUserQuestion` to present available operations:
+
+| Operation | Description |
+|-----------|-------------|
+| `create` | Generate a new mockup flow from requirements |
+| `update` | Modify an existing mockup flow |
+
+Present as options via `AskUserQuestion` with header "Design Mockup", question "What would you like to do?".
+
+## Prerequisites
+
+**required checks before any action — stop with error if either fails:**
+
+1. **Design system tokens:** Check `docs/design/design-system/tokens.json` exists.
+   - If missing: Stop. Print: `"Design system not found. Run '/design-system create' first."`
+2. **Requirements source:** Check if free-text description exists in `$ARGUMENTS` OR `docs/requirements/srs.md` exists.
+   - If neither: Stop. Print: `"No requirements found. Provide a description or run '/specs init' first."`
+3. Both exist: proceed.
+
+**Skill activations (in order):**
+
+```
+1. Skill(skill: "ui-ux-pro-max")   — design intelligence (palette, typography, layout)
+2. Skill(skill: "ui-styling")      — Tailwind CSS patterns + best practices
+```
+
+## Routing
+
+Parse `$ARGUMENTS` first word:
+
+| Action | Workflow | Reference Files |
+|--------|----------|-----------------|
+| `create` | Create Workflow | All 3 references |
+| `update` | Update Workflow | All 3 references |
+| empty | Default menu (AskUserQuestion) | — |
+
+## Create Workflow
+
+1. **Validate prerequisites** (see Prerequisites above)
+2. **Activate skills:** `ui-ux-pro-max`, then `ui-styling`
+3. **Read inputs:**
+   - Design tokens: `docs/design/design-system/tokens.json`
+   - Theme overrides: `docs/design/design-system/themes/*.json` (if exist)
+   - Component catalog: `docs/design/design-system/component-catalog.md` (if exists)
+   - Requirements: SRS (`docs/requirements/srs.md`) and/or `$ARGUMENTS` description
+4. **Generate Tailwind config:**
+   ```bash
+   node .claude/skills/design-mockup-create/scripts/tokens-to-tailwind-config.cjs \
+     --tokens-dir docs/design/design-system/ \
+     --output docs/design/mockups/{flow-name}/tailwind.config.js
+   ```
+5. **Scaffold flow directory:**
+   ```bash
+   node .claude/skills/design-mockup-create/scripts/scaffold-mockup-flow.cjs \
+     --name {flow-name} \
+     --output-dir docs/design/mockups/ \
+     --pages "{comma-separated-pages}" \
+     --description "{flow-description}"
+   ```
+6. **Plan pages:** Determine pages from requirements, define navigation graph, write `mockup.json`
+7. **Generate HTML pages:**
+   - Load `references/mockup-html-patterns.md` for component patterns
+   - Load `references/responsive-layout-patterns.md` for layout patterns
+   - Load `references/flow-navigation-patterns.md` for navigation patterns
+   - Use semantic HTML5 (`<nav>`, `<main>`, `<section>`, `<form>`, `<label>`)
+   - Alpine.js `x-data`, `x-show`, `x-on` for interactivity
+   - Tailwind classes from token-derived config (e.g., `bg-primary-500`, `text-neutral-900`)
+   - Responsive: mobile-first with `sm:`, `md:`, `lg:` breakpoints
+   - Dark mode: `dark:` variant classes if themes detected
+   - Consistent nav/footer on each page
+8. **Build CSS:**
+   ```bash
+   bash .claude/skills/design-mockup-create/scripts/build-mockup-css.sh docs/design/mockups/{flow-name}/
+   ```
+9. **Open in browser:**
+   ```bash
+   open docs/design/mockups/{flow-name}/index.html
+   ```
+
+## Update Workflow
+
+1. **Validate prerequisites** (see Prerequisites above)
+2. **Activate skills:** `ui-ux-pro-max`, then `ui-styling`
+3. **Read existing flow:** Parse `mockup.json` from `docs/design/mockups/{flow-name}/`
+4. **Parse update requirements** from `$ARGUMENTS`
+5. **Modify HTML files** (or create new pages). Load all 3 references for patterns.
+6. **Update `mockup.json`** (add/reorder pages if changed, update `updated` date)
+7. **Build CSS with watch:**
+   ```bash
+   bash .claude/skills/design-mockup-create/scripts/build-mockup-css.sh docs/design/mockups/{flow-name}/ --watch
+   ```
+8. **Open in browser:**
+   ```bash
+   open docs/design/mockups/{flow-name}/index.html
+   ```
+
+## Output Structure
+
+All output goes to `docs/design/mockups/{flow-name}/`:
+
+```
+docs/design/mockups/
+  {flow-name}/
+    mockup.json          # Flow manifest (pages, navigation, metadata)
+    tailwind.config.js   # Generated from design system tokens
+    input.css            # @tailwind directives
+    output.css           # Built CSS (generated by npx tailwindcss)
+    index.html           # Flow entry point (links to all pages)
+    {page-name}.html     # Individual page mockups
+```
+
+## mockup.json Schema
+
+```json
+{
+  "name": "auth-flow",
+  "description": "Authentication flow with login, register, password reset",
+  "created": "2026-03-30",
+  "updated": "2026-03-30",
+  "themes": ["light", "dark"],
+  "pages": [
+    {
+      "file": "login.html",
+      "title": "Login",
+      "description": "Email/password login with social auth",
+      "navOrder": 1
+    }
+  ],
+  "navigation": {
+    "login.html": ["register.html", "forgot-password.html"]
+  }
+}
+```
+
+## Scripts
+
+Deterministic operations use Node.js scripts and shell scripts:
+
+### Generate Tailwind Config
+```bash
+node .claude/skills/design-mockup-create/scripts/tokens-to-tailwind-config.cjs \
+  --tokens-dir docs/design/design-system/ \
+  --output {flow-dir}/tailwind.config.js \
+  --content-glob "./*.html"
+```
+
+### Scaffold Flow
+```bash
+node .claude/skills/design-mockup-create/scripts/scaffold-mockup-flow.cjs \
+  --name {flow-name} \
+  --output-dir docs/design/mockups/ \
+  --pages "page1,page2,page3" \
+  --description "Flow description"
+```
+
+### Build CSS
+```bash
+bash .claude/skills/design-mockup-create/scripts/build-mockup-css.sh {flow-dir}/
+# Add --watch for live rebuild during updates
+bash .claude/skills/design-mockup-create/scripts/build-mockup-css.sh {flow-dir}/ --watch
+```
+
+## Reference Loading
+
+| Action | References to Load |
+|--------|--------------------|
+| `create` | `references/mockup-html-patterns.md`, `references/responsive-layout-patterns.md`, `references/flow-navigation-patterns.md` |
+| `update` | `references/mockup-html-patterns.md`, `references/responsive-layout-patterns.md`, `references/flow-navigation-patterns.md` |

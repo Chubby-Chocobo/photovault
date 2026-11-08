@@ -1,0 +1,854 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/sotatek-dev/adf/schemas/adf-config.schema.json",
+  "title": "ADF Configuration",
+  "description": "Configuration schema for Agentic Development Framework adf-config.json files",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion"
+    },
+    "privacyBlock": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable privacy block hook to protect sensitive files (.env, credentials, etc.)"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["strict", "auto"],
+      "default": "strict",
+      "description": "strict asks as configured. auto turns every ask into an allow (git.enforcement ask runs as off, privacy-block does not ask, AskUserQuestion is refused with a decide-and-record instruction) and never weakens a deny. ADF_MODE in the environment overrides it for one session; /adf-mode switches it"
+    },
+    "modeRestore": {
+      "type": "object",
+      "description": "Written by /adf-mode auto when settings.local.json already had a permissions.defaultMode, so /adf-mode strict can put it back. Not meant to be edited by hand",
+      "properties": {
+        "permissionsDefaultMode": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "docs": {
+      "type": "object",
+      "description": "Documentation settings",
+      "properties": {
+        "maxLoc": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 5000,
+          "default": 800,
+          "description": "Maximum lines of code per documentation file"
+        },
+        "legacyLayoutNotice": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a session-start note while the project still uses the old flat docs layout. Set false to hide it, for example when docs/ is a documentation site."
+        }
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "description": "Plan naming and validation settings",
+      "properties": {
+        "namingFormat": {
+          "type": "string",
+          "default": "{date}-{issue}-{slug}",
+          "description": "Format for plan directory names. Variables: {date}, {issue}, {slug}"
+        },
+        "dateFormat": {
+          "type": "string",
+          "default": "YYMMDD-HHmm",
+          "description": "Date format for plan names (moment.js format)"
+        },
+        "issuePrefix": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Prefix for issue references (e.g., GH-, JIRA-). null=no prefix"
+        },
+        "reportsDir": {
+          "type": "string",
+          "default": "reports",
+          "description": "Subdirectory name for reports within plans"
+        },
+        "resolution": {
+          "type": "object",
+          "description": "Plan resolution settings",
+          "properties": {
+            "order": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "session",
+                  "branch",
+                  "directory"
+                ]
+              },
+              "default": [
+                "session",
+                "branch"
+              ],
+              "description": "Order of resolution strategies for plan context"
+            },
+            "branchPattern": {
+              "type": "string",
+              "default": "(?:feat|fix|chore|refactor|docs|hotfix|release)/(?:[^/]+/)?(.+)",
+              "description": "Regex pattern to extract plan slug from branch name"
+            }
+          },
+          "additionalProperties": false
+        },
+        "validation": {
+          "type": "object",
+          "description": "Plan validation settings",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "prompt",
+                "auto",
+                "off",
+                "strict",
+                "none"
+              ],
+              "default": "prompt",
+              "description": "Validation mode: prompt=ask questions, auto=auto-validate, off=skip (none is a legacy alias of off), strict=require all"
+            },
+            "minQuestions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20,
+              "default": 3,
+              "description": "Minimum validation questions to ask"
+            },
+            "maxQuestions": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 8,
+              "description": "Maximum validation questions to ask"
+            },
+            "focusAreas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "assumptions",
+                  "risks",
+                  "tradeoffs",
+                  "architecture",
+                  "security",
+                  "performance",
+                  "testing",
+                  "dependencies"
+                ]
+              },
+              "default": [
+                "assumptions",
+                "risks",
+                "tradeoffs",
+                "architecture"
+              ],
+              "description": "Focus areas for validation questions"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "description": "Directory paths configuration",
+      "properties": {
+        "docs": {
+          "type": "string",
+          "default": "docs",
+          "description": "Docs root: a relative folder inside the project (not \".\", \".git\" or \".claude\"); other values fall back to \"docs\""
+        },
+        "plans": {
+          "type": "string",
+          "default": "plans",
+          "description": "Path to plans directory"
+        }
+      },
+      "additionalProperties": false
+    },
+    "locale": {
+      "type": "object",
+      "description": "Language and locale settings",
+      "properties": {
+        "thinkingLanguage": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Language for Claude's thinking (null=English)"
+        },
+        "responseLanguage": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Language for Claude's responses (null=match user)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "trust": {
+      "type": "object",
+      "description": "Trust mode settings for auto-approval",
+      "properties": {
+        "passphrase": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Passphrase to enable trust mode (null=disabled)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether trust mode is currently enabled"
+        }
+      },
+      "additionalProperties": false
+    },
+    "project": {
+      "type": "object",
+      "description": "Project type detection settings",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "workspace",
+            "monorepo",
+            "superproject",
+            "library",
+            "single-repo",
+            "application",
+            "cli",
+            "api",
+            "web",
+            "mobile"
+          ],
+          "default": "auto",
+          "description": "Project type (auto=detect from repo files). application, cli, api, web and mobile are accepted for older configs and behave like single-repo"
+        },
+        "packageManager": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "npm",
+            "yarn",
+            "pnpm",
+            "bun"
+          ],
+          "default": "auto",
+          "description": "Package manager (auto=detect from lockfile)"
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "react",
+            "vue",
+            "angular",
+            "svelte",
+            "nextjs",
+            "nuxt",
+            "express",
+            "nestjs",
+            "fastify",
+            "none"
+          ],
+          "default": "auto",
+          "description": "Framework (auto=detect from dependencies)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gemini": {
+      "type": "object",
+      "description": "Gemini CLI configuration",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-3-flash-preview"
+          ],
+          "default": "gemini-3-flash-preview",
+          "description": "Gemini model to use for CLI commands"
+        }
+      },
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "object",
+      "description": "Per-skill configuration",
+      "properties": {
+        "research": {
+          "type": "object",
+          "properties": {
+            "useGemini": {
+              "type": "boolean",
+              "default": false,
+              "description": "Use Gemini CLI for research (opt-in: true only with a working Gemini CLI; false=use WebSearch)"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "Custom skill configuration"
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Glob pattern or regex for files to match"
+          },
+          "rule": {
+            "type": "string",
+            "description": "Assertion rule to enforce"
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message when assertion fails"
+          }
+        }
+      },
+      "default": [],
+      "description": "Code assertions and rules to enforce"
+    },
+    "statusline": {
+      "type": "string",
+      "enum": [
+        "full",
+        "compact",
+        "minimal",
+        "none"
+      ],
+      "default": "full",
+      "description": "Statusline display mode: full=all features, compact=2-3 lines, minimal=single text line, none=disabled"
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Toggle individual hooks on/off. Default: all enabled. Set a hook to `false` to disable; only explicit `false` disables (undefined/null/missing keys default to enabled).",
+      "properties": {
+        "session-init": {
+          "type": "boolean",
+          "default": true,
+          "description": "SessionStart hook - project detection and env setup"
+        },
+        "subagent-init": {
+          "type": "boolean",
+          "default": true,
+          "description": "SubagentStart hook - injects context to subagents"
+        },
+        "descriptive-name": {
+          "type": "boolean",
+          "default": true,
+          "description": "PreToolUse hook - descriptive name for scripts"
+        },
+        "dev-rules-reminder": {
+          "type": "boolean",
+          "default": true,
+          "description": "UserPromptSubmit hook - injects dev rules context"
+        },
+        "context-tracking": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reserved: gates the context-window section of dev-rules-reminder, which is currently disabled in context-builder, so this has no effect yet"
+        },
+        "scout-block": {
+          "type": "boolean",
+          "default": true,
+          "description": "PreToolUse hook - blocks heavy directories"
+        },
+        "privacy-block": {
+          "type": "boolean",
+          "default": true,
+          "description": "PreToolUse hook - blocks sensitive files"
+        },
+        "ask-gate": {
+          "type": "boolean",
+          "default": true,
+          "description": "PreToolUse hook on AskUserQuestion - in auto mode refuses the question and tells Claude to decide and record; silent in strict mode"
+        },
+        "manifest-credential-redact": {
+          "type": "boolean",
+          "default": true,
+          "description": "PostToolUse hook - masks credentials embedded in URLs (and npmrc/netrc/pypirc auth lines) in Read, Grep, Edit and narrowed Bash output before Claude sees them. Costs one node process per matched tool call; payloads without a URL and an @ exit immediately"
+        },
+        "simplify-gate": {
+          "type": "boolean",
+          "default": true,
+          "description": "UserPromptSubmit hook - reminds about code-simplifier when a ship or commit verb appears while the working tree carries a large unsimplified diff; never blocks the prompt"
+        },
+        "workflow-artifact-gate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Opt-in UserPromptSubmit/PreToolUse hook - validates fix/cook workflow artifacts before finalize and ship-like actions"
+        },
+        "session-state": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hook that persists and restores plan/session state across sessions"
+        },
+        "plan-format-kanban": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reserved toggle. The plan-format kanban hook does not currently read it; remove the hook from settings.json to disable"
+        },
+        "usage-context-awareness": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reserved: gates the usage-limit section of dev-rules-reminder, which is currently disabled in context-builder, so this has no effect yet (the statusline shows usage regardless)"
+        },
+        "cook-after-plan-reminder": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hook that reminds to run cook after a plan is created"
+        },
+        "team-context-inject": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hook that injects team context for teammate sessions"
+        },
+        "task-completed-handler": {
+          "type": "boolean",
+          "default": true,
+          "description": "TaskCompleted hook - logs team task completions to the session's reports folder"
+        },
+        "teammate-idle-handler": {
+          "type": "boolean",
+          "default": true,
+          "description": "TeammateIdle handler (currently unregistered in settings.json)"
+        },
+        "commit-guard": {
+          "type": "boolean",
+          "default": true,
+          "description": "PreToolUse hook - asks before a git commit records secrets; checks the commit message, commit -a, path types and direct commits on the main branch (see git and commitGuard)"
+        },
+        "git-flow-guard": {
+          "type": "boolean",
+          "default": true,
+          "description": "PreToolUse hook - holds git add/push/tag and gh pr create/merge to the git workflow (see git); force-pushing a protected branch is always denied"
+        },
+        "verify-before-stop": {
+          "type": "boolean",
+          "default": true,
+          "description": "PostToolUse + Stop hook - asks Claude to run a test, lint or build after editing code before it ends the turn"
+        },
+        "lint-on-edit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Async PostToolUse hook - lints the edited file with the project linter; also needs lintOnEdit.enabled=true"
+        },
+        "desktop-notify": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notification hook - desktop notification when Claude waits for the user"
+        }
+      },
+      "additionalProperties": false
+    },
+    "statuslineColors": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable ANSI colors in the statusline. Set false for plain text."
+    },
+    "statuslineQuota": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the cosmetic 5h / wk quota chips in the statusline for native Claude subscription sessions. Disable to keep the layout without usage-window percentages."
+    },
+    "statuslineLayout": {
+      "type": "object",
+      "description": "Optional config-driven statusline layout. When absent, the built-in layout for the selected statusline mode is used.",
+      "properties": {
+        "baseMode": {
+          "type": "string",
+          "enum": [
+            "full",
+            "compact",
+            "minimal",
+            "none"
+          ],
+          "description": "Base mode overriding statusline when a layout is set"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "Rows of section ids, e.g. [[\"model\",\"context\"],[\"cost\"]]"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "description": "Legacy flat section list (use lines instead)"
+        },
+        "sectionConfig": {
+          "type": "object",
+          "description": "Per-section options (e.g. color, label) keyed by section id",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "theme": {
+          "type": "object",
+          "description": "Theme color overrides"
+        },
+        "responsiveBreakpoint": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Terminal width fraction below which the layout collapses"
+        },
+        "maxAgentRows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max agent rows shown"
+        },
+        "todoTruncation": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max characters of the current todo shown"
+        }
+      },
+      "additionalProperties": true
+    },
+    "simplify": {
+      "type": "object",
+      "description": "Code-simplifier gate settings (UserPromptSubmit hook). Stateless — signals are recomputed live from `git diff HEAD`.",
+      "properties": {
+        "threshold": {
+          "type": "object",
+          "description": "Diff-size limits that trigger the gate (live-computed per prompt).",
+          "properties": {
+            "locDelta": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 400,
+              "description": "Total LOC added+removed across all files"
+            },
+            "fileCount": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 8,
+              "description": "Number of files modified"
+            },
+            "singleFileLoc": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 200,
+              "description": "Lines added in a single file"
+            }
+          }
+        },
+        "gate": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Master toggle. Off by default (opt-in). Set true to activate the gate; env ADF_SIMPLIFY_DISABLED=1 always bypasses."
+            },
+            "hardVerbs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [
+                "ship",
+                "merge",
+                "pr",
+                "deploy",
+                "publish"
+              ],
+              "description": "Verbs that get the shipping reminder (the stronger wording); the prompt is never blocked"
+            },
+            "softVerbs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [
+                "commit",
+                "finalize",
+                "release"
+              ],
+              "description": "Verbs that soft-warn via additionalContext"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflowArtifactGate": {
+      "type": "object",
+      "description": "Review artifact gate settings for fix and cook.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Runtime toggle for the workflow artifact gate after the hook itself is enabled."
+        },
+        "softStages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "finalize",
+            "commit"
+          ],
+          "description": "Stages that warn when proof is missing."
+        },
+        "hardStages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "ship",
+            "push",
+            "pr",
+            "deploy"
+          ],
+          "description": "Stages that block when artifacts fail validation."
+        },
+        "highRiskAutoStop": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require human approval for high-risk auto-mode workflows."
+        }
+      },
+      "additionalProperties": false
+    },
+    "commitGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "commit-guard settings (PreToolUse on git commit).",
+      "properties": {
+        "secrets": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask before committing secret files (.env, private keys) or lines matching known credential formats. Mark a known-fake line with adf-allow-secret."
+        },
+        "allowSecretFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Repo-relative globs (same syntax as git.directPush.paths) of files the secret scan skips, names and lines, e.g. test fixtures with fake keys. Only a person adds entries."
+        },
+        "messageFormat": {
+          "type": "boolean",
+          "description": "Deprecated: use git.enforcement. When set, true denies and false skips commit messages that are not conventional commits or carry an AI attribution line; when unset, the check follows git.enforcement."
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed conventional-commit types (default: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert)."
+        }
+      }
+    },
+    "agentsMd": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADF's block in the project's AGENTS.md (read by Codex, Cursor, Copilot, Gemini and other agents). The installer adds and refreshes it on every run.",
+      "properties": {
+        "block": {
+          "type": "boolean",
+          "default": true,
+          "description": "false: install.sh adds no ADF block to AGENTS.md and removes one from an earlier install. Committed with the config, so every clone behaves alike."
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Git workflow for this project, enforced by the commit-guard and git-flow-guard hooks, .claude/skills/git/scripts/git-flow.cjs and the CI guards. The process itself is written in docs/conventions/git-workflow.md.",
+      "properties": {
+        "flow": {
+          "type": "string",
+          "enum": [
+            "release-train",
+            "trunk",
+            "off"
+          ],
+          "default": "release-train",
+          "description": "release-train: feat/fix squash into the open release/x.y.z, which merges into main; trunk: feat/fix squash into main; off: no branch-model checks (commit format, bulk add, secrets and force-push rules still apply)."
+        },
+        "enforcement": {
+          "type": "string",
+          "enum": [
+            "off",
+            "ask",
+            "deny"
+          ],
+          "default": "ask",
+          "description": "What the hooks do on a workflow violation: off = allow silently, ask = ask the user, deny = block. Secrets always ask; force-pushing a protected branch is always denied."
+        },
+        "mainBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "The branch releases merge into."
+        },
+        "versionFiles": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Files that carry the version. Each is a JSON file with a dot path ({\"path\": \"package.json\", \"json\": \"version\"}) or a text file with a regex whose first group is the version ({\"path\": \"pyproject.toml\", \"regex\": \"^version = \\\"(.*)\\\"\"}).",
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "json": {
+                "type": "string"
+              },
+              "regex": {
+                "type": "string"
+              }
+            }
+          },
+          "default": [
+            {
+              "path": "package.json",
+              "json": "version"
+            }
+          ]
+        },
+        "directPush": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Globs that a chore commit may push straight to the main branch (** crosses folders).",
+              "default": [
+                "docs/**",
+                ".github/**",
+                "README.md",
+                "CHANGELOG.md",
+                "CLAUDE.md",
+                "AGENTS.md"
+              ]
+            }
+          }
+        },
+        "tagPrefix": {
+          "type": "string",
+          "default": "v",
+          "description": "Prefix of release tags (v1.2.3)."
+        },
+        "commit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pathTypes": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": "Path prefix -> commit types allowed for staged files under it, e.g. {\".claude/\": [\"feat\", \"fix\", \"perf\"]}."
+            }
+          }
+        }
+      }
+    },
+    "verifyBeforeStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "verify-before-stop settings.",
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra regular expressions for Bash commands that count as verification (in addition to common test, lint, typecheck and build commands)."
+        }
+      }
+    },
+    "lintOnEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "lint-on-edit settings. Uses the project linter only (Biome or ESLint from node_modules, Ruff from .venv or PATH); reports problems, never rewrites files.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Opt-in: lint each edited file and wake Claude when problems are found."
+        }
+      }
+    },
+    "notify": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "desktop-notify settings.",
+      "properties": {
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Notification types to show (default: permission_prompt, idle_prompt, elicitation_dialog, agent_needs_input)."
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
