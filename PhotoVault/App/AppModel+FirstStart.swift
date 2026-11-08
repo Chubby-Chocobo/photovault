@@ -98,13 +98,12 @@ extension AppModel {
     }
 
     /// Recovery runs only after the scan is complete (FR-51).
-    /// Stops when the task is cancelled, Photos access is lost, or nothing changes for `scanStallLimit`.
+    /// Stops when the task is cancelled, Photos access is lost, or the scan has added no asset for `scanStallLimit`.
+    /// Upload jobs are not a progress signal here: none exist until the scan has finished.
     private func waitForScan(_ env: AppEnvironment) async throws {
         struct Signature: Equatable, Sendable {
             var scan: ScanState
-            var overall: EngineSnapshot.Overall
-            var pending: Int
-            var assets: Int
+            var assetsScanned: Int
         }
         var watchdog = ProgressWatchdog<Signature>(limit: Self.scanStallLimit, now: Date())
         while true {
@@ -115,8 +114,8 @@ extension AppModel {
             if snapshot.overall == .photosUnauthorized || env.photos.authorizationStatus().allowsReading == false {
                 throw FirstStartError.photosAccessLost
             }
-            let signature = Signature(scan: snapshot.scanState, overall: snapshot.overall, pending: snapshot.pending,
-                                      assets: snapshot.backfillTotalAssets)
+            let scanned = (try? await env.store.read { db in try AssetRepository.count(db) }) ?? 0
+            let signature = Signature(scan: snapshot.scanState, assetsScanned: scanned)
             if watchdog.isStalled(signature, now: Date()) { throw FirstStartError.scanStalled }
             try await Task.sleep(for: .seconds(1))
         }
@@ -130,9 +129,8 @@ extension AppModel {
         if case .reuse = plan.root { ids.append(.googleDrive) }
         if let nas = plan.nas, nas.isReuse { ids.append(nas.destinationId) }
         for id in ids {
-            // The engine may already have recovered this destination during a cycle.
-            let stillRequired = try await env?.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired } ?? nil
-            guard stillRequired == true else { continue }
+            // A cycle may have recovered this destination already; the engine then does nothing and
+            // reports no matches, which leaves the onboarding line without a count.
             do {
                 let report = try await hardening.startRecovery(id)
                 firstStart?.matchedFiles += report.matchedFiles

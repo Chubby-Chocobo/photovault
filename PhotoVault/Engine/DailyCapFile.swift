@@ -23,13 +23,21 @@ final class DailyCapFile: Sendable {
             return current == nil
         }
         guard scheduleWrite else { return }
-        queue.async { [self] in
-            guard let latest = pending.withLock({ current -> DailyCapState? in
-                defer { current = nil }
-                return current
-            }) else { return }
-            guard let data = try? JSONEncoder().encode(latest) else { return }
-            try? data.write(to: url, options: [.atomic])
-        }
+        queue.async { [self] in writePending() }
+    }
+
+    /// Writes the newest recorded state now and returns once it is on disk. For application termination,
+    /// when a queued write might never run.
+    func flush() {
+        queue.sync { writePending() }
+    }
+
+    private func writePending() {
+        guard let latest = pending.withLock({ current -> DailyCapState? in
+            defer { current = nil }
+            return current
+        }) else { return }
+        guard let data = try? JSONEncoder().encode(latest) else { return }
+        try? data.write(to: url, options: [.atomic])
     }
 }

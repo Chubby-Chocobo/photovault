@@ -108,6 +108,7 @@ struct DecisionCard: View {
         case (.checksumMismatch, _):
             HStack {
                 Button("Xem hoạt động") { model.open(.activity) }
+                Button("Đã xem") { model.dismissChecksumMismatch(decision) }
                 Button("Để sau") { model.snooze(decision) }
             }
         default:

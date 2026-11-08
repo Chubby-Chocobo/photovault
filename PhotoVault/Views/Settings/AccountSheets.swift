@@ -13,6 +13,7 @@ struct AccountChangeSheet: View {
     @State private var reuseRootId: String?
     @State private var newName = "Camera Uploads"
     @State private var working = false
+    @State private var signInTask: Task<Void, Never>?
 
     private enum Stage { case confirm, signingIn, chooseRoot }
 
@@ -36,7 +37,7 @@ struct AccountChangeSheet: View {
                 Spacer()
                 Button("Huỷ") { Task { await cancel() } }.keyboardShortcut(.cancelAction)
                 switch stage {
-                case .confirm: Button("Tiếp tục") { Task { await signIn() } }.keyboardShortcut(.defaultAction)
+                case .confirm: Button("Tiếp tục") { signInTask = Task { await signIn() } }.keyboardShortcut(.defaultAction)
                 case .signingIn: EmptyView()
                 case .chooseRoot:
                     Button("Áp dụng") { Task { await apply() } }
@@ -47,6 +48,7 @@ struct AccountChangeSheet: View {
         }
         .padding(20)
         .frame(width: 520)
+        .onDisappear { Task { await cancel(dismissing: false) } }
     }
 
     private func signIn() async {
@@ -65,17 +67,20 @@ struct AccountChangeSheet: View {
             newName = model.driveRecord?.config.driveRootName ?? "Camera Uploads"
             stage = .chooseRoot
         } catch {
-            model.showError(error)
+            if !(error is CancellationError), !Task.isCancelled { model.showError(error) }
             if let change { await model.cancelAccountChange(change) }
             change = nil
             stage = .confirm
         }
     }
 
-    private func cancel() async {
+    /// Stops a sign-in still waiting for the browser; a stage that arrives anyway is discarded by the model.
+    private func cancel(dismissing: Bool = true) async {
+        signInTask?.cancel()
+        signInTask = nil
         if let change { await model.cancelAccountChange(change) }
         change = nil
-        dismiss()
+        if dismissing { dismiss() }
     }
 
     private func canReuseFirst(_ found: [RemoteItem]) -> String? {
@@ -97,7 +102,10 @@ struct AccountChangeSheet: View {
             self.change = nil
             dismiss()
         } catch {
+            // The model discarded the stage and kept the old account, so the owner starts over.
             model.showError(error)
+            self.change = nil
+            stage = .confirm
         }
     }
 }

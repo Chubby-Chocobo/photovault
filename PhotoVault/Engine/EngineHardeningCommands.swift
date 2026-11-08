@@ -10,7 +10,8 @@ struct EngineHardeningCommands: HardeningCommands {
 
     func runReconciliation() async throws { try await coordinator.runReconciliation() }
 
-    /// Runs per destination so mismatch counts can be attributed (the engine report only keeps totals).
+    /// Runs per destination so counts can be attributed. A destination the engine could not reach is
+    /// reported in `skipped`; the others are still checked.
     func runIntegrityCheck(_ id: DestinationID?) async throws -> IntegrityCheckSummary {
         let ids: [DestinationID]
         if let id {
@@ -18,16 +19,22 @@ struct EngineHardeningCommands: HardeningCommands {
         } else {
             ids = try await store.read { db in try DestinationRepository.fetchAll(db).map(\.id) }
         }
-        var summary = IntegrityCheckSummary(missingFiles: [:], checksumMismatches: [:])
+        var summary = IntegrityCheckSummary(missingFiles: [:], checksumMismatches: [:], skipped: [])
         for destination in ids {
             let report: PhotoVaultEngine.IntegrityReport = try await coordinator.runIntegrityCheck(destination)
-            let missing = report.missingByDestination[destination] ?? report.missing
-            let mismatched = report.sizeMismatch + report.hashMismatch
+            if report.skippedDestinations.contains(destination) {
+                summary.skipped.append(destination)
+                continue
+            }
+            let missing = report.missingByDestination[destination] ?? 0
+            let mismatched = report.mismatchByDestination[destination] ?? 0
             if missing > 0 { summary.missingFiles[destination] = missing }
             if mismatched > 0 { summary.checksumMismatches[destination] = mismatched }
         }
         return summary
     }
+
+    func dismissChecksumMismatch(_ id: DestinationID) async throws { try await coordinator.dismissChecksumMismatch(id) }
 
     func confirmReupload(_ id: DestinationID) async throws { try await coordinator.confirmReupload(id) }
     func retryDeferred(_ id: DestinationID?) async throws { try await coordinator.retryDeferred(id) }
@@ -73,6 +80,7 @@ struct EngineHardeningCommands: HardeningCommands {
             case .folderTrashed: .folderTrashed
             case .integrityMissing(_, let count): .integrityMissing(fileCount: count, folderHints: [])
             case .recoveryNeedsDecision: .recoveryNeedsDecision
+            case .checksumMismatch(_, let count): .checksumMismatch(fileCount: count)
             }
             return OwnerDecisionItem(destinationId: record.id, destinationName: record.displayName, kind: kind)
         }

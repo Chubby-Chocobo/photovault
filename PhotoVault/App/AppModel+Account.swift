@@ -17,6 +17,8 @@ struct AccountChange: Sendable {
     var identity: GoogleIdentity
     /// Drive was active before the change and is resumed if the owner cancels.
     var resumeDrive: Bool
+    /// Marks the change as open until it is applied or cancelled, so Drive resumes at most once.
+    var token = UUID()
 }
 
 /// Google account and Drive root management (FR-08).
@@ -54,24 +56,38 @@ extension AppModel {
 
     /// FR-08 step 1: signs in with the browser but keeps the new account staged (in memory only).
     /// Drive is paused meanwhile, so nothing is uploaded with the wrong account's token. The same
-    /// account is committed at once and Drive resumes.
+    /// account is committed at once and Drive resumes. If the calling task is cancelled while the browser
+    /// is open, a stage that still arrives is discarded and Drive resumes.
     func beginAccountChange() async throws -> AccountChange {
         guard let env else { throw EngineError.invalidState("no environment") }
         let wasActive = driveRecord?.status == .active
         if driveRecord != nil, wasActive { try await env.coordinator.pause(destination: .googleDrive) }
+        let staged: StagedAccount
         do {
-            let staged = try await env.auth.beginAccountChange()
-            let changed = driveRecord?.accountId.map { $0 != staged.identity.sub } ?? false
-            guard changed else {
-                try await env.auth.commitAccountChange(staged)
-                if driveRecord != nil { try await resumeDriveAfterSignIn(env, undoOurPause: wasActive) }
-                return AccountChange(staged: nil, identity: staged.identity, resumeDrive: false)
-            }
-            return AccountChange(staged: staged, identity: staged.identity, resumeDrive: wasActive)
+            staged = try await env.auth.beginAccountChange()
         } catch {
             if wasActive { try? await env.coordinator.resume(destination: .googleDrive) }
             throw error
         }
+        if Task.isCancelled {
+            await env.auth.discardAccountChange(staged)
+            if wasActive { try? await env.coordinator.resume(destination: .googleDrive) }
+            throw CancellationError()
+        }
+        let changed = driveRecord?.accountId.map { $0 != staged.identity.sub } ?? false
+        guard changed else {
+            do {
+                try await env.auth.commitAccountChange(staged)
+                if driveRecord != nil { try await resumeDriveAfterSignIn(env, undoOurPause: wasActive) }
+            } catch {
+                if wasActive { try? await env.coordinator.resume(destination: .googleDrive) }
+                throw error
+            }
+            return AccountChange(staged: nil, identity: staged.identity, resumeDrive: false)
+        }
+        let change = AccountChange(staged: staged, identity: staged.identity, resumeDrive: wasActive)
+        openAccountChanges.insert(change.token)
+        return change
     }
 
     /// PhotoVault roots in the staged account, listed before that account goes live.
@@ -80,20 +96,64 @@ extension AppModel {
         return try await DriveRootService(drive: stagedDrive(env, staged)).existingRoots()
     }
 
-    /// "Huỷ": the old account and its state stay exactly as they were.
+    /// "Huỷ": the old account and its state stay exactly as they were. Does nothing for a change that
+    /// was already applied, cancelled or discarded after a failure.
     func cancelAccountChange(_ change: AccountChange) async {
-        guard let env, let staged = change.staged else { return }
+        guard let env, let staged = change.staged, openAccountChanges.remove(change.token) != nil else { return }
         await env.auth.discardAccountChange(staged)
         if change.resumeDrive { try? await env.coordinator.resume(destination: .googleDrive) }
     }
 
-    /// FR-08 confirm: the new root is created with the staged account, the account goes live, then the
-    /// engine resets the Drive destination (recovering from a reused root first).
+    /// FR-08 confirm. The staged account stays out of the Keychain until the engine reset has succeeded:
+    /// the reset checks the new root through a destination built on the staged account. On any failure
+    /// the stage is discarded, the old account stays live and Drive returns to what it was.
     func applyAccountChange(_ change: AccountChange, choice: RootChoice) async throws {
         guard let env, let staged = change.staged else { return try await applyDriveRoot(choice, identity: nil) }
-        let root = try await resolveRoot(choice, using: DriveRootService(drive: stagedDrive(env, staged)))
-        try await env.auth.commitAccountChange(staged)
-        try await switchDriveRoot(env, root: root, account: DriveAccount(id: staged.identity.sub, email: staged.identity.email))
+        guard openAccountChanges.contains(change.token) else {
+            throw EngineError.invalidState("account change no longer pending")
+        }
+        let stagedDrive = stagedDrive(env, staged)
+        let account = DriveAccount(id: staged.identity.sub, email: staged.identity.email)
+        do {
+            let root = try await resolveRoot(choice, using: DriveRootService(drive: stagedDrive))
+            await stagedDrive.setRootId(root.id)
+            await env.registry.add(stagedDrive)
+            do {
+                try await env.coordinator.changeDriveRoot(
+                    .googleDrive, rootId: root.id, rootName: root.name, account: account, rootHasContent: root.reused)
+            } catch {
+                await env.registry.add(env.drive)
+                throw error
+            }
+            do {
+                try await env.auth.commitAccountChange(staged)
+            } catch {
+                // The database now describes the new account but the Keychain still holds the old one.
+                await env.drive.setRootId(root.id)
+                await env.registry.add(env.drive)
+                await markDriveSignedOut(env)
+                throw error
+            }
+            openAccountChanges.remove(change.token)
+            await env.drive.setRootId(root.id)
+            await env.registry.add(env.drive)
+            requestSync(.manual)
+            await refresh()
+            showNotice(root.reused ? "Đang khôi phục trạng thái từ thư mục đã chọn." : "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.")
+        } catch {
+            await cancelAccountChange(change)
+            await refresh()
+            throw error
+        }
+    }
+
+    private func markDriveSignedOut(_ env: AppEnvironment) async {
+        let now = Date()
+        try? await env.store.write { db in
+            if try DestinationRepository.fetch(db, id: .googleDrive) != nil {
+                try DestinationRepository.setStatus(db, id: .googleDrive, status: .paused(.signedOut), now: now)
+            }
+        }
     }
 
     /// Same account, another root (FR-08).
@@ -123,10 +183,10 @@ extension AppModel {
     /// The engine drops what it knew about the old root in its exclusive lane, so no upload of the
     /// running cycle can race the reset.
     private func switchDriveRoot(_ env: AppEnvironment, root: ResolvedRoot, account: DriveAccount?) async throws {
-        await env.drive.setRootId(root.id)
-        await env.registry.add(env.drive)
         try await env.coordinator.changeDriveRoot(
             .googleDrive, rootId: root.id, rootName: root.name, account: account, rootHasContent: root.reused)
+        await env.drive.setRootId(root.id)
+        await env.registry.add(env.drive)
         requestSync(.manual)
         await refresh()
         showNotice(root.reused ? "Đang khôi phục trạng thái từ thư mục đã chọn." : "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.")

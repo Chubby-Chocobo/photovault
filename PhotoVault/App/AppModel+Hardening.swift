@@ -36,19 +36,13 @@ extension AppModel {
                 let now = Date()
                 try await env.store.write { db in try AppQueries.recordIntegrityCheck(db, at: now) }
             }
-            if let self {
-                // A check replaces what was known for the destinations it covered.
-                let checked = id.map { [$0] } ?? self.destinations.map(\.id)
-                for destination in checked { self.integrityMismatches[destination] = summary.checksumMismatches[destination] }
-                await self.refresh()
+            await self?.refresh()
+            let skippedNames = summary.skipped.map { skipped in
+                self?.destinations.first { $0.id == skipped }?.displayName ?? skipped.rawValue
             }
-            if summary.isClean { return "Kiểm tra xong: không thiếu file nào và không file nào lệch checksum." }
-            let missing = summary.missingFiles.values.reduce(0, +)
-            let mismatched = summary.checksumMismatches.values.reduce(0, +)
-            var parts: [String] = []
-            if missing > 0 { parts.append("thiếu \(VietnameseFormat.integer(missing)) file") }
-            if mismatched > 0 { parts.append("\(VietnameseFormat.integer(mismatched)) file lệch checksum") }
-            return "Kiểm tra xong: \(parts.joined(separator: ", ")). Xem trong menu bar."
+            return IntegrityNoticeText.make(
+                missing: summary.missingFiles.values.reduce(0, +), mismatched: summary.checksumMismatches.values.reduce(0, +),
+                skippedNames: skippedNames)
         }
     }
 
@@ -114,6 +108,14 @@ extension AppModel {
         withHardening("Tiếp tục không dùng dữ liệu cũ") { commands in
             try await commands.proceedWithoutRecovery(decision.destinationId)
             return "\(decision.destinationName) chạy lại; file mới được ghi bên cạnh dữ liệu cũ."
+        }
+    }
+
+    /// "Đã xem": the engine forgets the mismatch count until a later check finds more.
+    func dismissChecksumMismatch(_ decision: OwnerDecisionItem) {
+        withHardening("Đánh dấu đã xem") { commands in
+            try await commands.dismissChecksumMismatch(decision.destinationId)
+            return nil
         }
     }
 

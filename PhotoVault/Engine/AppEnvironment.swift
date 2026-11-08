@@ -56,6 +56,7 @@ struct AppEnvironment: Sendable {
     let disk: VolumeDiskSpaceProvider
     let backups: DatabaseBackup
     let notificationLedger: NotificationLedgerFile
+    let dailyCapFile: DailyCapFile
 
     static let setupReadmeSection = "README › Google Cloud setup"
 
@@ -140,7 +141,8 @@ struct AppEnvironment: Sendable {
             layout: layout, instanceLock: lock, store: store, settings: settings, registry: registry,
             coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth, transport: transport,
             googleConfigured: !clientID.isEmpty, fileLog: fileLog, log: log, system: system, disk: disk, backups: backups,
-            notificationLedger: NotificationLedgerFile(url: layout.root.appendingPathComponent("notification-ledger.json")))
+            notificationLedger: NotificationLedgerFile(url: layout.root.appendingPathComponent("notification-ledger.json")),
+            dailyCapFile: capFile)
     }
 }
 

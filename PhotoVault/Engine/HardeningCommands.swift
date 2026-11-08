@@ -10,6 +10,8 @@ protocol HardeningCommands: Sendable {
     func runIntegrityCheck(_ id: DestinationID?) async throws -> IntegrityCheckSummary
     /// The owner agreed to upload files reported missing again (`missingRemote` -> `pending`).
     func confirmReupload(_ id: DestinationID) async throws
+    /// The owner has seen the checksum mismatches of this destination; the card goes away until a new check finds more.
+    func dismissChecksumMismatch(_ id: DestinationID) async throws
     /// Puts deferred jobs back in the queue; nil = every destination.
     func retryDeferred(_ id: DestinationID?) async throws
     /// Puts skipped jobs back in the queue; nil = every destination.
@@ -42,7 +44,10 @@ struct IntegrityCheckSummary: Equatable, Sendable {
     /// Files whose checksum differs from what was uploaded.
     var checksumMismatches: [DestinationID: Int]
 
-    var isClean: Bool { missingFiles.isEmpty && checksumMismatches.isEmpty }
+    /// Destinations that could not be reached, so nothing is known about them.
+    var skipped: [DestinationID] = []
+
+    var isClean: Bool { missingFiles.isEmpty && checksumMismatches.isEmpty && skipped.isEmpty }
 }
 
 struct RecoveryReport: Equatable, Sendable {

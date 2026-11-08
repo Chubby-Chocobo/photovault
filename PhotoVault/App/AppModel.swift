@@ -34,8 +34,6 @@ final class AppModel {
     var macFreeBytes: Int64 = 0
     var photosAuthorization: PhotosAuthorization = .notDetermined
     var lastIntegrityCheck: Date?
-    /// Files whose checksum or size differs at the destination, from the last integrity check per destination.
-    var integrityMismatches: [DestinationID: Int] = [:]
     /// Progress of the first start after onboarding; nil until the owner presses Start.
     var firstStart: FirstStartState?
     /// One short message for the user (success or failure); views show it as a banner.
@@ -52,6 +50,8 @@ final class AppModel {
         var isError: Bool
     }
 
+    /// Account changes whose staged sign-in is neither applied nor cancelled yet.
+    @ObservationIgnored var openAccountChanges: Set<UUID> = []
     @ObservationIgnored var settingsCommitsInFlight = 0
     @ObservationIgnored let activityAssertion = ActivityAssertion()
     @ObservationIgnored let notificationService = NotificationService()
@@ -182,6 +182,7 @@ final class AppModel {
         runtime?.workspace.stop()
         runtime?.photosObserver.stop()
         env?.system.stop()
+        env?.dailyCapFile.flush()
         env?.fileLog.close()
     }
 
@@ -250,10 +251,6 @@ final class AppModel {
                 items.append(OwnerDecisionItem(destinationId: record.id, destinationName: record.displayName, kind: .rootMissing(rootName: name)))
             default: break
             }
-        }
-        for (destinationId, count) in integrityMismatches where count > 0 {
-            guard let record = destinations.first(where: { $0.id == destinationId }) else { continue }
-            items.append(OwnerDecisionItem(destinationId: destinationId, destinationName: record.displayName, kind: .checksumMismatch(fileCount: count)))
         }
         return items
     }
