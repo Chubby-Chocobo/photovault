@@ -1,0 +1,3 @@
+// Copy to Config/Local.xcconfig (gitignored). Your Personal Team ID from Xcode → Settings →
+// Accounts. Signing with a stable team keeps Photos permission across rebuilds.
+DEVELOPMENT_TEAM = ABCDE12345
