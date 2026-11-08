@@ -86,6 +86,53 @@ struct OnboardingFlowTests {
         do { let accepted = fresh.back(OnboardingFacts()); #expect(!accepted) }
     }
 
+    private func jumped(_ progress: inout OnboardingProgress, _ target: OnboardingStep, _ facts: OnboardingFacts) -> Bool {
+        progress.jump(to: target, facts)
+    }
+
+    private func atStart(_ facts: OnboardingFacts) -> OnboardingProgress {
+        var progress = OnboardingProgress()
+        while progress.step != .start { _ = progress.advance(facts) }
+        return progress
+    }
+
+    @Test func jumpForwardNeedsEveryEarlierStepToStillHold() {
+        var facts = ready()
+        var progress = atStart(facts)
+        #expect(jumped(&progress, .googleSignIn, facts))
+        #expect(progress.canJump(to: .start, facts))
+
+        facts.rootName = "/"                       // root name broken after going back
+        #expect(!progress.canJump(to: .start, facts))
+        #expect(!jumped(&progress, .start, facts))
+        #expect(jumped(&progress, .driveRoot, facts))   // steps before the broken one stay reachable
+        #expect(!progress.canJump(to: .archiveTimeZone, facts))
+        facts.rootName = "Camera Uploads"
+
+        facts.nasFolderChosen = true               // another NAS folder picked, not tested yet
+        #expect(!progress.canJump(to: .start, facts))
+        #expect(progress.canJump(to: .nas, facts))
+        facts.nasTestPassed = true
+        #expect(progress.canJump(to: .start, facts))
+
+        facts.googleSignedIn = false               // "use another account"
+        #expect(!progress.canJump(to: .start, facts))
+        #expect(progress.canJump(to: .googleSignIn, facts))
+    }
+
+    @Test func startRevalidatesTheWholePlan() {
+        var facts = ready()
+        #expect(OnboardingProgress.firstProblem(facts) == nil)
+        facts.rootName = ""
+        #expect(OnboardingProgress.firstProblem(facts) == .driveRoot)
+        facts.rootName = "ok"
+        facts.nasFolderChosen = true
+        #expect(OnboardingProgress.firstProblem(facts) == .nas)
+        facts.nasTestPassed = true
+        facts.googleSignedIn = false
+        #expect(OnboardingProgress.firstProblem(facts) == .googleSignIn)
+    }
+
     @Test func restorePhaseOnlyWhenReusing() {
         #expect(OnboardingPhase.sequence(reusingExistingDestination: false) == [.baseline, .scan, .upload])
         #expect(OnboardingPhase.sequence(reusingExistingDestination: true) == [.baseline, .scan, .restore, .upload])

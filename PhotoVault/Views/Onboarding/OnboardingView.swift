@@ -70,7 +70,7 @@ private struct OnboardingContent: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(step > model.progress.furthest || model.started)
+                .disabled(!model.canJump(to: step) && step != model.step)
                 .accessibilityAddTraits(step == model.step ? .isSelected : [])
             }
             Spacer()

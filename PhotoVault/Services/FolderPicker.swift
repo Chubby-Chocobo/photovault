@@ -28,8 +28,9 @@ enum FolderPicker {
     }
 
     /// The folder a stored bookmark points to now (it may have been renamed since).
-    static func resolvedURL(bookmark: Data) -> URL? {
+    /// Never mounts a share and never shows UI, but it can still block on a slow volume: call it off the main thread.
+    nonisolated static func resolvedURL(bookmark: Data) -> URL? {
         var stale = false
-        return try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope, .withoutUI], relativeTo: nil, bookmarkDataIsStale: &stale)
+        return try? URL(resolvingBookmarkData: bookmark, options: SecurityScopedBookmarkRoot.resolutionOptions, relativeTo: nil, bookmarkDataIsStale: &stale)
     }
 }

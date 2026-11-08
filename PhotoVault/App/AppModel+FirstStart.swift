@@ -14,6 +14,17 @@ struct FirstStartPlan {
     var nas: PendingLocalDestination?
 }
 
+enum FirstStartError: Error {
+    case scanStalled, photosAccessLost
+
+    var message: String {
+        switch self {
+        case .scanStalled: "Việc quét thư viện không tiến triển trong 10 phút. Kiểm tra quyền Photos rồi thử lại."
+        case .photosAccessLost: "PhotoVault mất quyền đọc thư viện Photos giữa chừng. Cấp lại quyền rồi thử lại."
+        }
+    }
+}
+
 struct FirstStartState: Equatable {
     var phases: [OnboardingPhase]
     var current = 0
@@ -54,7 +65,8 @@ extension AppModel {
             env.log.log(.info, category: "onboarding", "first start completed")
         } catch {
             env.log.log(.error, category: "onboarding", "first start failed: \(type(of: error))")
-            firstStart?.failure = ErrorText.message(for: error)
+            firstStart?.failure = (error as? FirstStartError)?.message
+                ?? (error is CancellationError ? "Đã huỷ." : ErrorText.message(for: error))
         }
     }
 
@@ -86,14 +98,31 @@ extension AppModel {
     }
 
     /// Recovery runs only after the scan is complete (FR-51).
+    /// Stops when the task is cancelled, Photos access is lost, or nothing changes for `scanStallLimit`.
     private func waitForScan(_ env: AppEnvironment) async throws {
+        struct Signature: Equatable, Sendable {
+            var scan: ScanState
+            var overall: EngineSnapshot.Overall
+            var pending: Int
+            var assets: Int
+        }
+        var watchdog = ProgressWatchdog<Signature>(limit: Self.scanStallLimit, now: Date())
         while true {
+            try Task.checkCancellation()
             let snapshot = await env.coordinator.currentSnapshot()
             self.snapshot = snapshot
             if snapshot.scanState == .complete { return }
+            if snapshot.overall == .photosUnauthorized || env.photos.authorizationStatus().allowsReading == false {
+                throw FirstStartError.photosAccessLost
+            }
+            let signature = Signature(scan: snapshot.scanState, overall: snapshot.overall, pending: snapshot.pending,
+                                      assets: snapshot.backfillTotalAssets)
+            if watchdog.isStalled(signature, now: Date()) { throw FirstStartError.scanStalled }
             try await Task.sleep(for: .seconds(1))
         }
     }
+
+    static let scanStallLimit: TimeInterval = 10 * 60
 
     private func recoverReusedDestinations(_ plan: FirstStartPlan) async throws {
         guard let hardening else { throw EngineError.invalidState("recovery unavailable") }

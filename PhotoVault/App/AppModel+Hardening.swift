@@ -36,9 +36,19 @@ extension AppModel {
                 let now = Date()
                 try await env.store.write { db in try AppQueries.recordIntegrityCheck(db, at: now) }
             }
-            if summary.isClean { return "Kiểm tra xong: không thiếu file nào." }
+            if let self {
+                // A check replaces what was known for the destinations it covered.
+                let checked = id.map { [$0] } ?? self.destinations.map(\.id)
+                for destination in checked { self.integrityMismatches[destination] = summary.checksumMismatches[destination] }
+                await self.refresh()
+            }
+            if summary.isClean { return "Kiểm tra xong: không thiếu file nào và không file nào lệch checksum." }
             let missing = summary.missingFiles.values.reduce(0, +)
-            return "Kiểm tra xong: thiếu \(VietnameseFormat.integer(missing)) file. Xem trong menu bar để quyết định."
+            let mismatched = summary.checksumMismatches.values.reduce(0, +)
+            var parts: [String] = []
+            if missing > 0 { parts.append("thiếu \(VietnameseFormat.integer(missing)) file") }
+            if mismatched > 0 { parts.append("\(VietnameseFormat.integer(mismatched)) file lệch checksum") }
+            return "Kiểm tra xong: \(parts.joined(separator: ", ")). Xem trong menu bar."
         }
     }
 

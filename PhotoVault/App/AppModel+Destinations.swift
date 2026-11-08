@@ -30,6 +30,14 @@ extension AppModel {
     func pickLocalFolder() async -> PendingLocalDestination? {
         guard let env else { return nil }
         guard let pick = FolderPicker.chooseFolder(message: "Chọn thư mục trên NAS hoặc ổ ngoài đã mount trong Finder.") else { return nil }
+        let existing = destinations.compactMap { record in
+            record.kind == .localFolder ? record.config.displayPath.map { (name: record.displayName, path: $0) } : nil
+        }
+        if let hit = DestinationNesting.conflict(candidate: pick.url.resolvingSymlinksInPath().path, existing: existing)
+            ?? DestinationNesting.conflict(candidate: pick.url.path, existing: existing) {
+            showNotice(DestinationNesting.message(name: hit.name, relation: hit.relation), isError: true)
+            return nil
+        }
         let probe = DestinationBuilder.local(id: .local(), bookmark: pick.bookmark, store: env.store, disk: env.disk, log: env.log)
         do {
             let marker = try await probe.readMarker()

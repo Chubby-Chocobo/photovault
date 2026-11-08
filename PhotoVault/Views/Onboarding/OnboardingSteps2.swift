@@ -121,6 +121,9 @@ struct StartStep: View {
                 }
             }
         }
+        if let problem = model.startError {
+            Banner(.danger, title: "Chưa thể bắt đầu", message: problem)
+        }
         if let failure = app.firstStart?.failure {
             Banner(.danger, title: "Không bắt đầu được", message: failure) {
                 Button("Thử lại") { Task { await model.start() } }

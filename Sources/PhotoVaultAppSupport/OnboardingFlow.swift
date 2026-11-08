@@ -41,7 +41,10 @@ public struct OnboardingProgress: Equatable, Sendable {
 
     public init() {}
 
-    public func canAdvance(_ facts: OnboardingFacts) -> Bool {
+    public func canAdvance(_ facts: OnboardingFacts) -> Bool { Self.isSatisfied(step, facts) }
+
+    /// Whether the requirement of `step` holds for the current facts (Start itself never "passes").
+    public static func isSatisfied(_ step: OnboardingStep, _ facts: OnboardingFacts) -> Bool {
         switch step {
         case .googleSignIn: return facts.googleSignedIn
         case .photosPermission: return facts.photosAuthorization.allowsReading
@@ -51,6 +54,14 @@ public struct OnboardingProgress: Equatable, Sendable {
         case .archiveTimeZone, .syncMode, .notifications, .summary: return true
         }
     }
+
+    /// The first step before `target` whose requirement no longer holds, if any.
+    public static func firstUnsatisfied(before target: OnboardingStep, _ facts: OnboardingFacts) -> OnboardingStep? {
+        OnboardingStep.allCases.first { $0 < target && !isSatisfied($0, facts) }
+    }
+
+    /// Start re-validates the whole plan: the first broken step, nil when everything holds.
+    public static func firstProblem(_ facts: OnboardingFacts) -> OnboardingStep? { firstUnsatisfied(before: .start, facts) }
 
     /// The optional NAS step offers "Bỏ qua" while no folder is chosen.
     public func canSkip(_ facts: OnboardingFacts) -> Bool { step == .nas && !facts.nasFolderChosen }
@@ -70,10 +81,16 @@ public struct OnboardingProgress: Equatable, Sendable {
         return true
     }
 
-    /// Sidebar jump: only to steps already reached, and not after Start.
+    /// Sidebar jump: only to steps already reached, not after Start, and forward only while every
+    /// earlier step's requirement still holds (the owner may have changed an answer since).
+    public func canJump(to target: OnboardingStep, _ facts: OnboardingFacts) -> Bool {
+        guard !facts.started, target <= furthest else { return false }
+        return target <= step || Self.firstUnsatisfied(before: target, facts) == nil
+    }
+
     @discardableResult
     public mutating func jump(to target: OnboardingStep, _ facts: OnboardingFacts) -> Bool {
-        guard !facts.started, target <= furthest else { return false }
+        guard canJump(to: target, facts) else { return false }
         step = target
         return true
     }

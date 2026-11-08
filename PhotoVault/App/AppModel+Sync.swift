@@ -54,13 +54,22 @@ extension AppModel {
 
     /// Reveals a local destination's folder in Finder; the bookmark gives the current location.
     func revealInFinder(_ record: DestinationRecord) {
-        guard let bookmark = record.config.bookmark, let url = FolderPicker.resolvedURL(bookmark: bookmark) else {
-            showNotice("Không mở được thư mục. Hãy chọn lại thư mục trong Settings › Đích.", isError: true)
+        let failure = "Không mở được thư mục. Hãy chọn lại thư mục trong Settings › Đích."
+        guard let bookmark = record.config.bookmark else {
+            showNotice(failure, isError: true)
             return
         }
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        NSWorkspace.shared.open(url)
+        Task {
+            // Resolving can block on a slow volume: keep it off the main thread.
+            let url = await Task.detached(priority: .userInitiated) { FolderPicker.resolvedURL(bookmark: bookmark) }.value
+            guard let url else {
+                showNotice(failure, isError: true)
+                return
+            }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            NSWorkspace.shared.open(url)
+        }
     }
 
     func revealLog() {

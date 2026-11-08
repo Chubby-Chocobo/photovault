@@ -32,6 +32,9 @@ final class OnboardingModel {
     var nas: PendingLocalDestination?
     var nasTesting = false
 
+    /// Why Start did nothing: an earlier answer no longer holds.
+    var startError: String?
+
     var libraryCount: Int?
     var driveFreeBytes: Int64?
 
@@ -63,7 +66,12 @@ final class OnboardingModel {
 
     func back() { _ = progress.back(facts) }
 
-    func jump(to target: OnboardingStep) { _ = progress.jump(to: target, facts) }
+    func canJump(to target: OnboardingStep) -> Bool { progress.canJump(to: target, facts) }
+
+    func jump(to target: OnboardingStep) {
+        startError = nil
+        _ = progress.jump(to: target, facts)
+    }
 
     private func stepEntered() {
         if progress.step == .summary { Task { await loadSummary() } }
@@ -188,7 +196,16 @@ final class OnboardingModel {
     // MARK: 9. Start
 
     func start() async {
-        guard let identity else { return }
+        // The sidebar lets the owner change earlier answers: check the whole plan again.
+        if let problem = OnboardingProgress.firstProblem(facts) {
+            startError = "Bước \(problem.rawValue) (\(problem.title)) chưa hợp lệ. Quay lại bước đó để sửa trước khi bắt đầu."
+            return
+        }
+        guard let identity else {
+            startError = "Chưa đăng nhập Google. Quay lại bước 1."
+            return
+        }
+        startError = nil
         var plan = FirstStartPlan(identity: identity, root: rootChoice, timeZone: timeZone, scope: scope, nas: nas)
         if let current = plan.nas { plan.nas = current }
         await app.performFirstStart(plan)
