@@ -24,6 +24,53 @@ import Testing
         #expect(RootState.missingError(path: nil) == .offline)
     }
 
+    private struct FakeVolumes: VolumeLookup {
+        let uuids: [String: String]
+        func mountedVolumeUUID(containing path: String) -> String? {
+            uuids.filter { $0.key == "/" || path == $0.key || path.hasPrefix($0.key + "/") }.max { $0.key.count < $1.key.count }?.value
+        }
+    }
+
+    @Test func twoVolumesWithTheSameNameAreTold() {
+        let bookmarked = "UUID-OF-NAS-A"
+        let path = "/Volumes/Photos/backup"
+        let sameVolume = FakeVolumes(uuids: ["/": "BOOT", "/Volumes/Photos": bookmarked])
+        let otherVolume = FakeVolumes(uuids: ["/": "BOOT", "/Volumes/Photos": "UUID-OF-NAS-B"])
+        let unmounted = FakeVolumes(uuids: ["/": "BOOT"])
+        #expect(RootState.missingError(path: path, bookmarkVolumeUUID: bookmarked, volumes: sameVolume) == .rootMissing)
+        #expect(RootState.missingError(path: path, bookmarkVolumeUUID: bookmarked, volumes: otherVolume) == .offline)
+        #expect(RootState.missingError(path: path, bookmarkVolumeUUID: bookmarked, volumes: unmounted) == .offline)
+    }
+
+    @Test func rootsOutsideVolumesFollowTheirVolume() {
+        let boot = FakeVolumes(uuids: ["/": "BOOT"])
+        #expect(RootState.missingError(path: "/Users/me/backup", bookmarkVolumeUUID: "BOOT", volumes: boot) == .rootMissing)
+        let autofs = FakeVolumes(uuids: ["/": "BOOT"])
+        #expect(RootState.missingError(path: "/mnt/nas/backup", bookmarkVolumeUUID: "NAS", volumes: autofs) == .offline)
+    }
+
+    @Test func bookmarkedRootOnAnotherVolumeIsOffline() throws {
+        let fixture = try makeRoot()
+        try FileManager.default.removeItem(at: fixture.root)
+        let stored = URL.resourceValues(forKeys: [.volumeUUIDStringKey], fromBookmarkData: fixture.bookmark)?.volumeUUIDString
+        let uuid = try #require(stored)
+        let same = SecurityScopedBookmarkRoot(bookmark: fixture.bookmark, volumes: FakeVolumes(uuids: ["/": uuid]), onRefresh: { _ in })
+        #expect(throws: DestinationError.rootMissing) { try same.withRoot { _ in () } }
+        let other = SecurityScopedBookmarkRoot(bookmark: fixture.bookmark, volumes: FakeVolumes(uuids: ["/": "OTHER"]), onRefresh: { _ in })
+        #expect(throws: DestinationError.offline) { try other.withRoot { _ in () } }
+    }
+
+    @Test func missingRootClearsWhenTheFolderReturns() async throws {
+        let fixture = try makeRoot()
+        let access = SecurityScopedBookmarkRoot(bookmark: fixture.bookmark, cacheWindow: 0, onRefresh: { _ in })
+        let destination = LocalFolderDestination(id: .local(), root: access)
+        #expect(await destination.checkAvailability() == .active)
+        try FileManager.default.removeItem(at: fixture.root)
+        #expect(await destination.checkAvailability() == .paused(.rootMissing))
+        try FileManager.default.createDirectory(at: fixture.root, withIntermediateDirectories: true)
+        #expect(await destination.checkAvailability() == .active)
+    }
+
     @Test func deletedFolderResolvesToRootMissing() throws {
         let fixture = try makeRoot()
         try FileManager.default.removeItem(at: fixture.root)

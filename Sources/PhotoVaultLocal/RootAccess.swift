@@ -37,10 +37,16 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
     private var current: Lease?
     private let cacheWindow: TimeInterval
     private let onRefresh: @Sendable (Data) -> Void
+    private let volumes: any VolumeLookup
     private(set) var resolveCount = 0
 
-    public init(bookmark: Data, cacheWindow: TimeInterval = 30, onRefresh: @escaping @Sendable (Data) -> Void) {
+    public convenience init(bookmark: Data, cacheWindow: TimeInterval = 30, onRefresh: @escaping @Sendable (Data) -> Void) {
+        self.init(bookmark: bookmark, cacheWindow: cacheWindow, volumes: SystemVolumeLookup(), onRefresh: onRefresh)
+    }
+
+    init(bookmark: Data, cacheWindow: TimeInterval = 30, volumes: any VolumeLookup, onRefresh: @escaping @Sendable (Data) -> Void) {
         self.bookmark = bookmark
+        self.volumes = volumes
         self.cacheWindow = cacheWindow
         self.onRefresh = onRefresh
     }
@@ -50,7 +56,7 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
     /// Creates the bookmark to store when the owner picks a folder.
     public static func makeBookmark(for url: URL) throws -> Data {
         do {
-            return try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+            return try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: [.volumeUUIDStringKey, .pathKey], relativeTo: nil)
         } catch {
             throw DestinationError.bookmarkInvalid
         }
@@ -98,7 +104,8 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
         do {
             url = try URL(resolvingBookmarkData: bookmark, options: Self.resolutionOptions, relativeTo: nil, bookmarkDataIsStale: &stale)
         } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
-            throw RootState.missingError(path: URL.resourceValues(forKeys: [.pathKey], fromBookmarkData: bookmark)?.path)
+            let stored = URL.resourceValues(forKeys: [.pathKey, .volumeUUIDStringKey], fromBookmarkData: bookmark)
+            throw RootState.missingError(path: stored?.path, bookmarkVolumeUUID: stored?.volumeUUIDString, volumes: volumes)
         } catch {
             throw DestinationError.bookmarkInvalid
         }

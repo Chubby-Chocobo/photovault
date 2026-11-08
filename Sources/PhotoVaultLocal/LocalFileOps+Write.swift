@@ -39,7 +39,7 @@ extension LocalFileOps {
         let expected = request.content.sha256
         return try withRoot { root in
             let parent = try parentDirectory(root, request.parent)
-            try requireFallbackIfNeeded(parent.device, allowFallback: allowFallback)
+            try requireFallbackIfNeeded(parent.volume, allowFallback: allowFallback)
             let parentPath = request.parent.remoteId
             let tmp = try tmpDirectory(root, create: true)
             var part: String?
@@ -60,7 +60,10 @@ extension LocalFileOps {
                     case .different: throw DestinationError.foreignFile
                     }
                 }
-                if part == nil { part = try writer.stage(.file(request.content.file), expectedSHA256: expected, in: tmp) }
+                if part == nil {
+                    part = try writer.stage(.file(request.content.file), expectedSHA256: expected, in: tmp)
+                    afterStaging?()
+                }
                 do {
                     try tmp.renameExclusive(part!, to: target, in: parent, allowCheckThenRename: allowFallback, memo: renameMemo)
                     parent.sync()
@@ -112,7 +115,7 @@ extension LocalFileOps {
         return try withRoot { root in
             let destination = try parentDirectory(root, to)
             let source = try root.openDirectory(sourceParent)
-            try requireFallbackIfNeeded(destination.device, allowFallback: allowFallback)
+            try requireFallbackIfNeeded(destination.volume, allowFallback: allowFallback)
             guard let st = try source.status(sourceName) else {
                 // A previous attempt may already have moved it.
                 if let moved = try destination.status(name), moved.isRegular { return try item(moved, path: target) }

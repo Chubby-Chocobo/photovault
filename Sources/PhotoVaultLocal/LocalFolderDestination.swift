@@ -12,7 +12,10 @@ public actor LocalFolderDestination: Destination {
     private let ops: LocalFileOps
     private let access: any RootAccess
     private let locks = FolderLockManager()
+    /// Serial: copies, fsyncs, hashes and renames, one at a time.
     private let queue: BlockingQueue
+    /// Concurrent: probes, health checks, marker and small-file reads never wait behind a copy.
+    private let metadataQueue: BlockingQueue
     private let disk: (any DiskSpaceProvider)?
     private let log: any LogSink
 
@@ -21,13 +24,14 @@ public actor LocalFolderDestination: Destination {
     }
 
     init(id: DestinationID, root: any RootAccess, disk: (any DiskSpaceProvider)? = nil, log: any LogSink = NullLogSink(),
-         renameMemo: ExclusiveRenameMemo) {
+         renameMemo: ExclusiveRenameMemo, afterStaging: (@Sendable () -> Void)? = nil) {
         self.id = id
+        self.metadataQueue = BlockingQueue(label: "photovault.local.meta.\(id.rawValue)", concurrent: true)
         self.queue = BlockingQueue(label: "photovault.local.\(id.rawValue)")
         self.access = root
         self.disk = disk
         self.log = log
-        self.ops = LocalFileOps(access: root, writer: AtomicFileWriter(), log: log, renameMemo: renameMemo)
+        self.ops = LocalFileOps(access: root, writer: AtomicFileWriter(), log: log, renameMemo: renameMemo, afterStaging: afterStaging)
     }
 
     /// Runs file work under the folder read lock; when the filesystem lacks an exclusive rename, repeats
@@ -46,7 +50,7 @@ public actor LocalFolderDestination: Destination {
     public func checkAvailability() async -> DestinationStatus {
         let ops = self.ops
         do {
-            try await queue.run { try ops.checkRootAndSweep() }
+            try await metadataQueue.run { try ops.checkRootAndSweep() }
             return .active
         } catch let error as DestinationError {
             return Self.status(for: error)
@@ -65,14 +69,14 @@ public actor LocalFolderDestination: Destination {
     /// Writes, reads back and deletes `.photovault-test` (FR-70).
     public func testConnection() async throws {
         let ops = self.ops
-        try await queue.run { try ops.testConnection() }
+        try await metadataQueue.run { try ops.testConnection() }
     }
 
     // MARK: destination.json
 
     public func readMarker() async throws -> DestinationMarker? {
         let ops = self.ops
-        return try await queue.run { try ops.readMarker() }
+        return try await metadataQueue.run { try ops.readMarker() }
     }
 
     /// Never overwrites: an existing marker with the same id is returned, another id throws `foreignFile`.
@@ -89,7 +93,7 @@ public actor LocalFolderDestination: Destination {
 
     public func ensureFolder(_ request: FolderRequest) async throws -> RemoteFolderRef {
         let ops = self.ops
-        return try await locks.withLock(request.parent.remoteId, write: false, on: queue) { try ops.ensureFolder(request) }
+        return try await locks.withLock(request.parent.remoteId, write: false, on: metadataQueue) { try ops.ensureFolder(request) }
     }
 
     public func upload(_ request: UploadRequest, onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
@@ -105,7 +109,7 @@ public actor LocalFolderDestination: Destination {
 
     public func probe(remoteId: String) async throws -> RemoteItem? {
         let ops = self.ops
-        return try await queue.run { try ops.probe(remoteId) }
+        return try await metadataQueue.run { try ops.probe(remoteId) }
     }
 
     /// SHA-256 of the file at `remoteId` (a relative path), nil when absent.
@@ -117,7 +121,7 @@ public actor LocalFolderDestination: Destination {
     /// Bytes of a small file (a sidecar) at `remoteId`, nil when absent; larger than `maxBytes` throws.
     public func readSmallFile(remoteId: String, maxBytes: Int = 1 << 20) async throws -> Data? {
         let ops = self.ops
-        return try await queue.run { try ops.readSmallFile(remoteId, maxBytes: maxBytes) }
+        return try await metadataQueue.run { try ops.readSmallFile(remoteId, maxBytes: maxBytes) }
     }
 
     public func replaceContent(remoteId: String, _ request: UploadRequest) async throws -> UploadResult {

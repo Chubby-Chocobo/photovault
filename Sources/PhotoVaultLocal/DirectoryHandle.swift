@@ -17,12 +17,14 @@ extension stat {
 final class DirectoryHandle: @unchecked Sendable {
     private let fd: Int32
     let device: dev_t
+    let volume: VolumeKey
     /// `device:inode` of this directory; stable across URL spellings and handle instances.
     let identity: String
 
-    private init(fd: Int32, device: dev_t, inode: ino_t) {
+    private init(fd: Int32, device: dev_t, inode: ino_t, volume: VolumeKey) {
         self.fd = fd
         self.device = device
+        self.volume = volume
         self.identity = "\(device):\(inode)"
     }
 
@@ -44,7 +46,7 @@ final class DirectoryHandle: @unchecked Sendable {
             close(fd)
             throw ErrorClassifier.destinationError(errno: code, atRoot: true)
         }
-        return DirectoryHandle(fd: fd, device: st.st_dev, inode: st.st_ino)
+        return DirectoryHandle(fd: fd, device: st.st_dev, inode: st.st_ino, volume: VolumeKey(fd: fd, device: st.st_dev))
     }
 
     // MARK: Traversal
@@ -75,7 +77,7 @@ final class DirectoryHandle: @unchecked Sendable {
             close(child)
             throw DestinationError.itemRejected(reason: "other volume")
         }
-        return DirectoryHandle(fd: child, device: device, inode: st.st_ino)
+        return DirectoryHandle(fd: child, device: device, inode: st.st_ino, volume: volume)
     }
 
     /// `fstatat(AT_SYMLINK_NOFOLLOW)`; nil when the entry does not exist.
@@ -161,7 +163,7 @@ final class DirectoryHandle: @unchecked Sendable {
                          memo: ExclusiveRenameMemo) throws {
         try LocalPath.validate(name: from)
         try LocalPath.validate(name: name)
-        if !memo.isUnsupported(destination.device) {
+        if !memo.isUnsupported(destination.volume) {
             if renameatx_np(fd, from, destination.fd, name, UInt32(RENAME_EXCL)) == 0 { return }
             let code = errno
             guard [ENOTSUP, EINVAL, ENOSYS].contains(code) else { throw Self.fail(code) }
@@ -172,7 +174,7 @@ final class DirectoryHandle: @unchecked Sendable {
                 }
                 let linkCode = errno
                 guard [ENOTSUP, EPERM, EMLINK, EINVAL, ENOSYS].contains(linkCode) else { throw Self.fail(linkCode) }
-                memo.markUnsupported(destination.device)
+                memo.markUnsupported(destination.volume)
             }
         }
         guard allowCheckThenRename else { throw ExclusiveRenameUnsupported() }

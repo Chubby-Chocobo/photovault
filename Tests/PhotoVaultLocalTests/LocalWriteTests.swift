@@ -205,8 +205,8 @@ import Testing
         let request = try fx.request("a.bin", "data", in: folder)
         // Supported volume: the unlocked pass succeeds.
         _ = try ops(fx, memo: memo).upload(request, allowFallback: false)
-        let dev = try FileManager.default.attributesOfItem(atPath: fx.root.path)[.systemNumber] as! NSNumber
-        memo.markUnsupported(dev_t(dev.int32Value))
+        let volume = try DirectoryHandle.openRoot(fx.root).volume
+        memo.markUnsupported(volume)
         let second = try fx.request("b.bin", "data2", in: folder)
         #expect(throws: ExclusiveRenameUnsupported.self) { _ = try ops(fx, memo: memo).upload(second, allowFallback: false) }
         #expect(try fx.names(".photovault/tmp").isEmpty)
@@ -214,6 +214,15 @@ import Testing
         _ = try ops(fx, memo: memo).upload(second, allowFallback: true)
         #expect(try fx.text("d/b.bin") == "data2")
         #expect(try fx.names(".photovault/tmp").isEmpty)
+    }
+
+    @Test func reusedDeviceNumberOfAnotherVolumeInheritsNothing() throws {
+        let fx = try LocalFixture()
+        let volume = try DirectoryHandle.openRoot(fx.root).volume
+        let memo = ExclusiveRenameMemo()
+        memo.markUnsupported(volume)
+        #expect(memo.isUnsupported(volume))
+        #expect(!memo.isUnsupported(VolumeKey(device: volume.device, identity: "another-volume-uuid")))
     }
 
     @Test func permissionErrorBelowTheRootIsItemLevel() async throws {

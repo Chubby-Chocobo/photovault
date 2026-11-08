@@ -22,8 +22,8 @@ struct LocalFileOps: Sendable {
     }
 
     /// Before staging: a volume known to lack exclusive rename needs the write-locked path from the start.
-    func requireFallbackIfNeeded(_ device: dev_t, allowFallback: Bool) throws {
-        if !allowFallback, renameMemo.isUnsupported(device) { throw ExclusiveRenameUnsupported() }
+    func requireFallbackIfNeeded(_ volume: VolumeKey, allowFallback: Bool) throws {
+        if !allowFallback, renameMemo.isUnsupported(volume) { throw ExclusiveRenameUnsupported() }
     }
 
     func withRoot<T>(_ body: (DirectoryHandle) throws -> T) throws -> T {

@@ -14,15 +14,33 @@ enum RootState {
         return false
     }
 
-    /// `offline` when the path lies on a `/Volumes/<name>` that is not mounted (or the path is unknown);
-    /// `rootMissing` when the volume is there but the folder is gone.
-    static func missingError(path: String?) -> DestinationError {
+    /// `offline` when the volume the root lived on is not the one mounted at its path now (or the path is
+    /// unknown); `rootMissing` when that same volume is mounted but the folder is gone.
+    /// `bookmarkVolumeUUID` is the volume UUID stored in the bookmark; without one only the mount point's
+    /// presence under `/Volumes` can tell.
+    static func missingError(path: String?, bookmarkVolumeUUID: String? = nil,
+                             volumes: any VolumeLookup = SystemVolumeLookup()) -> DestinationError {
         guard let path else { return .offline }
-        let parts = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
-        if parts.count >= 3, parts[1] == "Volumes" {
-            let mountPoint = "/Volumes/" + parts[2]
-            return FileManager.default.fileExists(atPath: mountPoint) ? .rootMissing : .offline
+        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard let bookmarkVolumeUUID else {
+            let parts = URL(fileURLWithPath: standardized).pathComponents
+            guard parts.count >= 3, parts[1] == "Volumes" else { return .rootMissing }
+            return FileManager.default.fileExists(atPath: "/Volumes/" + parts[2]) ? .rootMissing : .offline
         }
-        return .rootMissing
+        return volumes.mountedVolumeUUID(containing: standardized) == bookmarkVolumeUUID ? .rootMissing : .offline
+    }
+}
+
+/// Which volume is mounted at a path now; a seam so tests can stage two volumes with the same name.
+protocol VolumeLookup: Sendable {
+    /// UUID of the volume holding `path`, or of its nearest existing ancestor; nil when unknown.
+    func mountedVolumeUUID(containing path: String) -> String?
+}
+
+struct SystemVolumeLookup: VolumeLookup {
+    func mountedVolumeUUID(containing path: String) -> String? {
+        var url = URL(fileURLWithPath: path)
+        while !FileManager.default.fileExists(atPath: url.path), url.path != "/" { url.deleteLastPathComponent() }
+        return try? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
     }
 }

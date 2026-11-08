@@ -82,7 +82,7 @@ extension LocalFileOps {
     func writeMarker(_ marker: DestinationMarker, allowFallback: Bool) throws -> DestinationMarker {
         try withRoot { root in
             let support = try root.openDirectory(LocalPath.reservedDirectory, create: true)
-            try requireFallbackIfNeeded(support.device, allowFallback: allowFallback)
+            try requireFallbackIfNeeded(support.volume, allowFallback: allowFallback)
             func existingOrNil() throws -> DestinationMarker? {
                 guard let existing = try readMarker(in: support) else { return nil }
                 guard existing.id == marker.id else { throw DestinationError.foreignFile }
