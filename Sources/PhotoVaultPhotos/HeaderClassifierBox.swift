@@ -22,4 +22,5 @@ final class HeaderClassifierBox: @unchecked Sendable {
     func finish() -> HeaderClassifier.Outcome { state.withLock { $0.classifier.finish() } }
     var outcome: HeaderClassifier.Outcome { state.withLock { $0.classifier.outcome } }
     var stoppedEarly: Bool { state.withLock { $0.stoppedEarly } }
+    var overflowed: Bool { state.withLock { $0.classifier.overflowed } }
 }

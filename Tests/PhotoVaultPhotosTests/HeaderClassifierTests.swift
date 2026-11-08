@@ -48,6 +48,12 @@ struct HeaderClassifierTests {
                 break
             }
         }
+        if consumedAtConclusion == nil {
+            // Parses are spaced out as the prefix grows, so the answer may only come with the full file.
+            guard case .present(let metadata) = classifier.finish() else { Issue.record("expected present at finish"); return }
+            #expect(metadata.make == "Canon")
+            consumedAtConclusion = classifier.bytesConsumed
+        }
         let consumed = try #require(consumedAtConclusion)
         #expect(consumed > 170_000, "concluded after only \(consumed) bytes")
     }
@@ -79,5 +85,23 @@ struct HeaderClassifierTests {
         guard let heic = TestImages.make(type: .heic) else { return }
         let (outcome, _) = feed(heic, chunk: 512)
         guard case .absent = outcome else { Issue.record("expected absent, got \(outcome)"); return }
+    }
+
+    @Test func prefixLargerThanTheMemoryCapStopsBufferingWithoutConcluding() throws {
+        let jpeg = try #require(TestImages.make(type: .jpeg, spec: TestImages.Spec(dateTimeOriginal: "2024:05:01 10:00:00")))
+        let padded = TestImages.padJPEGHeader(jpeg, segments: 3)
+        var classifier = HeaderClassifier(parseStride: 1024, maxBuffered: 4096)
+        for piece in TestImages.chunks(padded, size: 1000) { _ = classifier.append(piece) }
+        #expect(classifier.overflowed)
+        #expect(classifier.bytesConsumed == 0)
+        #expect(classifier.finish() == .needMore)
+    }
+
+    @Test func cameraIdentityIsStillFoundWithDoublingParseSchedule() throws {
+        let jpeg = try #require(TestImages.make(type: .jpeg, spec: camera))
+        let padded = TestImages.padJPEGHeader(jpeg, segments: 3)
+        let (outcome, _) = feed(padded, chunk: 4096, stride: 64 << 10)
+        guard case .present(let metadata) = outcome else { Issue.record("expected present, got \(outcome)"); return }
+        #expect(metadata.make == "Canon")
     }
 }

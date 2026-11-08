@@ -20,16 +20,27 @@ struct HeaderClassifier {
         var isConclusive: Bool { self != .needMore }
     }
 
+    static let maxParseIncrement = 1 << 20
+
     private let source: CGImageSource
     private let parseStride: Int
+    private let maxBuffered: Int
     private var buffer = Data()
-    private var consumedAtLastParse = 0
+    private var nextParseAt: Int
     private(set) var outcome: Outcome = .needMore
+    /// The prefix grew past `maxBuffered` without an answer: buffering stopped, and the caller
+    /// classifies from the complete file on disk instead.
+    private(set) var overflowed = false
 
-    /// - Parameter parseStride: bytes of new data between ImageIO updates. `CGImageSourceUpdateData`
-    ///   takes the whole prefix each time, so parsing every chunk would be quadratic.
-    init(parseStride: Int = 64 << 10) {
+    /// - Parameters:
+    ///   - parseStride: bytes before the first ImageIO update. `CGImageSourceUpdateData` takes the
+    ///     whole prefix each time, so later updates wait until the prefix doubles, at most
+    ///     `maxParseIncrement` more bytes, keeping both total work and detection delay bounded.
+    ///   - maxBuffered: largest prefix kept in memory.
+    init(parseStride: Int = 64 << 10, maxBuffered: Int = 32 << 20) {
         self.parseStride = max(1, parseStride)
+        self.maxBuffered = max(self.parseStride, maxBuffered)
+        self.nextParseAt = self.parseStride
         self.source = CGImageSourceCreateIncremental(nil)
     }
 
@@ -37,23 +48,28 @@ struct HeaderClassifier {
 
     /// Feeds the next chunk, in order. Returns the (sticky) outcome.
     mutating func append(_ chunk: Data) -> Outcome {
-        guard outcome == .needMore else { return outcome }
+        guard outcome == .needMore, !overflowed else { return outcome }
+        if buffer.count + chunk.count > maxBuffered {
+            overflowed = true
+            buffer = Data()
+            return outcome
+        }
         buffer.append(chunk)
-        if buffer.count - consumedAtLastParse >= parseStride {
+        if buffer.count >= nextParseAt {
             evaluate(isFinal: false)
+            nextParseAt = buffer.count + min(max(parseStride, buffer.count), Self.maxParseIncrement)
         }
         return outcome
     }
 
     /// Declares that the whole file has been delivered.
     mutating func finish() -> Outcome {
-        guard outcome == .needMore else { return outcome }
+        guard outcome == .needMore, !overflowed else { return outcome }
         evaluate(isFinal: true)
         return outcome
     }
 
     private mutating func evaluate(isFinal: Bool) {
-        consumedAtLastParse = buffer.count
         CGImageSourceUpdateData(source, buffer as CFData, isFinal)
         let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         if let props {

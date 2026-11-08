@@ -61,6 +61,10 @@ extension PhotoKitSource {
         let outcome = classifier.finish()
         let file = try? writer.finish()
         if file == nil { writer.abort() }
+        if classifier.overflowed, let file {
+            // Too large to classify in memory: read the properties from the complete file instead.
+            return HeaderResult(metadata: ImageIOMetadataReader.imageMetadata(of: file.url), isConclusive: true, completeFile: file)
+        }
         switch outcome {
         case .present(let metadata), .absent(let metadata):
             return HeaderResult(metadata: metadata, isConclusive: true, completeFile: file)
