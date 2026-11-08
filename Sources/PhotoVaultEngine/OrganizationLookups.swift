@@ -1,0 +1,72 @@
+import Foundation
+import GRDB
+import PhotoVaultCore
+import PhotoVaultStore
+
+/// Reads that sidecars, descriptions and views share: device names and cached geocodes.
+enum OrganizationLookups {
+    static func deviceName(_ db: Database, asset: AssetRecord, resolver: DeviceNameResolver = .bundled) throws -> String? {
+        guard let model = asset.cameraModel, !DeviceNameResolver.normalize(model).isEmpty else { return nil }
+        let key = DeviceNameResolver.key(make: asset.cameraMake, model: model)
+        let groupId = try DeviceGroupRepository.group(db, forMakeModelKey: key)?.groupId ?? DeviceNameResolver.groupId(forKey: key)
+        if let group = try DeviceGroupRepository.group(db, id: groupId) { return group.displayName }
+        return resolver.displayName(make: asset.cameraMake, model: model)
+    }
+
+    /// Geocode of the asset's cell in the display language; nil when place names are off, the
+    /// cell is not geocoded, or the asset is hidden while hidden assets are not uploaded.
+    static func place(_ db: Database, asset: AssetRecord, settings: GlobalSettings) throws -> GeoPlace? {
+        guard settings.placeNamesEnabled, settings.includeHidden || !asset.isHidden,
+              let cell = asset.geoCell ?? asset.location.map(GeoCell.init) else { return nil }
+        let english = try GeoCacheRepository.fetch(db, cell: cell, locale: "en")?.place
+        guard english != nil else { return nil }
+        if settings.placeNameLanguage == "en" { return english }
+        return try GeoCacheRepository.fetch(db, cell: cell, locale: settings.placeNameLanguage)?.place ?? english
+    }
+
+    /// FR-43 description text for the files of `asset`.
+    static func descriptionText(_ db: Database, asset: AssetRecord, settings: GlobalSettings) throws -> String? {
+        DescriptionBuilder.text(asset: asset, deviceName: try deviceName(db, asset: asset), place: try place(db, asset: asset, settings: settings))
+    }
+
+    /// Both locale maps for the given cells, for the view rules.
+    static func geocodes(_ db: Database, cells: Set<GeoCell>, language: String) throws -> (english: [GeoCell: GeoPlace], display: [GeoCell: GeoPlace]) {
+        var english: [GeoCell: GeoPlace] = [:]
+        var display: [GeoCell: GeoPlace] = [:]
+        for cell in cells {
+            if let entry = try GeoCacheRepository.fetch(db, cell: cell, locale: "en") { english[cell] = entry.place }
+            if language != "en", let entry = try GeoCacheRepository.fetch(db, cell: cell, locale: language) { display[cell] = entry.place }
+        }
+        return (english, display)
+    }
+}
+
+/// The last description written to a Drive file, so a refresh only touches files whose text changed.
+enum DescriptionState {
+    private static func key(_ destinationId: DestinationID, _ assetKey: AssetKey) -> String { "desc:\(destinationId.rawValue):\(assetKey.rawValue)" }
+
+    static func record(_ db: Database, destinationId: DestinationID, key assetKey: AssetKey, text: String) throws {
+        try KeyValueRepository.set(db, key(destinationId, assetKey), text)
+    }
+
+    static func recorded(_ db: Database, destinationId: DestinationID, key assetKey: AssetKey) throws -> String? {
+        try KeyValueRepository.string(db, key(destinationId, assetKey))
+    }
+}
+
+/// FR-43: `Camera: … · Lens: … · Place: …`; parts that are unknown are left out, nil when none is known.
+enum DescriptionBuilder {
+    static func text(asset: AssetRecord, deviceName: String?, place: GeoPlace?) -> String? {
+        var parts: [String] = []
+        if let deviceName, !deviceName.isEmpty { parts.append("Camera: \(deviceName)") }
+        if let lens = asset.lensModel?.trimmingCharacters(in: .whitespaces), !lens.isEmpty { parts.append("Lens: \(lens)") }
+        if let place {
+            var names: [String] = []
+            for name in [place.locality, place.administrativeArea, place.country] {
+                if let name, !name.isEmpty, !names.contains(name) { names.append(name) }
+            }
+            if !names.isEmpty { parts.append("Place: " + names.joined(separator: ", ")) }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}

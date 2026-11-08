@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Onboarding — PhotoVault mockup</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="mockup-theme.css">
+</head>
+<!--
+  FR-01 onboarding, 9 steps in spec order. Window ~720x560.
+  Step 5 shows FR-06 counts per sync mode and the exact UI note.
+  Step 8 shows the "cần giải phóng X GB" warning when Mac free space is under the backfill threshold.
+  Step 9 runs: baseline (FR-15) -> scan (FR-10) -> restore (FR-51, only when reusing) -> upload.
+-->
+<body class="mac" x-data="onboarding()">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 16l5-5 4 4"/><path d="M16 15V9m0 0l-2.5 2.5M16 9l2.5 2.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17.5h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></symbol>
+</svg>
+
+<main class="mx-auto px-4 pt-10 flex flex-col items-center gap-4">
+
+  <!-- Reviewer controls -->
+  <div class="mock-panel w-full max-w-[720px] flex flex-wrap items-center gap-x-5 gap-y-2">
+    <span class="label">Mockup</span>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="oldRoot"> Drive đã có root PhotoVault cũ (bước 3)</label>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="nas.found"> NAS có .photovault/destination.json (bước 7)</label>
+    <label class="flex items-center gap-1.5">Ổ Mac trống <input type="range" min="2" max="80" step="0.5" x-model.number="macFree" aria-label="Dung lượng trống ổ Mac"> <span class="num" x-text="gb(macFree)"></span></label>
+  </div>
+
+  <section class="window w-full max-w-[720px]" style="height:560px" aria-label="Chào mừng đến PhotoVault">
+    <div class="flex flex-1 min-h-0">
+      <!-- Sidebar: steps in FR-01 order -->
+      <nav class="sidebar w-[210px] flex-none flex flex-col" aria-label="Các bước">
+        <div class="titlebar justify-start"><div class="traffic"><i></i><i></i><i></i></div></div>
+        <div class="px-4 pt-3 pb-3 flex items-center gap-2.5">
+          <div class="app-icon sm"><svg><use href="#i-pv"/></svg></div>
+          <div><div class="title">PhotoVault</div><div class="small t-2">Thiết lập lần đầu</div></div>
+        </div>
+        <ol class="px-2 space-y-0.5">
+          <template x-for="(s, i) in steps" :key="i">
+            <li>
+              <button class="menu-row plain" style="min-height:28px" :disabled="i + 1 > maxStep" @click="step = i + 1"
+                      :aria-current="step === i + 1 ? 'step' : null">
+                <span class="w-5 h-5 rounded-full flex-none flex items-center justify-center small font-semibold"
+                      :style="i + 1 < maxStep || (i + 1 < step) ? 'background:var(--accent-strong);color:#fff' : 'box-shadow:inset 0 0 0 1px var(--control-border)'">
+                  <template x-if="i + 1 < maxStep"><svg width="11" height="11"><use href="#i-check"/></svg></template>
+                  <template x-if="i + 1 >= maxStep"><span x-text="i + 1"></span></template>
+                </span>
+                <span x-text="s"></span>
+              </button>
+            </li>
+          </template>
+        </ol>
+        <div class="mt-auto p-4"><span class="anno">FR-01</span></div>
+      </nav>
+
+      <!-- Step content -->
+      <div class="content flex-1 flex flex-col min-w-0">
+        <div class="flex-1 overflow-y-auto px-8 pt-8 pb-4">
+
+          <!-- 1. Google sign-in -->
+          <div x-show="step === 1">
+            <h1 class="h1">Đăng nhập Google</h1>
+            <p class="t-2 mt-1">PhotoVault mở trình duyệt mặc định để bạn đăng nhập. Ứng dụng chỉ xin quyền tạo và đọc những file do chính nó tạo trên Drive của bạn.</p>
+            <div class="group mt-5">
+              <div class="row"><span class="grow">Quyền xin</span><span class="mono t-2">drive.file · openid · email</span></div>
+              <div class="row"><span class="grow">Lưu đăng nhập</span><span class="t-2">Chỉ trong Keychain của Mac</span></div>
+            </div>
+            <div class="mt-5">
+              <template x-if="google === 'none'">
+                <button class="btn primary lg" @click="signIn()">Đăng nhập bằng Google…</button>
+              </template>
+              <template x-if="google === 'waiting'">
+                <div class="flex items-center gap-3">
+                  <svg width="16" height="16" class="spin" style="color:var(--accent)"><use href="#i-spin"/></svg>
+                  <span>Đang chờ trình duyệt… <span class="mono t-2">127.0.0.1:53682</span></span>
+                  <button class="btn sm" @click="google = 'none'">Huỷ</button>
+                </div>
+              </template>
+              <template x-if="google === 'done'">
+                <div class="callout info"><svg><use href="#i-check"/></svg>
+                  <div class="flex-1">Đã đăng nhập: <strong>annh.photo@gmail.com</strong></div>
+                  <button class="btn sm" @click="google = 'none'">Dùng tài khoản khác</button>
+                </div>
+              </template>
+            </div>
+            <div class="mt-4"><span class="anno">FR-02 OAuth PKCE, loopback</span> <span class="anno">FR-03 Keychain</span></div>
+          </div>
+
+          <!-- 2. Photos permission -->
+          <div x-show="step === 2" x-cloak>
+            <h1 class="h1">Quyền truy cập Photos</h1>
+            <p class="t-2 mt-1">PhotoVault đọc thư viện Photos để backup bản gốc và bản chỉnh sửa. Ứng dụng không sửa thư viện và không cần Full Disk Access.</p>
+            <div class="mt-5 flex flex-wrap items-center gap-2">
+              <button class="btn primary lg" x-show="photos !== 'granted'" @click="photos = 'asking'">Cho phép truy cập Photos…</button>
+              <template x-if="photos === 'asking'">
+                <span class="flex gap-2 items-center small t-2">Giả lập hộp thoại macOS:
+                  <button class="btn sm" @click="photos = 'denied'">Không cho phép</button>
+                  <button class="btn sm primary" @click="photos = 'granted'">Cho phép</button>
+                </span>
+              </template>
+            </div>
+            <div class="callout info mt-4" x-show="photos === 'granted'"><svg><use href="#i-check"/></svg><div>Đã có quyền đọc toàn bộ thư viện Photos.</div></div>
+            <div class="callout danger mt-4" x-show="photos === 'denied'" role="alert"><svg><use href="#i-warn"/></svg>
+              <div class="flex-1">
+                <div class="title">PhotoVault chưa có quyền đọc Photos nên chưa thể chạy</div>
+                <p class="small t-2 mt-0.5">Mở System Settings › Privacy &amp; Security › Photos, bật PhotoVault rồi quay lại đây. Mọi bước sync đều dừng cho tới khi có quyền.</p>
+                <div class="flex gap-2 mt-2">
+                  <button class="btn sm" @click="say('Mở System Settings › Privacy & Security › Photos')">Mở System Settings</button>
+                  <button class="btn sm" @click="photos = 'granted'">Tôi đã bật, kiểm tra lại</button>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4"><span class="anno">FR-04 requestAuthorization(.readWrite)</span></div>
+          </div>
+
+          <!-- 3. Drive root folder (+ reuse prompt) -->
+          <div x-show="step === 3" x-cloak>
+            <h1 class="h1">Thư mục gốc trên Drive</h1>
+            <p class="t-2 mt-1">Mọi file backup nằm trong thư mục này. PhotoVault chỉ thấy file do chính nó tạo.</p>
+            <label class="block mt-5">
+              <span class="small t-2">Tên thư mục</span>
+              <input class="field w-full mt-1" x-model="rootName" :class="!rootName.trim() && 'invalid'" aria-describedby="root-hint">
+            </label>
+            <p id="root-hint" class="small t-2 mt-1">Đặt ở My Drive. Đổi tên sau trong Settings không ảnh hưởng gì tới backup.</p>
+
+            <div class="callout warn mt-5" x-show="oldRoot" role="alert"><svg><use href="#i-warn"/></svg>
+              <div class="flex-1">
+                <div class="title">Tìm thấy thư mục “Camera Uploads” do PhotoVault tạo trước đây</div>
+                <p class="small t-2 mt-0.5">Tạo ngày 12/03/2025 · khoảng 18.400 file. Bạn muốn dùng lại hay tạo thư mục mới?</p>
+                <div class="mt-2 space-y-1.5">
+                  <label class="flex items-start gap-2"><input type="radio" value="reuse" x-model="rootChoice" class="mt-0.5">
+                    <span><strong>Dùng lại thư mục này</strong><br><span class="small t-2">PhotoVault khôi phục trạng thái từ Drive trước khi upload, nên file đã có sẽ không bị upload trùng.</span></span></label>
+                  <label class="flex items-start gap-2"><input type="radio" value="new" x-model="rootChoice" class="mt-0.5">
+                    <span><strong>Tạo thư mục mới</strong><br><span class="small t-2">Thư mục cũ giữ nguyên, không bị xoá hay sửa.</span></span></label>
+                </div>
+                <div class="mt-1.5"><span class="anno">appProperties.pvRoot=1</span> <span class="anno">FR-51</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Archive timezone -->
+          <div x-show="step === 4" x-cloak>
+            <h1 class="h1">Múi giờ lưu trữ</h1>
+            <p class="t-2 mt-1">Dùng để tính ngày, tên thư mục và tên file cho mọi ảnh. Múi giờ này cố định, không đổi theo nơi bạn đang ở.</p>
+            <div class="group mt-5">
+              <div class="row"><span class="grow">Archive timezone</span>
+                <select class="field" x-model="tz" aria-label="Archive timezone">
+                  <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh (GMT+7) — giờ của máy</option>
+                  <option value="Asia/Bangkok">Asia/Bangkok (GMT+7)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (GMT+9)</option>
+                  <option value="Europe/Berlin">Europe/Berlin</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles</option>
+                </select>
+              </div>
+              <div class="row"><span class="grow t-2">Ví dụ: ảnh chụp lúc 23:30 UTC ngày 08/11/2026</span><span class="mono" x-text="tzExample"></span></div>
+            </div>
+            <p class="group-foot">Đổi sau trong Settings chỉ áp dụng cho ảnh chưa được xếp chỗ. <span class="anno">FR-07</span></p>
+          </div>
+
+          <!-- 5. Sync mode with counts + exact FR-06 note -->
+          <div x-show="step === 5" x-cloak>
+            <h1 class="h1">Backup từ đâu?</h1>
+            <p class="t-2 mt-1">Áp dụng cho Google Drive. NAS và ổ ngoài có phạm vi riêng.</p>
+            <div class="space-y-2 mt-5" role="radiogroup" aria-label="Sync mode">
+              <label class="group row cursor-pointer" :style="mode === 'full' && 'box-shadow: inset 0 0 0 2px var(--accent)'">
+                <input type="radio" value="full" x-model="mode">
+                <span class="grow"><strong>Toàn bộ thư viện</strong><br><span class="small t-2">Mọi ảnh và video hiện có, mới nhất trước.</span></span>
+                <span class="num font-semibold" x-text="fmt(total) + ' asset'"></span>
+              </label>
+              <label class="group row cursor-pointer" :style="mode === 'since' && 'box-shadow: inset 0 0 0 2px var(--accent)'">
+                <input type="radio" value="since" x-model="mode">
+                <span class="grow"><strong>Từ một ngày</strong>
+                  <span class="flex items-center gap-2 mt-1"><span class="small t-2">Từ</span><input type="date" class="field" x-model="since" @focus="mode = 'since'" aria-label="Ngày bắt đầu"></span></span>
+                <span class="num font-semibold" x-text="fmt(sinceCount) + ' asset'"></span>
+              </label>
+              <label class="group row cursor-pointer" :style="mode === 'newOnly' && 'box-shadow: inset 0 0 0 2px var(--accent)'">
+                <input type="radio" value="newOnly" x-model="mode">
+                <span class="grow"><strong>Chỉ ảnh mới</strong><br><span class="small t-2">Không backup ảnh đang có.</span></span>
+                <span class="num font-semibold">0 asset lúc này</span>
+              </label>
+            </div>
+            <div class="callout info mt-4"><svg><use href="#i-info"/></svg>
+              <div class="small">Ảnh mới = ảnh xuất hiện trong Photos trên Mac sau thời điểm này, kể cả ảnh cũ import sau</div>
+            </div>
+            <p class="group-foot">PhotoVault chỉ đếm số asset, không ước tính dung lượng. Đổi sau trong Settings: mở rộng thì xếp hàng thêm; thu hẹp chỉ huỷ phần chưa upload, không xoá gì ở đích.</p>
+            <div class="mt-2"><span class="anno">FR-06</span> <span class="anno" x-text="mode === 'since' ? 'since(' + since + ')' : mode"></span></div>
+          </div>
+
+          <!-- 6. Notifications -->
+          <div x-show="step === 6" x-cloak>
+            <h1 class="h1">Thông báo</h1>
+            <p class="t-2 mt-1">PhotoVault chạy nền trên menu bar; thông báo là cách nó báo bạn khi backup gặp vấn đề.</p>
+            <ul class="group mt-5 small">
+              <template x-for="n in notifTypes"><li class="row" style="min-height:28px" x-text="n"></li></template>
+            </ul>
+            <p class="group-foot">Mỗi loại × mỗi đích tối đa 1 lần / 12 giờ. <span class="anno">FR-61</span></p>
+            <div class="mt-4">
+              <button class="btn primary lg" x-show="notif !== 'granted'" @click="notif = 'granted'">Cho phép thông báo…</button>
+              <div class="callout info" x-show="notif === 'granted'"><svg><use href="#i-check"/></svg><div>Đã bật thông báo.</div></div>
+            </div>
+          </div>
+
+          <!-- 7. Optional NAS -->
+          <div x-show="step === 7" x-cloak>
+            <h1 class="h1">Thêm NAS hoặc ổ ngoài <span class="t-2 font-normal">(tuỳ chọn)</span></h1>
+            <p class="t-2 mt-1">Mount NAS trong Finder trước; PhotoVault không tự mount SMB. Có thể thêm hoặc bỏ đích sau trong Settings.</p>
+            <div class="group mt-5">
+              <div class="row"><span class="grow">Thư mục</span>
+                <span class="mono t-2 truncate" x-text="nas.path || 'Chưa chọn'"></span>
+                <button class="btn" @click="nas.path = '/Volumes/photo/PhotoVault'; nas.test = 'idle'">Chọn thư mục…</button>
+              </div>
+              <div class="row" x-show="nas.path"><span class="grow">Kiểm tra</span>
+                <span class="small" x-show="nas.test === 'ok'" style="color:var(--green)">Ghi, đọc và xoá .photovault-test thành công</span>
+                <svg width="14" height="14" class="spin" x-show="nas.test === 'running'"><use href="#i-spin"/></svg>
+                <button class="btn" @click="testNas()" :disabled="nas.test === 'running'">Test connection</button>
+              </div>
+              <div class="row" x-show="nas.path"><span class="grow">Phạm vi của đích này</span>
+                <select class="field" x-model="nas.mode" aria-label="Phạm vi NAS">
+                  <option value="full">Toàn bộ thư viện</option><option value="since">Từ một ngày</option><option value="newOnly">Chỉ ảnh mới</option>
+                </select>
+              </div>
+            </div>
+            <p class="group-foot" x-show="nas.path">Nội dung cũ được export lại từ Photos theo giới hạn tốc độ. Rule chi tiết (category, RAW, sidecar…) chỉnh ở Settings › Đích. <span class="anno">FR-70</span> <span class="anno">FR-71</span></p>
+            <div class="callout warn mt-4" x-show="nas.path && nas.found"><svg><use href="#i-warn"/></svg>
+              <div class="flex-1">
+                <div class="title">Thư mục này đã từng là đích PhotoVault</div>
+                <p class="small t-2 mt-0.5">Có .photovault/destination.json (tạo 02/05/2025). Dùng lại thì PhotoVault khôi phục trạng thái từ thư mục trước khi ghi, không ghi trùng.</p>
+                <div class="flex gap-4 mt-2 small">
+                  <label class="flex items-center gap-1.5"><input type="radio" value="reuse" x-model="nas.reuse"> Dùng lại</label>
+                  <label class="flex items-center gap-1.5"><input type="radio" value="new" x-model="nas.reuse"> Chọn thư mục khác</label>
+                </div>
+                <div class="mt-1.5"><span class="anno">FR-74</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. Summary + "cần giải phóng X GB" -->
+          <div x-show="step === 8" x-cloak>
+            <h1 class="h1">Tóm tắt</h1>
+            <p class="t-2 mt-1">Kiểm tra lại trước khi bắt đầu.</p>
+            <div class="group mt-5">
+              <div class="row"><span class="grow">Asset sẽ backup lên Drive</span><span class="num font-semibold" x-text="fmt(modeCount) + ' asset'"></span></div>
+              <div class="row"><span class="grow">Google Drive <span class="t-2" x-text="'· ' + rootName + (oldRoot && rootChoice === 'reuse' ? ' (dùng lại)' : '')"></span></span><span class="num">Trống 1,42 TB / 2 TB</span></div>
+              <div class="row" x-show="nas.path"><span class="grow">Synology NAS <span class="t-2 mono" x-text="nas.path"></span></span><span class="num">Trống 3,6 TB</span></div>
+              <div class="row"><span class="grow">Ổ Mac</span><span class="num" :class="needFree > 0 && 't-red'" x-text="'Trống ' + gb(macFree)"></span></div>
+            </div>
+            <p class="group-foot">Không có ước tính tổng dung lượng sẽ upload; PhotoVault chỉ biết số asset.</p>
+            <div class="callout danger mt-4" x-show="needFree > 0" role="alert"><svg><use href="#i-warn"/></svg>
+              <div class="flex-1">
+                <div class="title" x-text="'Cần giải phóng ' + gb(needFree) + ' trên ổ Mac'"></div>
+                <p class="small t-2 mt-0.5" x-text="'Ổ Mac còn ' + gb(macFree) + ', dưới ngưỡng backfill ' + low + ' GB. Bạn vẫn có thể bắt đầu: ảnh mới vẫn được backup, còn backfill chờ tới khi ổ trống từ ' + (low + 5) + ' GB.'"></p>
+                <div class="mt-1.5"><span class="anno">X = lowWatermark + 5 GB − trống (8.5)</span></div>
+              </div>
+            </div>
+            <div class="callout info mt-4" x-show="needFree <= 0"><svg><use href="#i-check"/></svg><div class="small">Ổ Mac đủ chỗ để backfill. Tốc độ export tối đa 20 GB/giờ, chỉ khi cắm sạc.</div></div>
+          </div>
+
+          <!-- 9. Start: baseline -> scan -> restore -> upload -->
+          <div x-show="step === 9" x-cloak>
+            <h1 class="h1">Sẵn sàng</h1>
+            <p class="t-2 mt-1">Bấm Bắt đầu để PhotoVault chốt mốc thời gian, quét thư viện, rồi mới upload.</p>
+            <ol class="group mt-5">
+              <template x-for="(p, i) in phases" :key="p.id">
+                <li class="row">
+                  <span class="w-5 h-5 flex items-center justify-center flex-none">
+                    <svg width="14" height="14" x-show="run.phase > i" style="color:var(--green)"><use href="#i-check"/></svg>
+                    <svg width="14" height="14" class="spin" x-show="run.phase === i && run.started" style="color:var(--accent)"><use href="#i-spin"/></svg>
+                    <span class="dot gray" x-show="run.phase < i || (!run.started && run.phase === i)"></span>
+                  </span>
+                  <span class="grow"><span x-text="p.label"></span> <span class="anno" x-text="p.fr"></span>
+                    <span class="block small t-2" x-text="p.detail()"></span></span>
+                </li>
+              </template>
+            </ol>
+            <p class="group-foot mt-2" x-show="run.phase >= phases.length">PhotoVault đang chạy trên menu bar. Có thể đóng cửa sổ này. <a href="menu-bar.html">Xem menu bar →</a></p>
+          </div>
+        </div>
+
+        <!-- Bottom bar -->
+        <div class="flex items-center gap-2 px-6 py-3" style="border-top:1px solid var(--separator)">
+          <span class="small t-2 num" x-text="'Bước ' + step + ' / 9'"></span>
+          <span class="flex-1"></span>
+          <button class="btn" x-show="step > 1 && !run.started" @click="step--">Quay lại</button>
+          <button class="btn" x-show="step === 7 && !nas.path" @click="next()">Bỏ qua</button>
+          <button class="btn primary" x-show="step < 9 && !(step === 7 && !nas.path)" :disabled="!canNext" @click="next()">Tiếp tục</button>
+          <button class="btn primary" x-show="step === 9 && !run.started" @click="start()">Bắt đầu</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" x-show="toast" x-transition.opacity x-text="toast" role="status" aria-live="polite" x-cloak></div>
+
+<footer class="mock-footer mock-panel" x-data="{ theme: 'auto', anno: true }"
+        x-init="$watch('theme', t => t === 'auto' ? document.documentElement.removeAttribute('data-theme') : document.documentElement.setAttribute('data-theme', t)); $watch('anno', a => document.body.classList.toggle('no-anno', !a))">
+  <div><strong>Dữ liệu mẫu</strong> — email, số asset, dung lượng và đường dẫn là giả lập. <a href="index.html">← Mọi màn hình</a></div>
+  <div class="flex items-center gap-3">
+    <div class="seg" role="group" aria-label="Giao diện">
+      <button :aria-pressed="theme === 'auto'" @click="theme = 'auto'">Hệ thống</button>
+      <button :aria-pressed="theme === 'light'" @click="theme = 'light'">Sáng</button>
+      <button :aria-pressed="theme === 'dark'" @click="theme = 'dark'">Tối</button>
+    </div>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="anno"> Chú thích FR</label>
+  </div>
+</footer>
+
+<script>
+  function onboarding() {
+    return {
+      step: 1,
+      maxStep: 1,
+      steps: ['Đăng nhập Google', 'Quyền Photos', 'Thư mục gốc Drive', 'Múi giờ lưu trữ', 'Sync mode', 'Thông báo', 'NAS (tuỳ chọn)', 'Tóm tắt', 'Bắt đầu'],
+      google: 'none',
+      photos: 'notAsked',
+      rootName: 'Camera Uploads',
+      oldRoot: true,
+      rootChoice: 'reuse',
+      tz: 'Asia/Ho_Chi_Minh',
+      mode: 'full',
+      since: '2024-01-01',
+      notif: 'notAsked',
+      nas: { path: '', test: 'idle', mode: 'full', found: false, reuse: 'reuse' },
+      macFree: 12,
+      low: 15,
+      run: { started: false, phase: 0, scanned: 0, matched: 0 },
+      toast: '',
+      // Sample library: assets per year (sum = 48.210).
+      years: { 2018: 2104, 2019: 3420, 2020: 4110, 2021: 5205, 2022: 7890, 2023: 9120, 2024: 7860, 2025: 5501, 2026: 3000 },
+      notifTypes: ['Mất quyền Photos', 'Cần đăng nhập Google lại', 'Đích sắp đầy hoặc đã đầy', 'Thư mục backup bị xoá hoặc vào Thùng rác', 'Kiểm tra toàn vẹn thấy thiếu file', 'Checksum lệch', 'NAS offline quá 7 ngày', 'Mất quyền truy cập thư mục (bookmark hỏng)', 'Ổ Mac đầy quá 24 giờ', 'Không sync được quá 24 giờ'],
+      fmt(n) { return n.toLocaleString('vi-VN'); },
+      gb(n) { return n.toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' GB'; },
+      say(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => (this.toast = ''), 2600); },
+      get total() { return Object.values(this.years).reduce((a, b) => a + b, 0); },
+      get sinceCount() {
+        const d = new Date(this.since);
+        if (isNaN(d)) return 0;
+        const y = d.getFullYear(), m = d.getMonth();
+        return Object.entries(this.years).reduce((c, [yr, n]) => c + (+yr > y ? n : +yr === y ? Math.round(n * (12 - m) / 12) : 0), 0);
+      },
+      get modeCount() { return this.mode === 'full' ? this.total : this.mode === 'since' ? this.sinceCount : 0; },
+      // Under the backfill threshold (lowWatermark): free up to the resume level low + 5 GB (spec 8.5).
+      get needFree() { return this.macFree < this.low ? this.low + 5 - this.macFree : 0; },
+      get tzExample() {
+        try {
+          const s = new Intl.DateTimeFormat('sv-SE', { timeZone: this.tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date('2026-11-08T23:30:00Z'));
+          return s.replace(/:/g, '.') + '_IMG_4821.HEIC';
+        } catch (e) { return '—'; }
+      },
+      get canNext() {
+        if (this.step === 1) return this.google === 'done';
+        if (this.step === 2) return this.photos === 'granted';
+        if (this.step === 3) return this.rootName.trim().length > 0;
+        if (this.step === 7) return !this.nas.path || this.nas.test === 'ok';
+        return true;
+      },
+      next() { if (this.step < 9) { this.step++; this.maxStep = Math.max(this.maxStep, this.step); } },
+      signIn() { this.google = 'waiting'; setTimeout(() => { if (this.google === 'waiting') this.google = 'done'; }, 1500); },
+      testNas() { this.nas.test = 'running'; setTimeout(() => (this.nas.test = 'ok'), 900); },
+      get reusing() { return (this.oldRoot && this.rootChoice === 'reuse') || (this.nas.path && this.nas.found && this.nas.reuse === 'reuse'); },
+      get phases() {
+        const self = this;
+        const list = [
+          { id: 'baseline', label: 'Chốt mốc thời gian (baseline)', fr: 'FR-15', detail: () => 'Từ lúc này, ảnh vào Photos được tính là “ảnh mới”.' },
+          { id: 'scan', label: 'Quét metadata thư viện', fr: 'FR-10', detail: () => self.fmt(self.run.scanned) + ' / ' + self.fmt(self.total) + ' asset · không export file nào' },
+        ];
+        if (this.reusing) list.push({ id: 'restore', label: 'Khôi phục trạng thái từ đích', fr: 'FR-51', detail: () => 'Đã ghép ' + self.fmt(self.run.matched) + ' file có sẵn · đích chưa nhận upload trong lúc này' });
+        list.push({ id: 'upload', label: 'Bắt đầu upload', fr: 'FR-11', detail: () => 'Ảnh mới trước, sau đó backfill mới nhất trước.' });
+        return list;
+      },
+      start() {
+        this.run.started = true;
+        const n = this.phases.length;
+        const tick = () => {
+          const id = this.phases[this.run.phase]?.id;
+          if (id === 'baseline') { this.run.phase++; return setTimeout(tick, 400); }
+          if (id === 'scan') {
+            this.run.scanned = Math.min(this.total, this.run.scanned + 4821);
+            if (this.run.scanned >= this.total) this.run.phase++;
+            return setTimeout(tick, 120);
+          }
+          if (id === 'restore') {
+            this.run.matched = Math.min(18402, this.run.matched + 2300);
+            if (this.run.matched >= 18402) this.run.phase++;
+            return setTimeout(tick, 140);
+          }
+          if (id === 'upload') { this.run.phase = n; }
+        };
+        setTimeout(tick, 300);
+      },
+    };
+  }
+</script>
+</body>
+</html>

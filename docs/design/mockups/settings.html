@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings — PhotoVault mockup</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="mockup-theme.css">
+</head>
+<!--
+  Settings window ~720x520 (SwiftUI Settings scene, toolbar tabs). Tabs per FR-05:
+  Chung · Nội dung · Sắp xếp · Địa danh & riêng tư · Đích · Nâng cao. Deep-link with #tab id.
+  One Alpine state for the whole window, so the global ceiling set in "Nội dung"
+  is reflected live in the per-destination rules editor (FR-72).
+-->
+<body class="mac" x-data="settings()" x-init="init()">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="t-general" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="t-content" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9.5" r="1.6"/><path d="M3 17l5-5 4 4 3-3 6 6"/></symbol>
+  <symbol id="t-org" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M7 11h10M7 15h6" stroke-linecap="round"/></symbol>
+  <symbol id="t-places" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="t-dest" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="7" rx="1.5"/><rect x="4" y="13.5" width="16" height="7" rx="1.5"/><path d="M8 7h.01M8 17h.01"/></symbol>
+  <symbol id="t-adv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.1 4.5 4.5 0 0 0 7 18z"/></symbol>
+  <symbol id="i-ssd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17.5h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6z"/></symbol>
+  <symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></symbol>
+</svg>
+
+<main class="mx-auto px-4 pt-10 flex flex-col items-center gap-4">
+  <div class="mock-panel w-full max-w-[720px] flex flex-wrap items-center gap-x-5 gap-y-2">
+    <span class="label">Mockup</span>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="mock.noShortcut"> drive.file không cho shortcut (M0-3)</label>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="mock.bigLibrary"> Thư viện ×3 (cảnh báo số item)</label>
+  </div>
+
+  <section class="window relative w-full max-w-[720px]" style="height:520px" aria-label="PhotoVault Settings">
+    <!-- Title bar + toolbar tabs -->
+    <div class="titlebar tall">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <span x-text="tabs.find(t => t.id === tab).label"></span>
+      <div class="tabbar" role="tablist" aria-label="Nhóm cài đặt">
+        <template x-for="t in tabs" :key="t.id">
+          <button class="tab" role="tab" :aria-selected="tab === t.id" @click="go(t.id)">
+            <svg><use :href="'#' + t.icon"/></svg><span x-text="t.label"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <div class="content flex-1 min-h-0 overflow-y-auto" style="border-top:1px solid var(--separator)">
+
+      <!-- ============ Chung ============ -->
+      <div x-show="tab === 'general'" class="px-6 py-5" role="tabpanel">
+        <div class="group-title">Ứng dụng</div>
+        <div class="group">
+          <label class="row"><span class="grow">Mở khi đăng nhập <span class="anno">FR-62</span></span><input type="checkbox" class="switch" x-model="g.launchAtLogin"></label>
+          <div class="row"><span class="grow">Thông báo <span class="anno">FR-61</span><br><span class="small t-2">Mỗi loại × mỗi đích tối đa 1 lần / 12 giờ</span></span><button class="btn" @click="say('Mở System Settings › Notifications › PhotoVault')">Mở System Settings…</button></div>
+        </div>
+
+        <div class="group-title">Tài khoản Google <span class="anno">FR-08</span></div>
+        <div class="group">
+          <div class="row"><span class="grow">annh.photo@gmail.com<br><span class="small t-2">Quyền: drive.file · openid · email</span></span>
+            <button class="btn" @click="sheet = 'changeAccount'">Đổi tài khoản…</button>
+            <button class="btn" @click="sheet = 'signout'">Đăng xuất…</button></div>
+          <div class="row"><span class="grow">Thư mục gốc</span>
+            <input class="field w-48" x-model="rootName" aria-label="Tên thư mục gốc">
+            <button class="btn" :disabled="rootName === rootSaved || !rootName.trim()" @click="rootSaved = rootName; say('Đổi tên thư mục gốc trên Drive (files.update name)')">Đổi tên</button></div>
+          <div class="row"><span class="grow t-2 small">Đổi sang thư mục khác sẽ đặt lại trạng thái đích Drive và khôi phục từ thư mục mới nếu nó đã có dữ liệu.</span>
+            <button class="btn" @click="sheet = 'changeRoot'">Đổi thư mục gốc…</button></div>
+        </div>
+
+        <div class="group-title">Ngày giờ <span class="anno">FR-07</span></div>
+        <div class="group">
+          <div class="row"><span class="grow">Archive timezone</span>
+            <select class="field" x-model="tz" aria-label="Archive timezone">
+              <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh (GMT+7)</option><option value="Asia/Tokyo">Asia/Tokyo (GMT+9)</option><option value="Europe/Berlin">Europe/Berlin</option>
+            </select></div>
+        </div>
+        <p class="group-foot">Đổi múi giờ chỉ áp dụng cho ảnh chưa được xếp chỗ. Ảnh đã backup giữ nguyên ngày và tên.</p>
+      </div>
+
+      <!-- ============ Nội dung (global ceilings) ============ -->
+      <div x-show="tab === 'content'" x-cloak class="px-6 py-5" role="tabpanel">
+        <div class="callout info mb-4"><svg><use href="#i-info"/></svg>
+          <div class="small">Đây là <strong>trần toàn cục</strong> cho mọi đích. Tắt ở đây thì không đích nào nhận loại đó, dù rule của đích đang bật. Bật thêm → xếp hàng các asset liên quan; tắt → chỉ huỷ phần còn chờ, không xoá gì ở đích. <span class="anno">FR-72 AND</span></div>
+        </div>
+        <div class="group-title">Loại nội dung <span class="anno">FR-05</span></div>
+        <div class="group">
+          <label class="row"><span class="grow">Video</span><input type="checkbox" class="switch" x-model="g.video"></label>
+          <label class="row"><span class="grow">Bản chỉnh sửa<br><span class="small t-2">Lưu cạnh bản gốc với hậu tố “(edited)”. Bản gốc không bao giờ bị ghi đè.</span></span><input type="checkbox" class="switch" x-model="g.edited"></label>
+          <label class="row"><span class="grow">Mọi khung burst</span><input type="checkbox" class="switch" x-model="g.burst"></label>
+          <label class="row"><span class="grow">Album Hidden<br><span class="small t-2">Vẫn được quét; chỉ không upload khi tắt.</span></span><input type="checkbox" class="switch" x-model="g.hidden"></label>
+        </div>
+        <div class="group-title">Sidecar <span class="anno">FR-90</span></div>
+        <div class="group">
+          <label class="row"><span class="grow">Sidecar JSON<br><span class="small t-2">Metadata đầy đủ: ngày giờ, vị trí, album, máy ảnh.</span></span><input type="checkbox" class="switch" x-model="g.sidecarJson"></label>
+          <label class="row"><span class="grow">Sidecar XMP<br><span class="small t-2">Favorite, caption, keyword, album cho Lightroom/digiKam.</span></span><input type="checkbox" class="switch" x-model="g.sidecarXmp"></label>
+        </div>
+      </div>
+
+      <!-- ============ Sắp xếp ============ -->
+      <div x-show="tab === 'organization'" x-cloak class="px-6 py-5" role="tabpanel">
+        <div class="group-title">Thư mục ngày <span class="anno">8.7</span></div>
+        <div class="group">
+          <div class="row"><span class="grow">Tách thư mục ngày khi một ngày có hơn<br><span class="small t-2">Chỉ tính ảnh camera. Áp dụng cho ngày mới từ giờ.</span></span>
+            <input type="number" min="2" max="200" class="field num-input" x-model.number="g.N" aria-label="Ngưỡng dayFolderThreshold"><span>ảnh</span></div>
+          <div class="row"><span class="grow small t-2" x-text="reorg.files > 0 ? 'Sắp xếp lại sẽ chuyển ' + fmt(reorg.files) + ' file của ' + fmt(reorg.days) + ' ngày vào thư mục ngày.' : 'Không có file nào cần chuyển. Thư mục ngày đã có không bị gộp ngược.'"></span>
+            <button class="btn" @click="sheet = 'reorg'">Sắp xếp lại…</button></div>
+        </div>
+
+        <div class="group-title">Phân loại <span class="anno">FR-20</span></div>
+        <div class="group">
+          <div class="row" style="align-items:flex-start"><span class="grow">Album app chat → “Saved”<br><span class="small t-2">So khớp chính xác tên album (không phân biệt hoa thường).</span>
+              <span class="flex flex-wrap gap-1 mt-2">
+                <template x-for="a in chatAlbums" :key="a"><span class="chip"><span x-text="a"></span><button @click="chatAlbums = chatAlbums.filter(x => x !== a)" :aria-label="'Bỏ ' + a">×</button></span></template>
+              </span>
+              <span class="flex gap-1.5 mt-2"><input class="field w-40" x-model="newAlbum" placeholder="Tên album" @keydown.enter="addAlbum()" aria-label="Thêm album"><button class="btn" @click="addAlbum()">Thêm</button></span>
+            </span></div>
+          <label class="row"><span class="grow">Ảnh thiếu EXIF máy ảnh → “Saved”<br><span class="small t-2">Ảnh scan có thể bị xếp vào Saved.</span></span><input type="checkbox" class="switch" x-model="g.exifSaved"></label>
+        </div>
+        <p class="group-foot">Đổi quy tắc phân loại chỉ áp dụng cho ảnh chưa được xếp chỗ.</p>
+
+        <div class="group-title">View trên Drive <span class="anno">FR-103</span></div>
+        <div class="callout warn mb-2" x-show="mock.noShortcut"><svg><use href="#i-warn"/></svg>
+          <div class="small">Quyền <span class="mono">drive.file</span> không cho tạo shortcut nên view đang tắt. PhotoVault không xin thêm quyền.</div></div>
+        <div class="group">
+          <template x-for="v in views" :key="v.id">
+            <label class="row"><span class="grow"><span x-text="v.name"></span> <span class="mono t-2" x-text="v.path"></span><br>
+                <span class="small t-2" x-text="v.blocked ? v.blocked : fmt(v.count * mult) + ' shortcut'"></span></span>
+              <input type="checkbox" class="switch" x-model="g.views[v.id]" :disabled="mock.noShortcut || !!v.blocked"></label>
+          </template>
+          <div class="row"><span class="grow">Ước tính số item trên My Drive<br>
+              <span class="small t-2 num" x-text="fmt(items.files) + ' file + ' + fmt(items.folders) + ' thư mục + ' + fmt(items.shortcuts) + ' shortcut'"></span></span>
+            <span class="num font-semibold" :class="items.total > itemWarn && 't-red'" x-text="fmt(items.total)"></span></div>
+        </div>
+        <div class="callout warn mt-2" x-show="items.total > itemWarn"><svg><use href="#i-warn"/></svg>
+          <div class="small">Vượt ngưỡng cảnh báo <span x-text="fmt(itemWarn)"></span> item. Google có thể giới hạn số item trong My Drive; cân nhắc tắt bớt view. <span class="anno">[VERIFY giới hạn My Drive]</span></div></div>
+        <div class="flex items-center gap-2 mt-2">
+          <p class="group-foot flex-1" style="margin:0">Tắt view thì cây hiện có được giữ nguyên. Shortcut không tốn dung lượng.</p>
+          <button class="btn" :disabled="mock.noShortcut" @click="sheet = 'rebuild'">Dựng lại view…</button>
+        </div>
+
+        <div class="group-title">Nhóm thiết bị (By device) <span class="anno">FR-104</span></div>
+        <div class="group">
+          <template x-for="grp in groups" :key="grp.id">
+            <div class="row" style="align-items:flex-start">
+              <div class="grow">
+                <template x-if="editing !== grp.id"><span class="font-medium" x-text="grp.name"></span></template>
+                <template x-if="editing === grp.id">
+                  <span class="flex gap-1.5 items-center">
+                    <input class="field w-48" x-model="draft" :class="renameConflict && 'invalid'" @keydown.enter="saveRename(grp)" @keydown.escape="editing = null" aria-label="Tên nhóm" x-init="$nextTick(() => $el.focus())">
+                    <button class="btn sm primary" @click="saveRename(grp)">Lưu</button><button class="btn sm" @click="editing = null">Huỷ</button>
+                  </span>
+                </template>
+                <div class="small t-2"><template x-for="m in grp.models" :key="m.key"><span class="mono mr-2" x-text="m.key"></span></template><span class="num" x-text="'· ' + fmt(grp.models.reduce((a, m) => a + m.count, 0)) + ' asset'"></span></div>
+                <div class="small t-red mt-1" x-show="editing === grp.id && renameConflict" role="alert">
+                  Trùng tên với nhóm “<span x-text="renameConflict?.name"></span>”.
+                  <button class="btn sm ml-1" @click="openMerge(grp, renameConflict)">Gộp vào nhóm đó</button></div>
+              </div>
+              <button class="btn sm" x-show="editing !== grp.id" @click="editing = grp.id; draft = grp.name">Đổi tên</button>
+              <button class="btn sm" x-show="editing !== grp.id" @click="openMerge(grp)">Gộp vào…</button>
+            </div>
+          </template>
+        </div>
+        <p class="group-foot">Đổi tên = đổi tên thư mục trên Drive. Gộp = gán model sang nhóm khác và chuyển shortcut.</p>
+      </div>
+
+      <!-- ============ Địa danh & riêng tư ============ -->
+      <div x-show="tab === 'places'" x-cloak class="px-6 py-5" role="tabpanel">
+        <div class="group">
+          <label class="row"><span class="grow">Đặt tên địa danh cho thư mục ngày<br><span class="small t-2">Ví dụ “2026-11-07 Đà Lạt”, hoặc “2026-10-02 Kyoto, Nhật Bản” khi ở nước ngoài.</span></span><input type="checkbox" class="switch" x-model="g.places"></label>
+          <div class="row"><span class="grow">Ngôn ngữ tên địa danh</span><select class="field" x-model="g.placeLang" :disabled="!g.places" aria-label="Ngôn ngữ"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></div>
+          <div class="row"><span class="grow">Quốc gia nhà<br><span class="small t-2">Không thêm tên nước cho nơi trong nước nhà.</span></span><select class="field" x-model="g.home" :disabled="!g.places" aria-label="Quốc gia nhà"><option value="VN">Việt Nam</option><option value="JP">Nhật Bản</option><option value="US">Hoa Kỳ</option></select></div>
+        </div>
+        <p class="group-foot">Chỉ đặt tên khi ngày đã kết thúc ít nhất 6 giờ và mọi ảnh có GPS cùng một tỉnh. Đổi ngôn ngữ thì đổi tên lại thư mục. <span class="anno">FR-81..83</span></p>
+
+        <div class="callout info mt-4"><svg><use href="#i-shield"/></svg>
+          <div class="small"><div class="title" style="font-size:12px">Quyền riêng tư <span class="anno">FR-85</span></div>
+            Để tra tên địa danh, PhotoVault gửi toạ độ đã làm tròn khoảng 1 km tới dịch vụ bản đồ của Apple. Không gửi ảnh, tên file hay thông tin nào khác. Tắt mục trên thì không gửi gì, thư mục ngày không có địa danh và view By place không được tạo.</div></div>
+
+        <div class="group-title">Tiến độ tra địa danh <span class="anno">FR-84</span></div>
+        <div class="group">
+          <div class="row"><span class="grow num">Đã tra 1.240 / 3.860 ô (~1 km)<div class="progress mt-1.5"><i style="width:32%"></i></div></span></div>
+          <div class="row"><span class="grow small t-2">Tối đa 20 request/phút, chạy nền nhiều ngày, không chặn upload.</span>
+            <button class="btn" :disabled="!g.places" @click="sheet = 'places'">Làm mới địa danh…</button></div>
+        </div>
+      </div>
+
+      <!-- ============ Đích ============ -->
+      <div x-show="tab === 'destinations'" x-cloak class="flex h-full" role="tabpanel">
+        <div class="w-[190px] flex-none flex flex-col" style="border-right:1px solid var(--separator)">
+          <ul class="p-2 space-y-0.5 flex-1" aria-label="Danh sách đích">
+            <template x-for="d in destList" :key="d.id">
+              <li><button class="menu-row plain" :aria-current="sel === d.id ? 'true' : null" @click="sel = d.id">
+                <svg width="18" height="18" class="t-2 flex-none"><use :href="d.icon"/></svg>
+                <span class="min-w-0"><span class="block truncate" x-text="d.name"></span><span class="flex items-center gap-1 small t-2"><span class="dot" :class="d.paused ? 'gray' : 'green'"></span><span x-text="d.paused ? 'Tạm dừng' : 'Đang hoạt động'"></span></span></span>
+              </button></li>
+            </template>
+          </ul>
+          <div class="flex p-1.5 gap-0.5" style="border-top:1px solid var(--separator)">
+            <button class="icon-btn" aria-label="Thêm đích" @click="say('Chọn thư mục qua NSOpenPanel → Test connection → hỏi phạm vi riêng (FR-70, FR-71)')">+</button>
+            <button class="icon-btn" aria-label="Xoá đích" :disabled="sel === 'drive'" @click="sheet = 'remove'">−</button>
+          </div>
+        </div>
+
+        <div class="flex-1 min-w-0 overflow-y-auto px-5 py-4">
+          <div class="flex items-center gap-2">
+            <svg width="22" height="22" class="t-2"><use :href="cur.icon"/></svg>
+            <div class="flex-1 min-w-0"><div class="h2" x-text="cur.name"></div><div class="small t-2 mono truncate" x-text="cur.path"></div></div>
+            <button class="btn" @click="cur.paused = !cur.paused" x-text="cur.paused ? 'Tiếp tục' : 'Tạm dừng'"></button>
+          </div>
+          <div class="mt-1"><span class="anno" x-text="cur.paused ? 'paused(userPaused)' : 'active'"></span> <span class="anno">FR-71 tạm dừng độc lập</span></div>
+
+          <template x-if="cur.kind === 'local'">
+            <div class="group mt-3">
+              <div class="row"><span class="grow">Dung lượng trống</span><span class="num" x-text="cur.free"></span></div>
+              <div class="row"><span class="grow small" :style="cur.test === 'ok' && 'color:var(--green)'" x-text="cur.test === 'ok' ? 'Ghi, đọc và xoá .photovault-test thành công' : 'Kiểm tra quyền ghi vào thư mục'"></span>
+                <button class="btn" @click="cur.test = 'ok'">Test connection</button>
+                <button class="btn" @click="say('NSOpenPanel: chọn lại thư mục để làm mới bookmark (FR-75)')">Chọn lại thư mục…</button></div>
+            </div>
+          </template>
+
+          <div class="group-title">Phạm vi <span class="anno">FR-06</span></div>
+          <div class="group">
+            <div class="row"><span class="grow">Backup từ</span>
+              <select class="field" x-model="cur.mode" aria-label="Phạm vi">
+                <option value="full" x-text="'Toàn bộ thư viện (' + fmt(48210) + ')'"></option>
+                <option value="since" x-text="'Từ 01/01/2024 (' + fmt(16361) + ')'"></option>
+                <option value="newOnly">Chỉ ảnh mới</option>
+              </select></div>
+          </div>
+          <p class="group-foot">Ảnh mới = ảnh xuất hiện trong Photos trên Mac sau thời điểm này, kể cả ảnh cũ import sau</p>
+
+          <div class="group-title">Rule nội dung <span class="anno">FR-72</span></div>
+          <div class="callout info mb-2"><svg><use href="#i-info"/></svg>
+            <div class="small">Setting ở tab <a href="#content" @click.prevent="go('content')">Nội dung</a> là trần toàn cục: một loại chỉ tới đích này khi bật ở <strong>cả hai</strong> nơi. Ô bị khoá là loại đang tắt ở Nội dung.</div></div>
+          <div class="group">
+            <template x-for="grp in ruleGroups" :key="grp.title">
+              <div class="row" style="align-items:flex-start">
+                <span class="w-24 flex-none t-2" x-text="grp.title"></span>
+                <span class="flex flex-wrap gap-x-4 gap-y-1.5 flex-1">
+                  <template x-for="k in grp.keys" :key="k">
+                    <label class="flex items-center gap-1.5" :class="ceilingOff(k) && 't-3'" :title="ceilingOff(k) ? 'Đang tắt ở Nội dung (trần toàn cục)' : ''">
+                      <input type="checkbox" :checked="cur.rules[k] && !ceilingOff(k)" :disabled="ceilingOff(k)" @change="cur.rules[k] = $event.target.checked">
+                      <span x-text="ruleLabel[k]"></span>
+                      <span class="small" x-show="ceilingOff(k)">· trần tắt</span>
+                    </label>
+                  </template>
+                </span>
+              </div>
+            </template>
+            <div class="row"><label class="flex items-center gap-1.5 grow"><input type="checkbox" x-model="cur.rules.skipOn"> Bỏ qua file lớn hơn</label>
+              <input type="number" min="1" class="field num-input" x-model.number="cur.rules.skipGb" :disabled="!cur.rules.skipOn" aria-label="Ngưỡng GB"><span>GB</span></div>
+          </div>
+          <p class="group-foot" x-text="'Hiệu lực: ' + effective"></p>
+
+          <div class="callout warn mt-3" x-show="changes.length" x-cloak><svg><use href="#i-warn"/></svg>
+            <div class="flex-1 small">
+              <div class="title" style="font-size:12px">Thay đổi chưa áp dụng</div>
+              <ul class="mt-1 space-y-0.5"><template x-for="c in changes" :key="c.text"><li x-text="c.text"></li></template></ul>
+              <p class="t-2 mt-1">Không xoá gì ở đích. Job đã xong giữ nguyên.</p>
+              <div class="flex gap-1.5 mt-2"><button class="btn sm" @click="revert()">Huỷ</button><button class="btn sm primary" @click="apply()">Áp dụng</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Nâng cao ============ -->
+      <div x-show="tab === 'advanced'" x-cloak class="px-6 py-5" role="tabpanel">
+        <div class="group-title">Tốc độ &amp; điện năng <span class="anno">8.5</span></div>
+        <div class="group">
+          <div class="row"><span class="grow">Tốc độ export khi backfill</span><input type="number" min="1" class="field num-input" x-model.number="g.rate" aria-label="GB mỗi giờ"><span>GB/giờ</span></div>
+          <label class="row"><span class="grow">Backfill chỉ khi cắm sạc</span><input type="checkbox" class="switch" x-model="g.backfillCharging"></label>
+          <label class="row"><span class="grow">Mọi upload chỉ khi cắm sạc</span><input type="checkbox" class="switch" x-model="g.allCharging"></label>
+          <label class="row"><span class="grow">Dừng khi mạng tính phí (hotspot)</span><input type="checkbox" class="switch" x-model="g.expensive"></label>
+        </div>
+
+        <div class="group-title">Dung lượng ổ Mac <span class="anno">FR-31</span></div>
+        <div class="group">
+          <div class="row"><span class="grow">Ngưỡng thấp (lowWatermark)<br><span class="small t-2">Dưới mức này dừng backfill; chạy lại khi trống từ <span x-text="g.low + 5"></span> GB.</span></span><input type="number" class="field num-input" x-model.number="g.low" :class="g.critical >= g.low && 'invalid'" aria-label="lowWatermark GB"><span>GB</span></div>
+          <div class="row"><span class="grow">Ngưỡng nguy cấp (criticalWatermark)<br><span class="small t-2">Dưới mức này dừng mọi export.</span></span><input type="number" class="field num-input" x-model.number="g.critical" :class="g.critical >= g.low && 'invalid'" aria-label="criticalWatermark GB"><span>GB</span></div>
+          <div class="row"><span class="grow">Giới hạn staging (mềm)</span><input type="number" class="field num-input" x-model.number="g.staging" aria-label="Staging GB"><span>GB</span></div>
+        </div>
+        <p class="group-foot t-red" x-show="g.critical >= g.low" role="alert">Ngưỡng nguy cấp phải nhỏ hơn ngưỡng thấp.</p>
+
+        <div class="group-title">Toàn vẹn &amp; bảo trì <span class="anno">FR-47</span> <span class="anno">FR-76</span></div>
+        <div class="group">
+          <div class="row"><span class="grow">Kiểm tra toàn vẹn mỗi</span><input type="number" min="1" class="field num-input" x-model.number="g.integrityDays" aria-label="Số ngày"><span>ngày</span></div>
+          <div class="row"><span class="grow small" :class="integrity === 'found' ? 't-red' : 't-2'">
+              <template x-if="integrity === 'idle'"><span>Lần cuối 05/11/2026 · không thiếu file</span></template>
+              <template x-if="integrity === 'running'"><span>Đang kiểm tra 3 đích…</span></template>
+              <template x-if="integrity === 'found'"><span>Thiếu 27 file trên Synology NAS. <a href="activity.html#prompt-integrity">Xem và quyết định…</a></span></template>
+            </span>
+            <button class="btn" :disabled="integrity === 'running'" @click="checkNow()">Kiểm tra ngay</button></div>
+          <div class="row"><span class="grow">Đối soát thư viện<br><span class="small t-2">Liệt kê lại toàn bộ Photos để bắt thay đổi bị sót.</span></span><button class="btn" @click="say('Reconciliation: chạy FR-53 rồi liệt kê lại mọi asset (FR-13)')">Đối soát</button></div>
+          <div class="row"><span class="grow">Khôi phục trạng thái từ đích<br><span class="small t-2">Ghép lại file đã có ở đích vào cơ sở dữ liệu, không upload lại.</span></span><button class="btn" @click="say('FR-51: chỉ chạy khi scan complete; đích tạm dừng (recovering) trong lúc đó')">Khôi phục…</button></div>
+          <div class="row"><span class="grow">Log</span><button class="btn" @click="say('Mở ~/Library/Logs/PhotoVault')">Mở thư mục log</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ Sheets ============ -->
+    <div class="sheet-backdrop" x-show="sheet" x-cloak @keydown.escape.window="sheet = null">
+      <div class="alert" role="alertdialog" aria-modal="true" :aria-label="sheetCopy.title">
+        <div class="title" x-text="sheetCopy.title"></div>
+        <p class="small t-2 mt-1.5" x-text="sheetCopy.body"></p>
+        <template x-if="sheet === 'merge'">
+          <select class="field w-full mt-3" x-model="mergeTo" aria-label="Nhóm đích">
+            <template x-for="o in groups.filter(x => x.id !== mergeFrom?.id)" :key="o.id"><option :value="o.id" x-text="o.name"></option></template>
+          </select>
+        </template>
+        <div class="mt-1.5"><span class="anno" x-text="sheetCopy.fr"></span></div>
+        <div class="stack">
+          <button class="btn primary" :class="sheetCopy.danger && 'danger-fill'" :disabled="!!sheetCopy.disabled" @click="confirmSheet()" x-text="sheetCopy.ok"></button>
+          <button class="btn" @click="sheet = null">Huỷ</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" x-show="toast" x-transition.opacity x-text="toast" role="status" aria-live="polite" x-cloak></div>
+
+<footer class="mock-footer mock-panel" x-data="{ theme: 'auto', anno: true }"
+        x-init="$watch('theme', t => t === 'auto' ? document.documentElement.removeAttribute('data-theme') : document.documentElement.setAttribute('data-theme', t)); $watch('anno', a => document.body.classList.toggle('no-anno', !a))">
+  <div><strong>Dữ liệu mẫu</strong> — tài khoản, đích, số asset, shortcut và nhóm thiết bị là giả lập. <a href="index.html">← Mọi màn hình</a></div>
+  <div class="flex items-center gap-3">
+    <div class="seg" role="group" aria-label="Giao diện">
+      <button :aria-pressed="theme === 'auto'" @click="theme = 'auto'">Hệ thống</button>
+      <button :aria-pressed="theme === 'light'" @click="theme = 'light'">Sáng</button>
+      <button :aria-pressed="theme === 'dark'" @click="theme = 'dark'">Tối</button>
+    </div>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="anno"> Chú thích FR</label>
+  </div>
+</footer>
+
+<script>
+  function settings() {
+    const allOn = { camera: true, screenshot: true, saved: true, photo: true, video: true, raw: true, original: true, edited: true, json: true, xmp: true, skipOn: false, skipGb: 4 };
+    return {
+      tab: 'general',
+      tabs: [
+        { id: 'general', label: 'Chung', icon: 't-general' },
+        { id: 'content', label: 'Nội dung', icon: 't-content' },
+        { id: 'organization', label: 'Sắp xếp', icon: 't-org' },
+        { id: 'places', label: 'Địa danh & riêng tư', icon: 't-places' },
+        { id: 'destinations', label: 'Đích', icon: 't-dest' },
+        { id: 'advanced', label: 'Nâng cao', icon: 't-adv' },
+      ],
+      // FR-05 defaults
+      g: {
+        launchAtLogin: true, video: true, edited: true, burst: true, hidden: false, sidecarJson: true, sidecarXmp: true,
+        exifSaved: true, N: 10, rate: 20, backfillCharging: true, allCharging: false, expensive: true, low: 15, critical: 5, staging: 4,
+        places: true, placeLang: 'vi', home: 'VN', views: { device: true, place: true, favorites: true }, integrityDays: 7,
+      },
+      appliedN: 10,
+      chatAlbums: ['WhatsApp', 'Zalo', 'Messenger', 'Telegram', 'Viber', 'LINE', 'Signal', 'Instagram', 'Facebook', 'Threads', 'X', 'TikTok'],
+      newAlbum: '',
+      rootName: 'Camera Uploads', rootSaved: 'Camera Uploads',
+      tz: 'Asia/Ho_Chi_Minh',
+      mock: { noShortcut: false, bigLibrary: false },
+      sheet: null,
+      toast: '',
+      integrity: 'idle',
+      // Destinations; sample rules follow the FR-72 README example.
+      sel: 'drive',
+      dests: {
+        drive: { id: 'drive', kind: 'drive', icon: '#i-cloud', name: 'Google Drive', path: 'My Drive/Camera Uploads', mode: 'full', paused: false, rules: { ...allOn, screenshot: false } },
+        nas: { id: 'nas', kind: 'local', icon: '#t-dest', name: 'Synology NAS', path: '/Volumes/photo/PhotoVault', free: '3,6 TB', test: 'idle', mode: 'full', paused: false, rules: { ...allOn } },
+        ssd: { id: 'ssd', kind: 'local', icon: '#i-ssd', name: 'Samsung T7', path: '/Volumes/T7/PhotoVault', free: '612 GB', test: 'idle', mode: 'since', paused: false, rules: { ...allOn, edited: false, xmp: false } },
+      },
+      saved: null,
+      ruleGroups: [
+        { title: 'Category', keys: ['camera', 'screenshot', 'saved'] },
+        { title: 'Loại', keys: ['photo', 'video', 'raw'] },
+        { title: 'Phiên bản', keys: ['original', 'edited'] },
+        { title: 'Sidecar', keys: ['json', 'xmp'] },
+      ],
+      ruleLabel: { camera: 'Camera', screenshot: 'Ảnh chụp màn hình', saved: 'Lưu từ app', photo: 'Ảnh (gồm video Live Photo)', video: 'Video', raw: 'RAW', original: 'Bản gốc', edited: 'Bản chỉnh sửa', json: 'JSON', xmp: 'XMP' },
+      ruleCount: { camera: 39480, screenshot: 5210, saved: 3520, photo: 44100, video: 4110, raw: 6020, original: 48210, edited: 2870, json: 48210, xmp: 48210 },
+      ceiling: { video: 'video', edited: 'edited', json: 'sidecarJson', xmp: 'sidecarXmp' },
+      // Device groups (FR-104), sample: key = make|model normalized.
+      groups: [
+        { id: 'g1', name: 'iPhone 15 Pro', models: [{ key: 'Apple|iPhone 15 Pro', count: 18210 }] },
+        { id: 'g2', name: 'iPhone 12', models: [{ key: 'Apple|iPhone 12', count: 6380 }] },
+        { id: 'g3', name: 'Sony A7 IV', models: [{ key: 'Sony|ILCE-7M4', count: 4920 }] },
+        { id: 'g4', name: 'Sony ILCE-7M3', models: [{ key: 'Sony|ILCE-7M3', count: 1050 }] },
+        { id: 'g5', name: 'DJI Mini 3 Pro', models: [{ key: 'DJI|FC3582', count: 640 }] },
+        { id: 'g6', name: 'Nikon Z 6_2', models: [{ key: 'Nikon|NIKON Z 6_2', count: 4 }] },
+      ],
+      editing: null, draft: '', mergeFrom: null, mergeTo: null,
+      itemWarn: 400000,
+
+      init() {
+        this.saved = JSON.parse(JSON.stringify(this.dests));
+        const fromHash = () => { const h = location.hash.slice(1); if (this.tabs.some(t => t.id === h)) this.tab = h; };
+        fromHash();
+        window.addEventListener('hashchange', fromHash);
+      },
+      go(id) { this.tab = id; history.replaceState(null, '', '#' + id); },
+      fmt(n) { return Math.round(n).toLocaleString('vi-VN'); },
+      say(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => (this.toast = ''), 2800); },
+      addAlbum() { const a = this.newAlbum.trim(); if (a && !this.chatAlbums.some(x => x.toLowerCase() === a.toLowerCase())) this.chatAlbums.push(a); this.newAlbum = ''; },
+
+      // Day-folder reorganize preview: lowering N promotes more days; raising N never demotes.
+      get reorg() {
+        const d = this.appliedN - this.g.N;
+        if (!(d > 0)) return { days: 0, files: 0 };
+        const days = Math.round(46 * d * (1 + d / 6));
+        return { days, files: Math.round(days * (this.g.N + 2) * 2.4) };
+      },
+
+      get mult() { return this.mock.bigLibrary ? 3 : 1; },
+      get views() {
+        return [
+          { id: 'device', name: 'By device', path: 'By device/<Thiết bị>/YYYY/MM', count: 31204 },
+          { id: 'place', name: 'By place', path: 'By place/<Quốc gia>/<Tỉnh>/YYYY', count: 22910, blocked: this.g.places ? '' : 'Cần bật địa danh ở tab Địa danh & riêng tư' },
+          { id: 'favorites', name: 'Favorites', path: 'Favorites/YYYY', count: 1842 },
+        ];
+      },
+      get items() {
+        const on = v => !this.mock.noShortcut && !v.blocked && this.g.views[v.id];
+        const shortcuts = this.views.filter(on).reduce((a, v) => a + v.count * this.mult, 0);
+        const files = 112640 * this.mult, folders = 1380 * this.mult;
+        return { files, folders, shortcuts, total: files + folders + shortcuts };
+      },
+
+      get renameConflict() {
+        const n = this.draft.trim().toLowerCase();
+        return this.groups.find(x => x.id !== this.editing && x.name.toLowerCase() === n) || null;
+      },
+      saveRename(grp) {
+        if (!this.draft.trim() || this.renameConflict) return;
+        grp.name = this.draft.trim(); this.editing = null;
+        this.say('Đổi tên thư mục By device/' + grp.name + ' trên Drive');
+      },
+      openMerge(grp, target) {
+        this.mergeFrom = grp;
+        this.mergeTo = (target || this.groups.find(x => x.id !== grp.id)).id;
+        this.editing = null; this.sheet = 'merge';
+      },
+
+      get destList() { return Object.values(this.dests); },
+      get cur() { return this.dests[this.sel]; },
+      ceilingOff(k) { return this.ceiling[k] ? !this.g[this.ceiling[k]] : false; },
+      get effective() {
+        const r = this.cur.rules, on = k => r[k] && !this.ceilingOff(k);
+        const part = keys => keys.filter(on).map(k => this.ruleLabel[k]).join(' + ') || '—';
+        return this.ruleGroups.map(gp => part(gp.keys)).join(' · ') + (r.skipOn ? ' · bỏ qua > ' + r.skipGb + ' GB' : '');
+      },
+      get changes() {
+        if (!this.saved) return [];
+        const r = this.cur.rules, s = this.saved[this.sel].rules, out = [];
+        Object.keys(this.ruleLabel).forEach(k => {
+          if (r[k] === s[k] || this.ceilingOff(k)) return;
+          const n = this.fmt(this.ruleCount[k]);
+          out.push({ text: r[k] ? 'Bật ' + this.ruleLabel[k] + ' → xếp hàng thêm ~' + n + ' asset' : 'Tắt ' + this.ruleLabel[k] + ' → huỷ job còn chờ của ~' + n + ' asset' });
+        });
+        if (r.skipOn !== s.skipOn || (r.skipOn && r.skipGb !== s.skipGb)) out.push({ text: r.skipOn ? 'Bỏ qua file > ' + r.skipGb + ' GB → huỷ job còn chờ của file lớn hơn' : 'Không bỏ qua file lớn → xếp hàng lại file đã bỏ qua' });
+        if (this.cur.mode !== this.saved[this.sel].mode) out.push({ text: 'Đổi phạm vi → mở rộng thì xếp hàng thêm, thu hẹp chỉ huỷ phần chưa upload' });
+        return out;
+      },
+      apply() { this.saved[this.sel] = JSON.parse(JSON.stringify(this.cur)); this.say('Đã áp dụng rule cho ' + this.cur.name); },
+      revert() { this.dests[this.sel] = JSON.parse(JSON.stringify(this.saved[this.sel])); },
+
+      checkNow() { this.integrity = 'running'; setTimeout(() => (this.integrity = 'found'), 1400); },
+
+      get sheetCopy() {
+        const r = this.reorg;
+        switch (this.sheet) {
+          case 'reorg': return r.files > 0
+            ? { title: 'Sắp xếp lại theo ngưỡng ' + this.g.N + ' ảnh?', body: 'PhotoVault sẽ chuyển ' + this.fmt(r.files) + ' file (bản gốc, bản chỉnh sửa, sidecar) của ' + this.fmt(r.days) + ' ngày vào thư mục ngày ở mọi đích. Thư mục ngày đã có giữ nguyên.', ok: 'Sắp xếp lại', fr: '8.7 bước 6' }
+            : { title: 'Không có gì để sắp xếp lại', body: 'Với ngưỡng ' + this.g.N + ' ảnh, mọi file đã đúng chỗ. PhotoVault không gộp ngược thư mục ngày đã có.', ok: 'Sắp xếp lại', disabled: true, fr: '8.7 không demote' };
+          case 'rebuild': return { title: 'Dựng lại view?', body: 'Đưa By device, By place và Favorites về đúng trạng thái: tạo 312 shortcut còn thiếu (kể cả shortcut bạn đã xoá), chuyển 48 shortcut sai chỗ, cho 17 shortcut thừa vào Thùng rác. File backup không bị đụng tới.', ok: 'Dựng lại view', fr: 'FR-102 userRemoved · FR-103' };
+          case 'places': return { title: 'Làm mới địa danh?', body: 'Xoá cache địa danh và tra lại 3.860 ô, khoảng 6,4 giờ ở 20 request/phút. Tên thư mục ngày và view By place được cập nhật khi tra xong.', ok: 'Làm mới địa danh', fr: 'FR-106' };
+          case 'remove': return { title: 'Xoá “' + this.cur.name + '” khỏi PhotoVault?', body: 'PhotoVault chỉ xoá trạng thái của đích này trong cơ sở dữ liệu. Không xoá file nào trong ' + this.cur.path + '.', ok: 'Xoá đích', danger: true, fr: 'FR-71' };
+          case 'signout': return { title: 'Đăng xuất Google?', body: 'Thu hồi quyền và xoá token khỏi Keychain. Lịch sử backup trong cơ sở dữ liệu giữ nguyên. Đăng nhập lại bằng tài khoản khác được tính là đổi tài khoản.', ok: 'Đăng xuất', fr: 'FR-08' };
+          case 'changeAccount': return { title: 'Đổi tài khoản Google?', body: 'Trạng thái đích Drive sẽ được đặt lại. Nếu tài khoản mới đã có thư mục PhotoVault, ứng dụng khôi phục từ đó trước khi upload.', ok: 'Tiếp tục', fr: 'FR-08 · FR-51' };
+          case 'changeRoot': return { title: 'Đổi thư mục gốc?', body: 'Trạng thái đích Drive sẽ được đặt lại. Thư mục cũ giữ nguyên. Nếu thư mục mới đã có dữ liệu PhotoVault, ứng dụng khôi phục trước khi upload.', ok: 'Chọn thư mục…', fr: 'FR-08' };
+          case 'merge': {
+            const to = this.groups.find(x => x.id === this.mergeTo);
+            const n = this.mergeFrom ? this.mergeFrom.models.reduce((a, m) => a + m.count, 0) : 0;
+            return { title: 'Gộp “' + (this.mergeFrom?.name || '') + '”', body: 'Gán model vào nhóm “' + (to?.name || '') + '” và chuyển ' + this.fmt(n) + ' shortcut sang By device/' + (to?.name || '') + '/.', ok: 'Gộp', fr: 'FR-104' };
+          }
+          default: return { title: '', body: '', ok: '', fr: '' };
+        }
+      },
+      confirmSheet() {
+        const s = this.sheet;
+        if (s === 'reorg') { this.appliedN = this.g.N; this.say('Đã xếp hàng move_job cho các ngày được promote'); }
+        if (s === 'merge') {
+          const to = this.groups.find(x => x.id === this.mergeTo);
+          to.models.push(...this.mergeFrom.models);
+          this.groups = this.groups.filter(x => x.id !== this.mergeFrom.id);
+          this.say('Đã gộp vào ' + to.name);
+        }
+        if (s === 'remove') { const id = this.sel; this.sel = 'drive'; delete this.dests[id]; this.say('Đã xoá đích khỏi PhotoVault; file ở đích giữ nguyên'); }
+        if (['rebuild', 'places', 'signout', 'changeAccount', 'changeRoot'].includes(s)) this.say(this.sheetCopy.ok + ': đã xác nhận (mockup)');
+        this.sheet = null;
+      },
+    };
+  }
+</script>
+</body>
+</html>
