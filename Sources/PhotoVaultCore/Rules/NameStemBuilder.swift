@@ -43,7 +43,9 @@ public struct NameStemBuilder: Sendable {
 
     /// Upper-cased extension derived from the UTI, e.g. `HEIC`.
     public func utiExtension(_ uti: String) -> String {
-        (utiResolver.preferredExtension(for: uti) ?? "bin").uppercased()
+        let ext = (utiResolver.preferredExtension(for: uti) ?? "bin").uppercased()
+        // Match camera and iPhone naming: JPEG files are `.JPG`.
+        return ext == "JPEG" ? "JPG" : ext
     }
 
     /// File name for one resource or sidecar of an asset with `stem`.

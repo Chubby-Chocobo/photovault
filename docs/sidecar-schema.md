@@ -134,7 +134,7 @@ The examples come from this input (sample values, not a real asset):
 | Location | 11.940412, 108.458312 |
 | Place | VN, Việt Nam, Lâm Đồng, Đà Lạt |
 | Albums | `Đà Lạt 2026`, `Family` |
-| Resources | original `DSC01234.ARW` (done, with size, md5 and sha256); edited `FullSizeRender.JPG` as `(edited).JPEG` (pending) |
+| Resources | original `DSC01234.ARW` (done, with size, md5 and sha256); edited `FullSizeRender.JPG` as `(edited).JPG` (pending) |
 | Extended metadata | none (current SDK) |
 
 The hashes in the resource entries are placeholders. The edited resource has no size or hashes because it has not been uploaded yet.
@@ -192,7 +192,7 @@ The hashes in the resource entries are placeholders. The edited resource has no 
       "type": "photo"
     },
     {
-      "backupName": "2026-11-08 09.14.03_DSC01234 (edited).JPEG",
+      "backupName": "2026-11-08 09.14.03_DSC01234 (edited).JPG",
       "kind": "edited",
       "originalName": "FullSizeRender.JPG",
       "state": "pending",

@@ -61,6 +61,8 @@ import PhotoVaultTestSupport
         #expect(builder.fileName(stem: stem, resource: jpg) == "\(stem).JPG")
         #expect(builder.fileName(stem: stem, resource: edited) == "\(stem) (edited).HEIC")
         #expect(builder.fileName(stem: stem, resource: noExt) == "\(stem).HEIC")
+        let editedJpeg = ResourceRecord(assetKey: .local("A"), type: .fullSizePhoto, originalFilename: "FullSizeRender.jpg", uti: "public.jpeg")
+        #expect(builder.fileName(stem: stem, resource: editedJpeg) == "\(stem) (edited).JPG")
         #expect(NameStemBuilder.sidecarName(stem: stem, type: .sidecarXmp) == "\(stem).xmp")
     }
 
