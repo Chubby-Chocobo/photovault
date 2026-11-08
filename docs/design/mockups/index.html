@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoVault — mockup các màn hình</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="mockup-theme.css">
+</head>
+<!-- Entry point: links every PhotoVault 1.0 mockup and the FR codes each one covers. -->
+<body class="mac">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 16l5-5 4 4"/><path d="M16 15V9m0 0l-2.5 2.5M16 9l2.5 2.5"/></symbol>
+</svg>
+
+<header class="menubar" role="presentation">
+  <span class="mb-item bold">PhotoVault mockup</span>
+  <span class="flex-1"></span>
+  <span class="mb-item num">Th 2 9 thg 11 14:32</span>
+</header>
+
+<main class="mx-auto max-w-[980px] px-4 pt-10">
+  <div class="flex items-center gap-4">
+    <div class="app-icon" style="width:64px;height:64px;border-radius:14px"><svg><use href="#i-pv"/></svg></div>
+    <div>
+      <h1 class="h1" style="font-size:26px">PhotoVault 1.0 — mockup giao diện</h1>
+      <p class="t-2">App menu bar macOS: iCloud Photos → Photos trên Mac → Google Drive + NAS/ổ ngoài. Hợp đồng giao diện cho phase dựng SwiftUI.</p>
+    </div>
+  </div>
+
+  <nav class="grid gap-4 sm:grid-cols-2 mt-8" aria-label="Các màn hình">
+    <a href="menu-bar.html" class="window p-5 block hover:no-underline" style="color:var(--label)">
+      <div class="h2">Menu bar <span class="anno">FR-60</span></div>
+      <p class="small t-2 mt-1">Popover ~360 px trên menu bar giả: trạng thái chung, một dòng mỗi đích (enum 8.9.2), tiến độ backfill, bộ đếm, mọi hành động. 4 trạng thái: đang backfill · Drive paused(rootTrashed) · ổ Mac nguy cấp · NAS offline.</p>
+    </a>
+    <a href="onboarding.html" class="window p-5 block hover:no-underline" style="color:var(--label)">
+      <div class="h2">Onboarding <span class="anno">FR-01..08</span></div>
+      <p class="small t-2 mt-1">Wizard 9 bước đúng thứ tự FR-01: Google, Photos, thư mục gốc (hỏi dùng lại), timezone, sync mode có số asset và ghi chú FR-06, thông báo, NAS, tóm tắt có cảnh báo “cần giải phóng X GB”, Bắt đầu.</p>
+    </a>
+    <a href="settings.html" class="window p-5 block hover:no-underline" style="color:var(--label)">
+      <div class="h2">Settings <span class="anno">FR-05 · FR-72 · FR-85 · FR-103/104</span></div>
+      <p class="small t-2 mt-1">Cửa sổ ~720×520, 6 tab: Chung, Nội dung (trần toàn cục), Sắp xếp (N, Sắp xếp lại, view + ước tính item, nhóm thiết bị), Địa danh &amp; riêng tư, Đích (rule editor), Nâng cao.</p>
+    </a>
+    <a href="activity.html" class="window p-5 block hover:no-underline" style="color:var(--label)">
+      <div class="h2">Hoạt động gần đây + hộp thoại <span class="anno">FR-63 · FR-47</span></div>
+      <p class="small t-2 mt-1">500 sự kiện gần nhất có lọc và tìm. Hộp thoại owner: root bị trash/mất, thư mục con bị trash, toàn vẹn thiếu, xác nhận upload lại, thư mục gốc mới, xem trước Sắp xếp lại, dùng lại NAS cũ.</p>
+    </a>
+  </nav>
+
+  <section class="mock-panel mt-8 space-y-1.5">
+    <div class="label">Cách xem</div>
+    <p>Mở file trực tiếp trong trình duyệt (cần mạng cho Tailwind CDN 3.4.16 và Alpine.js 3.14.1; không có ảnh ngoài). Giao diện sáng/tối theo hệ thống; nút “Sáng/Tối” ở chân trang để ép một chế độ. Bỏ chọn “Chú thích FR” để ẩn nhãn tím (mã FR, giá trị enum) khi duyệt như người dùng.</p>
+    <p>Mô tả và bảng ánh xạ FR: <span class="mono">docs/design/README.md</span>.</p>
+  </section>
+</main>
+
+<footer class="mock-footer mock-panel" x-data="{ theme: 'auto', anno: true }"
+        x-init="$watch('theme', t => t === 'auto' ? document.documentElement.removeAttribute('data-theme') : document.documentElement.setAttribute('data-theme', t)); $watch('anno', a => document.body.classList.toggle('no-anno', !a))">
+  <div><strong>Dữ liệu mẫu</strong> — mọi số liệu trong các mockup là giả lập để minh hoạ bố cục.</div>
+  <div class="flex items-center gap-3">
+    <div class="seg" role="group" aria-label="Giao diện">
+      <button :aria-pressed="theme === 'auto'" @click="theme = 'auto'">Hệ thống</button>
+      <button :aria-pressed="theme === 'light'" @click="theme = 'light'">Sáng</button>
+      <button :aria-pressed="theme === 'dark'" @click="theme = 'dark'">Tối</button>
+    </div>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="anno"> Chú thích FR</label>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menu bar — PhotoVault mockup</title>
+  <!-- Pinned CDN versions; everything else is local. -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="mockup-theme.css">
+</head>
+<!--
+  FR-60 MenuBarExtra popover (~360 px wide, .window style, LSUIElement app).
+  Reviewer controls on the left switch the four required states:
+  active backfill, paused(rootTrashed) with owner prompt, Mac disk critical, NAS offline.
+  Destination status strings follow the enum in spec 8.9.2.
+-->
+<body class="mac" x-data="menuBar()" x-init="init()">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 16l5-5 4 4"/><path d="M16 15V9m0 0l-2.5 2.5M16 9l2.5 2.5"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.1 4.5 4.5 0 0 0 7 18z"/></symbol>
+  <symbol id="i-nas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="7" rx="1.5"/><rect x="4" y="13.5" width="16" height="7" rx="1.5"/><path d="M8 7h.01M8 17h.01M12 7h4M12 17h4"/></symbol>
+  <symbol id="i-ssd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h6"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.9" y="5" width="3.6" height="14" rx="1.2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17.5h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></symbol>
+</svg>
+
+<!-- Fake macOS menu bar strip (frontmost app: Finder; PhotoVault is LSUIElement) -->
+<header class="menubar" role="presentation">
+  <span class="mb-item" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg></span>
+  <span class="mb-item bold">Finder</span>
+  <span class="mb-item hidden sm:inline-flex">File</span>
+  <span class="mb-item hidden sm:inline-flex">Edit</span>
+  <span class="mb-item hidden md:inline-flex">View</span>
+  <span class="mb-item hidden md:inline-flex">Go</span>
+  <span class="mb-item hidden md:inline-flex">Window</span>
+  <span class="mb-item hidden md:inline-flex">Help</span>
+  <span class="flex-1"></span>
+  <button class="mb-item relative" :class="open && 'on'" @click="open = !open" :aria-expanded="open" aria-label="PhotoVault">
+    <svg width="17" height="17" :class="iconSpin && 'spin'"><use :href="iconSpin ? '#i-sync' : '#i-pv'"/></svg>
+    <span x-show="overall.tone !== 'ok'" x-cloak class="dot absolute" style="width:6px;height:6px;right:4px;top:3px" :class="overall.tone === 'red' ? 'red' : 'orange'"></span>
+  </button>
+  <span class="mb-item" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19.5h.01"/></svg></span>
+  <span class="mb-item" aria-hidden="true"><svg width="22" height="12" viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="1" width="23" height="12" rx="3"/><rect x="3" y="3" width="15" height="8" rx="1.5" fill="currentColor" stroke="none"/><path d="M26 5v4" stroke-linecap="round"/></svg></span>
+  <span class="mb-item num">Th 2 9 thg 11 14:32</span>
+</header>
+
+<main class="relative mx-auto max-w-[1100px] px-4 pt-6 pb-4 flex flex-col-reverse lg:flex-row gap-6 lg:justify-between lg:min-h-[1040px]">
+
+  <!-- Reviewer controls (not part of the app UI) -->
+  <aside class="mock-panel w-full lg:w-[300px] self-start space-y-3">
+    <div class="label">Mockup · chọn trạng thái</div>
+    <div class="flex flex-col gap-1.5" role="radiogroup" aria-label="Trạng thái mô phỏng">
+      <template x-for="s in states" :key="s.id">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" name="state" :value="s.id" x-model="state" class="mt-0.5">
+          <span><span class="font-semibold" x-text="s.name"></span><br><span class="opacity-75" x-text="s.desc"></span></span>
+        </label>
+      </template>
+    </div>
+    <hr class="sep">
+    <label class="flex items-center gap-2"><input type="checkbox" x-model="open"> Mở popover (bấm icon trên menu bar)</label>
+    <p class="opacity-75">Nút Tạm dừng ở từng dòng đích và "Tạm dừng tất cả" hoạt động được. Liên kết: <a href="activity.html">Hoạt động gần đây</a>, <a href="settings.html">Settings</a>, <a href="activity.html#prompts">Hộp thoại cho owner</a>.</p>
+  </aside>
+
+  <!-- ===== Popover ===== -->
+  <section class="popover lg:absolute lg:right-[118px] lg:top-[6px] self-end" x-show="open" x-transition.opacity.duration.120ms aria-label="PhotoVault" role="dialog">
+
+    <!-- Header: overall status + Sync now -->
+    <div class="flex items-center gap-2.5 px-1.5 pb-2">
+      <div class="app-icon sm"><svg><use href="#i-pv"/></svg></div>
+      <div class="grow min-w-0 flex-1">
+        <div class="title flex items-center gap-1.5"><span x-text="overall.title"></span> <span class="anno">FR-60</span></div>
+        <div class="small t-2 truncate" x-text="overall.sub"></div>
+      </div>
+      <button class="btn sm" @click="say('Sync now: chạy một chu kỳ sync ngay (FR-14)')" :disabled="allPaused">
+        <svg width="12" height="12"><use href="#i-sync"/></svg> Sync now
+      </button>
+    </div>
+
+    <!-- State callouts -->
+    <div x-show="state === 'rootTrashed'" x-cloak class="callout warn mb-2" role="alert">
+      <svg><use href="#i-warn"/></svg>
+      <div class="flex-1">
+        <div class="title">Thư mục gốc “Camera Uploads” đang ở Thùng rác</div>
+        <p class="small t-2 mt-0.5">PhotoVault đã tạm dừng đích Google Drive và sẽ không tự tạo lại thư mục gốc. NAS và SSD vẫn chạy bình thường.</p>
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          <button class="btn sm primary" @click="state = 'active'; say('Khôi phục giúp tôi: đặt trashed=false cho thư mục gốc, Drive chạy lại')">Khôi phục giúp tôi</button>
+          <button class="btn sm" @click="state = 'active'; say('Tôi đã khôi phục: kiểm tra lại thư mục gốc rồi chạy tiếp')">Tôi đã khôi phục</button>
+          <a class="btn sm" href="activity.html#prompt-new-root">Upload lại vào thư mục mới…</a>
+        </div>
+        <div class="mt-1.5"><span class="anno">FR-47</span> <span class="anno">paused(rootTrashed)</span></div>
+      </div>
+    </div>
+
+    <div x-show="state === 'diskCritical'" x-cloak class="callout danger mb-2" role="alert">
+      <svg><use href="#i-warn"/></svg>
+      <div class="flex-1">
+        <div class="title">Ổ Mac chỉ còn 3,2 GB trống</div>
+        <p class="small t-2 mt-0.5">Dưới ngưỡng nguy cấp 5 GB nên PhotoVault đã dừng mọi export và huỷ export đang chạy. File đã export xong vẫn được upload. Tự chạy lại khi trống từ 20 GB (kiểm tra mỗi 15 phút).</p>
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          <button class="btn sm" @click="say('Mở System Settings › General › Storage')">Mở Dung lượng…</button>
+          <a class="btn sm" href="settings.html#advanced">Đổi ngưỡng…</a>
+        </div>
+        <div class="mt-1.5"><span class="anno">FR-31</span> <span class="anno">8.5 criticalWatermark</span></div>
+      </div>
+    </div>
+
+    <div x-show="state === 'nasOffline'" x-cloak class="callout warn mb-2" role="alert">
+      <svg><use href="#i-warn"/></svg>
+      <div class="flex-1">
+        <div class="title">Không thấy “Synology NAS” từ 10:05</div>
+        <p class="small t-2 mt-0.5">PhotoVault kiểm tra lại mỗi 5 phút và khi có ổ được mount; không tự mount SMB. File không được giữ lại chờ NAS, sẽ export lại khi NAS quay lại.</p>
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          <button class="btn sm" @click="say('Kiểm tra lại: /Volumes/photo vẫn chưa mount')">Kiểm tra lại</button>
+          <button class="btn sm" @click="paused.nas = !paused.nas; say(paused.nas ? 'Đã tạm dừng NAS' : 'Đã tiếp tục NAS')" x-text="paused.nas ? 'Tiếp tục đích này' : 'Tạm dừng đích này'"></button>
+        </div>
+        <div class="mt-1.5"><span class="anno">FR-75</span> <span class="anno">unavailable(offline)</span></div>
+      </div>
+    </div>
+
+    <!-- Backfill progress: assets done/total, GB uploaded (no GB total), ETA by asset count -->
+    <div class="group px-3 py-2.5 mb-2">
+      <div class="flex items-baseline justify-between">
+        <span class="title">Backfill <span class="anno">FR-11</span></span>
+        <span class="small t-2 num"><span x-text="fmt(backfill.done)"></span> / <span x-text="fmt(backfill.total)"></span> asset</span>
+      </div>
+      <div class="progress mt-1.5" :class="state === 'diskCritical' && 'paused'" role="progressbar" aria-label="Tiến độ backfill" :aria-valuenow="backfill.done" aria-valuemin="0" :aria-valuemax="backfill.total">
+        <i :style="`width:${(backfill.done / backfill.total * 100).toFixed(1)}%`"></i>
+      </div>
+      <div class="flex justify-between small t-2 mt-1.5 num">
+        <span>Đã upload <span x-text="backfill.gb"></span> GB</span>
+        <span x-text="state === 'diskCritical' ? 'Đang chờ dung lượng ổ Mac' : 'Còn khoảng 6 ngày'"></span>
+      </div>
+      <div class="small t-3 mt-0.5" x-show="state !== 'diskCritical'">Ước tính theo số asset: ~6.100 asset/ngày trong 24 giờ qua</div>
+    </div>
+
+    <!-- Destinations: one row each (status enum, pending, last success, per-destination pause) -->
+    <div class="flex items-center justify-between px-1.5 mt-3 mb-1">
+      <span class="small font-semibold t-2">Đích</span>
+      <span class="anno">8.9.2</span>
+    </div>
+    <ul class="group">
+      <template x-for="d in dests" :key="d.id">
+        <li class="row" style="padding-top:7px;padding-bottom:7px">
+          <svg width="20" height="20" class="t-2 flex-none"><use :href="d.icon"/></svg>
+          <div class="grow">
+            <div class="flex items-center gap-1.5">
+              <span class="font-medium truncate" x-text="d.name"></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-1.5 small">
+              <span class="dot" :class="d.status.tone"></span>
+              <span x-text="d.status.label"></span>
+              <span class="anno" x-text="d.status.code"></span>
+            </div>
+            <div class="small t-2 num">Chờ <span x-text="fmt(d.pending)"></span> · Lần thành công cuối: <span x-text="d.last"></span></div>
+          </div>
+          <button class="icon-btn" x-show="d.kind === 'local'" :disabled="d.status.code.startsWith('unavailable')"
+                  @click="say('Reveal NAS: mở ' + d.path + ' trong Finder')" :aria-label="'Mở ' + d.name + ' trong Finder'" title="Mở trong Finder">
+            <svg><use href="#i-folder"/></svg>
+          </button>
+          <button class="icon-btn" @click="paused[d.id] = !paused[d.id]; say((paused[d.id] ? 'Tạm dừng ' : 'Tiếp tục ') + d.name)"
+                  :aria-label="(paused[d.id] ? 'Tiếp tục ' : 'Tạm dừng ') + d.name" :title="paused[d.id] ? 'Tiếp tục' : 'Tạm dừng'">
+            <svg><use :href="paused[d.id] ? '#i-play' : '#i-pause'"/></svg>
+          </button>
+        </li>
+      </template>
+    </ul>
+
+    <!-- Counters -->
+    <div class="grid grid-cols-4 gap-1.5 mt-2">
+      <template x-for="c in counters" :key="c.code">
+        <div class="group px-1 py-1.5 text-center min-w-0">
+          <div class="h2 num" :class="c.code === 'missingRemote' && c.value > 0 && 't-red'" x-text="fmt(c.value)"></div>
+          <div class="small t-2" x-text="c.label"></div>
+          <div class="anno" style="font-size:9px;padding:0 3px;max-width:100%;overflow:hidden" x-text="c.code"></div>
+        </div>
+      </template>
+    </div>
+
+    <hr class="sep" style="margin:10px 0 6px">
+
+    <!-- Actions (FR-60): Sync now (header) · Pause/Resume · Open Drive · Reveal NAS · Recent activity · Settings · Log · Quit -->
+    <nav aria-label="Hành động">
+      <button class="menu-row" @click="togglePauseAll()">
+        <svg width="14" height="14"><use :href="allPaused ? '#i-play' : '#i-pause'"/></svg>
+        <span x-text="allPaused ? 'Tiếp tục tất cả' : 'Tạm dừng tất cả'"></span>
+      </button>
+      <button class="menu-row" @click="say('Open Drive: mở thư mục gốc “Camera Uploads” trên drive.google.com')">
+        <svg width="14" height="14"><use href="#i-cloud"/></svg> Mở Google Drive
+      </button>
+      <button class="menu-row" @click="revealOpen = !revealOpen" :aria-expanded="revealOpen">
+        <svg width="14" height="14"><use href="#i-folder"/></svg> Mở thư mục NAS trong Finder
+        <svg width="11" height="11" class="ml-auto transition-transform" :style="revealOpen && 'transform:rotate(90deg)'"><use href="#i-chev"/></svg>
+      </button>
+      <div x-show="revealOpen" x-cloak class="pl-6">
+        <template x-for="d in dests.filter(x => x.kind === 'local')" :key="d.id">
+          <button class="menu-row" :disabled="d.status.code.startsWith('unavailable')" @click="say('Reveal NAS: ' + d.path)">
+            <span x-text="d.name"></span><span class="kbd mono" x-text="d.path"></span>
+          </button>
+        </template>
+      </div>
+      <a class="menu-row" href="activity.html"><span class="w-[14px] flex-none"></span>Hoạt động gần đây…</a>
+      <a class="menu-row" href="settings.html"><span class="w-[14px] flex-none"></span>Settings… <span class="kbd">⌘,</span></a>
+      <button class="menu-row" @click="say('Log: mở ~/Library/Logs/PhotoVault trong Console')"><span class="w-[14px] flex-none"></span>Xem log</button>
+      <hr class="sep">
+      <button class="menu-row" @click="say('Quit: thoát PhotoVault (job đang chạy được ghi lại, chạy tiếp lần sau)')"><span class="w-[14px] flex-none"></span>Thoát PhotoVault <span class="kbd">⌘Q</span></button>
+    </nav>
+  </section>
+</main>
+
+<div class="toast" x-show="toast" x-transition.opacity x-text="toast" role="status" aria-live="polite" x-cloak></div>
+
+<footer class="mock-footer mock-panel" x-data="{ theme: 'auto', anno: true }"
+        x-init="$watch('theme', t => t === 'auto' ? document.documentElement.removeAttribute('data-theme') : document.documentElement.setAttribute('data-theme', t)); $watch('anno', a => document.body.classList.toggle('no-anno', !a))">
+  <div><strong>Dữ liệu mẫu</strong> — số liệu, tên đích và đường dẫn trên trang này là giả lập. <a href="index.html">← Mọi màn hình</a></div>
+  <div class="flex items-center gap-3">
+    <div class="seg" role="group" aria-label="Giao diện">
+      <button :aria-pressed="theme === 'auto'" @click="theme = 'auto'">Hệ thống</button>
+      <button :aria-pressed="theme === 'light'" @click="theme = 'light'">Sáng</button>
+      <button :aria-pressed="theme === 'dark'" @click="theme = 'dark'">Tối</button>
+    </div>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="anno"> Chú thích FR</label>
+  </div>
+</footer>
+
+<script>
+  function menuBar() {
+    return {
+      state: 'active',
+      open: true,
+      revealOpen: false,
+      paused: { drive: false, nas: false, ssd: false },
+      toast: '',
+      states: [
+        { id: 'active', name: 'Đang backfill', desc: 'Mọi đích active, backfill đang chạy.' },
+        { id: 'rootTrashed', name: 'Drive: paused(rootTrashed)', desc: 'Thư mục gốc bị trash; hỏi owner (FR-47).' },
+        { id: 'diskCritical', name: 'Ổ Mac nguy cấp', desc: 'Trống 3,2 GB < criticalWatermark 5 GB (8.5).' },
+        { id: 'nasOffline', name: 'NAS offline', desc: 'NAS: unavailable(offline) (FR-75).' },
+      ],
+      backfill: { done: 12480, total: 48210, gb: '312,4' },
+      // menu-bar.html#rootTrashed (or #diskCritical, #nasOffline) opens that state directly.
+      init() {
+        const fromHash = () => { const h = location.hash.slice(1); if (this.states.some(s => s.id === h)) this.state = h; };
+        fromHash();
+        window.addEventListener('hashchange', fromHash);
+      },
+      fmt(n) { return n.toLocaleString('vi-VN'); },
+      say(msg) { this.toast = msg; clearTimeout(this._t); this._t = setTimeout(() => (this.toast = ''), 2600); },
+      get allPaused() { return Object.values(this.paused).every(Boolean); },
+      togglePauseAll() {
+        const v = !this.allPaused;
+        Object.keys(this.paused).forEach(k => (this.paused[k] = v));
+        this.say(v ? 'Đã tạm dừng mọi đích: paused(userPaused)' : 'Đã tiếp tục mọi đích');
+      },
+      // System reasons win over the owner's own pause in the label; the pause button still reflects userPaused.
+      statusOf(id) {
+        if (this.state === 'rootTrashed' && id === 'drive') return { code: 'paused(rootTrashed)', label: 'Tạm dừng · thư mục gốc trong Thùng rác', tone: 'orange' };
+        if (this.state === 'nasOffline' && id === 'nas') return { code: 'unavailable(offline)', label: 'Không khả dụng · mất kết nối', tone: 'red' };
+        if (this.paused[id]) return { code: 'paused(userPaused)', label: 'Tạm dừng (bởi bạn)', tone: 'gray' };
+        if (this.state === 'diskCritical') return { code: 'active', label: 'Hoạt động · chờ export', tone: 'orange' };
+        return { code: 'active', label: 'Đang hoạt động', tone: 'green' };
+      },
+      get dests() {
+        const s = this.state;
+        return [
+          { id: 'drive', kind: 'drive', icon: '#i-cloud', name: 'Google Drive', pending: 35730, last: s === 'rootTrashed' ? '38 phút trước' : '1 phút trước' },
+          { id: 'nas', kind: 'local', icon: '#i-nas', name: 'Synology NAS', path: '/Volumes/photo/PhotoVault', pending: 41204, last: s === 'nasOffline' ? 'hôm nay 10:05' : '3 phút trước' },
+          { id: 'ssd', kind: 'local', icon: '#i-ssd', name: 'Samsung T7', path: '/Volumes/T7/PhotoVault', pending: 2100, last: '12 phút trước' },
+        ].map(d => ({ ...d, status: this.statusOf(d.id) }));
+      },
+      get counters() {
+        return [
+          { code: 'pending', label: 'Chờ', value: 79034 },
+          { code: 'deferred', label: 'Hoãn', value: 14 },
+          { code: 'skipped', label: 'Bỏ qua', value: 3 },
+          { code: 'missingRemote', label: 'Thiếu ở đích', value: 0 },
+        ];
+      },
+      get iconSpin() { return this.state === 'active' && !this.allPaused; },
+      get overall() {
+        if (this.allPaused) return { title: 'Đã tạm dừng tất cả', sub: 'Bấm Tiếp tục tất cả để chạy lại', tone: 'orange' };
+        switch (this.state) {
+          case 'rootTrashed': return { title: 'Cần bạn quyết định', sub: 'Google Drive đã tạm dừng · 2 đích khác vẫn chạy', tone: 'orange' };
+          case 'diskCritical': return { title: 'Đã dừng export', sub: 'Ổ Mac gần đầy · chờ trống từ 20 GB', tone: 'red' };
+          case 'nasOffline': return { title: 'NAS mất kết nối', sub: 'Google Drive và Samsung T7 vẫn chạy', tone: 'orange' };
+          default: return { title: 'Đang backfill', sub: '3 đích · sync lần cuối 1 phút trước', tone: 'ok' };
+        }
+      },
+    };
+  }
+</script>
+</body>
+</html>
