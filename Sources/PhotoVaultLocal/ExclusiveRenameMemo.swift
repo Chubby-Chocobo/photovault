@@ -18,18 +18,22 @@ struct VolumeKey: Hashable, Sendable {
         self.identity = Self.volumeUUID(fd: fd) ?? Self.mountSource(fd: fd) ?? ""
     }
 
+    /// `ATTR_CMN_RETURNED_ATTRS` comes first in the reply and says which attributes the filesystem filled
+    /// in; a volume without a UUID (many SMB shares) succeeds with the UUID left zeroed otherwise.
     private struct UUIDReply {
         var length: UInt32 = 0
+        var returned = attribute_set_t()
         var uuid: uuid_t = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     }
 
     private static func volumeUUID(fd: Int32) -> String? {
         var list = attrlist()
         list.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        list.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS)
         list.volattr = attrgroup_t(ATTR_VOL_INFO) | attrgroup_t(ATTR_VOL_UUID)
         var reply = UUIDReply()
         let status = withUnsafeMutableBytes(of: &reply) { fgetattrlist(fd, &list, $0.baseAddress, $0.count, 0) }
-        guard status == 0 else { return nil }
+        guard status == 0, reply.returned.volattr & attrgroup_t(ATTR_VOL_UUID) != 0 else { return nil }
         return UUID(uuid: reply.uuid).uuidString
     }
 

@@ -25,10 +25,34 @@ import Testing
     }
 
     private struct FakeVolumes: VolumeLookup {
-        let uuids: [String: String]
-        func mountedVolumeUUID(containing path: String) -> String? {
-            uuids.filter { $0.key == "/" || path == $0.key || path.hasPrefix($0.key + "/") }.max { $0.key.count < $1.key.count }?.value
+        var uuids: [String: String] = [:]
+        var remountURLs: [String: String] = [:]
+
+        private func nearest(_ table: [String: String], _ path: String) -> String? {
+            table.filter { $0.key == "/" || path == $0.key || path.hasPrefix($0.key + "/") }.max { $0.key.count < $1.key.count }?.value
         }
+
+        func mountedVolume(containing path: String) -> MountedVolume {
+            MountedVolume(uuid: nearest(uuids, path), remountURL: nearest(remountURLs, path))
+        }
+    }
+
+    @Test func twoSMBSharesMountedAtTheSamePathAreTold() {
+        let path = "/Volumes/photo/backup"
+        let stored = "smb://nas-a/photo"
+        let same = FakeVolumes(uuids: ["/": "BOOT"], remountURLs: ["/Volumes/photo": stored])
+        let otherServer = FakeVolumes(uuids: ["/": "BOOT"], remountURLs: ["/Volumes/photo": "smb://nas-b/photo"])
+        let unmounted = FakeVolumes(uuids: ["/": "BOOT"])
+        #expect(RootState.missingError(path: path, bookmarkRemountURL: stored, volumes: same) == .rootMissing)
+        #expect(RootState.missingError(path: path, bookmarkRemountURL: stored, volumes: otherServer) == .offline)
+        #expect(RootState.missingError(path: path, bookmarkRemountURL: stored, volumes: unmounted) == .offline)
+    }
+
+    @Test func bookmarkCarriesTheRemountURLWhenTheVolumeHasOne() throws {
+        let fixture = try makeRoot()
+        let stored = URL.resourceValues(forKeys: [.volumeURLForRemountingKey], fromBookmarkData: fixture.bookmark)
+        let live = try fixture.root.resourceValues(forKeys: [.volumeURLForRemountingKey]).volumeURLForRemounting
+        #expect(stored?.volumeURLForRemounting == live)
     }
 
     @Test func twoVolumesWithTheSameNameAreTold() {

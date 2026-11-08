@@ -56,7 +56,7 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
     /// Creates the bookmark to store when the owner picks a folder.
     public static func makeBookmark(for url: URL) throws -> Data {
         do {
-            return try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: [.volumeUUIDStringKey, .pathKey], relativeTo: nil)
+            return try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: [.volumeUUIDStringKey, .volumeURLForRemountingKey, .pathKey], relativeTo: nil)
         } catch {
             throw DestinationError.bookmarkInvalid
         }
@@ -104,8 +104,9 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
         do {
             url = try URL(resolvingBookmarkData: bookmark, options: Self.resolutionOptions, relativeTo: nil, bookmarkDataIsStale: &stale)
         } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
-            let stored = URL.resourceValues(forKeys: [.pathKey, .volumeUUIDStringKey], fromBookmarkData: bookmark)
-            throw RootState.missingError(path: stored?.path, bookmarkVolumeUUID: stored?.volumeUUIDString, volumes: volumes)
+            let stored = URL.resourceValues(forKeys: [.pathKey, .volumeUUIDStringKey, .volumeURLForRemountingKey], fromBookmarkData: bookmark)
+            throw RootState.missingError(path: stored?.path, bookmarkVolumeUUID: stored?.volumeUUIDString,
+                                         bookmarkRemountURL: stored?.volumeURLForRemounting?.absoluteString, volumes: volumes)
         } catch {
             throw DestinationError.bookmarkInvalid
         }

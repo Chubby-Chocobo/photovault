@@ -16,31 +16,42 @@ enum RootState {
 
     /// `offline` when the volume the root lived on is not the one mounted at its path now (or the path is
     /// unknown); `rootMissing` when that same volume is mounted but the folder is gone.
-    /// `bookmarkVolumeUUID` is the volume UUID stored in the bookmark; without one only the mount point's
-    /// presence under `/Volumes` can tell.
-    static func missingError(path: String?, bookmarkVolumeUUID: String? = nil,
+    /// The bookmark's volume UUID identifies the volume; shares without one (SMB) are told apart by the
+    /// URL the system would remount them from. With neither, only the mount point's presence under
+    /// `/Volumes` can tell.
+    static func missingError(path: String?, bookmarkVolumeUUID: String? = nil, bookmarkRemountURL: String? = nil,
                              volumes: any VolumeLookup = SystemVolumeLookup()) -> DestinationError {
         guard let path else { return .offline }
         let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
-        guard let bookmarkVolumeUUID else {
-            let parts = URL(fileURLWithPath: standardized).pathComponents
-            guard parts.count >= 3, parts[1] == "Volumes" else { return .rootMissing }
-            return FileManager.default.fileExists(atPath: "/Volumes/" + parts[2]) ? .rootMissing : .offline
+        if let bookmarkVolumeUUID {
+            return volumes.mountedVolume(containing: standardized).uuid == bookmarkVolumeUUID ? .rootMissing : .offline
         }
-        return volumes.mountedVolumeUUID(containing: standardized) == bookmarkVolumeUUID ? .rootMissing : .offline
+        if let bookmarkRemountURL {
+            return volumes.mountedVolume(containing: standardized).remountURL == bookmarkRemountURL ? .rootMissing : .offline
+        }
+        let parts = URL(fileURLWithPath: standardized).pathComponents
+        guard parts.count >= 3, parts[1] == "Volumes" else { return .rootMissing }
+        return FileManager.default.fileExists(atPath: "/Volumes/" + parts[2]) ? .rootMissing : .offline
     }
+}
+
+/// What identifies a mounted volume: a UUID when the filesystem has one, else the URL it remounts from.
+struct MountedVolume: Equatable, Sendable {
+    var uuid: String?
+    var remountURL: String?
 }
 
 /// Which volume is mounted at a path now; a seam so tests can stage two volumes with the same name.
 protocol VolumeLookup: Sendable {
-    /// UUID of the volume holding `path`, or of its nearest existing ancestor; nil when unknown.
-    func mountedVolumeUUID(containing path: String) -> String?
+    /// The volume holding `path`, or its nearest existing ancestor; empty when unknown.
+    func mountedVolume(containing path: String) -> MountedVolume
 }
 
 struct SystemVolumeLookup: VolumeLookup {
-    func mountedVolumeUUID(containing path: String) -> String? {
+    func mountedVolume(containing path: String) -> MountedVolume {
         var url = URL(fileURLWithPath: path)
         while !FileManager.default.fileExists(atPath: url.path), url.path != "/" { url.deleteLastPathComponent() }
-        return try? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
+        let values = try? url.resourceValues(forKeys: [.volumeUUIDStringKey, .volumeURLForRemountingKey])
+        return MountedVolume(uuid: values?.volumeUUIDString, remountURL: values?.volumeURLForRemounting?.absoluteString)
     }
 }
