@@ -12,7 +12,7 @@ extension LocalFileOps {
             let tmp: DirectoryHandle
             do { tmp = try tmpDirectory(root, create: false) } catch DestinationError.notFound { return }
             var removed = 0
-            for name in try tmp.entries() where DirectoryHandle.isOwnedPartName(name) && !writer.isActive(name) {
+            for name in try tmp.entries() where DirectoryHandle.isOwnedPartName(name) && !writer.isActive(name, in: tmp) {
                 guard let st = try tmp.status(name), st.isRegular else { continue }
                 try tmp.unlinkOwned(name)
                 removed += 1
@@ -82,6 +82,7 @@ extension LocalFileOps {
     func writeMarker(_ marker: DestinationMarker, allowFallback: Bool) throws -> DestinationMarker {
         try withRoot { root in
             let support = try root.openDirectory(LocalPath.reservedDirectory, create: true)
+            try requireFallbackIfNeeded(support.device, allowFallback: allowFallback)
             func existingOrNil() throws -> DestinationMarker? {
                 guard let existing = try readMarker(in: support) else { return nil }
                 guard existing.id == marker.id else { throw DestinationError.foreignFile }
@@ -93,7 +94,7 @@ extension LocalFileOps {
             let part = try writer.stage(.data(data), expectedSHA256: FileHashing.sha256(data), in: tmp)
             defer { writer.discard(part, in: tmp) }
             do {
-                try tmp.renameExclusive(part, to: LocalPath.markerName, in: support, allowCheckThenRename: allowFallback)
+                try tmp.renameExclusive(part, to: LocalPath.markerName, in: support, allowCheckThenRename: allowFallback, memo: renameMemo)
             } catch DestinationError.foreignFile {
                 if let existing = try existingOrNil() { return existing }
                 throw DestinationError.foreignFile

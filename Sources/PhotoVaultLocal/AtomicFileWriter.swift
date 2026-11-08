@@ -10,17 +10,23 @@ final class AtomicFileWriter: Sendable {
         case data(Data)
     }
 
-    /// `.part` files being written by this process; the orphan sweep must not touch them.
-    private let active = ActiveParts()
-
-    func isActive(_ name: String) -> Bool { active.contains(name) }
+    /// `.part` files being written by this process; the orphan sweep must not touch them. Shared per `tmp`
+    /// directory, so a replaced destination object does not sweep its predecessor's in-flight files.
+    func isActive(_ name: String, in tmp: DirectoryHandle) -> Bool { ActivePartsRegistry.shared.parts(for: tmp).contains(name) }
 
     /// Returns the name of a fully written, synced and read-back-verified `.part` in `tmp`. Removes the
     /// `.part` itself on any failure. The caller must `discard` it after placing or giving up.
     func stage(_ source: Source, expectedSHA256: String, in tmp: DirectoryHandle) throws -> String {
         let name = UUID().uuidString + ".part"
-        let out = try tmp.createExclusive(name)
-        active.insert(name)
+        let active = ActivePartsRegistry.shared.parts(for: tmp)
+        active.insert(name)  // before the file exists, so a concurrent sweep never sees an unmarked `.part`
+        let out: Int32
+        do {
+            out = try tmp.createExclusive(name)
+        } catch {
+            active.remove(name)
+            throw error
+        }
         var succeeded = false
         defer {
             if !succeeded { discard(name, in: tmp) }
@@ -45,7 +51,7 @@ final class AtomicFileWriter: Sendable {
     /// Removes our own `.part` (idempotent). Failure to remove is not fatal: the orphan sweep retries.
     func discard(_ name: String, in tmp: DirectoryHandle) {
         try? tmp.unlinkOwned(name)
-        active.remove(name)
+        ActivePartsRegistry.shared.parts(for: tmp).remove(name)
     }
 
     private func copy(_ source: Source, to out: Int32) throws -> String {
@@ -84,6 +90,22 @@ final class AtomicFileWriter: Sendable {
         if fcntl(fd, F_FULLFSYNC) == 0 { return }
         guard [ENOTSUP, ENOTTY, EINVAL].contains(errno) else { throw ErrorClassifier.destinationError(errno: errno) }
         guard fsync(fd) == 0 else { throw ErrorClassifier.destinationError(errno: errno) }
+    }
+}
+
+/// One `ActiveParts` per tmp directory (keyed by device and inode of the directory).
+private final class ActivePartsRegistry: @unchecked Sendable {
+    static let shared = ActivePartsRegistry()
+    private let lock = NSLock()
+    private var byDirectory: [String: ActiveParts] = [:]
+
+    func parts(for tmp: DirectoryHandle) -> ActiveParts {
+        lock.withLock {
+            if let existing = byDirectory[tmp.identity] { return existing }
+            let created = ActiveParts()
+            byDirectory[tmp.identity] = created
+            return created
+        }
     }
 }
 

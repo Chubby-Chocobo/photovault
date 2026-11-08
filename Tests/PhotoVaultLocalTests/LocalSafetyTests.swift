@@ -110,8 +110,14 @@ import Testing
     @Test func offlineRootIsUnavailable() async throws {
         let missing = FileManager.default.temporaryDirectory.appendingPathComponent("pv-nonexistent-\(UUID().uuidString)")
         let destination = LocalFolderDestination(id: .local(), root: PlainURLRoot(missing))
+        #expect(await destination.checkAvailability() == .paused(.rootMissing))
+        #expect(await expectError(.rootMissing) { try await destination.testConnection() })
+    }
+
+    @Test func unmountedVolumeIsOffline() async throws {
+        let gone = URL(fileURLWithPath: "/Volumes/pv-not-mounted-\(UUID().uuidString)/backup")
+        let destination = LocalFolderDestination(id: .local(), root: PlainURLRoot(gone))
         #expect(await destination.checkAvailability() == .unavailable(.offline))
-        #expect(await expectError(.offline) { try await destination.testConnection() })
     }
 
     @Test func invalidBookmarkIsUnavailable() async throws {

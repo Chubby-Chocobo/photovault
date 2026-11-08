@@ -39,7 +39,10 @@ enum LocalPath {
     static func commonAncestor(_ a: String, _ b: String) -> String {
         let left = a.split(separator: "/"), right = b.split(separator: "/")
         var shared: [Substring] = []
-        for (x, y) in zip(left, right) where x == y { shared.append(x) }
+        for (x, y) in zip(left, right) {
+            if x != y { break }
+            shared.append(x)
+        }
         return shared.joined(separator: "/")
     }
 

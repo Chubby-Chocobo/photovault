@@ -165,3 +165,85 @@ import Testing
         #expect(try await fx.destination.reserveIds(count: 2, kind: .files).count == 2)
     }
 }
+
+@Suite struct LocalHardeningTests {
+    private func ops(_ fx: LocalFixture, memo: ExclusiveRenameMemo = ExclusiveRenameMemo(),
+                     afterStaging: (@Sendable () -> Void)? = nil) -> LocalFileOps {
+        LocalFileOps(access: PlainURLRoot(fx.root), writer: AtomicFileWriter(), log: NullLogSink(),
+                     renameMemo: memo, afterStaging: afterStaging)
+    }
+
+    @Test func commonAncestorStopsAtFirstMismatch() {
+        #expect(LocalPath.commonAncestor("camera/2024/05/01", "camera/2024/06/01") == "camera/2024")
+        #expect(LocalPath.commonAncestor("saved/2023/05", "camera/2023/05") == "")
+        #expect(LocalPath.commonAncestor("a/b", "a/b/c") == "a/b")
+        #expect(LocalPath.commonAncestor("", "a") == "")
+    }
+
+    @Test func replaceRefusesWhenOwnerEditsDuringStaging() async throws {
+        let fx = try LocalFixture()
+        let folder = try await fx.folder("d")
+        let first = try fx.request("meta.json", "v1", in: folder, kind: .sidecarJson)
+        _ = try await fx.upload(first)
+        let update = try fx.request("meta.json", "v2", in: folder, kind: .sidecarJson, prior: first.content.sha256)
+        let target = fx.root.appendingPathComponent("d/meta.json")
+        let editing = ops(fx, afterStaging: { try? Data("owner edit".utf8).write(to: target) })
+        #expect(throws: DestinationError.foreignModified) { _ = try editing.replace(path: "d/meta.json", update) }
+        #expect(try fx.text("d/meta.json") == "owner edit")
+        #expect(try fx.names(".photovault/tmp").isEmpty)
+        // Untouched file is replaced.
+        let clean = try fx.request("meta.json", "v2", in: folder, kind: .sidecarJson, prior: first.content.sha256)
+        try fx.write("d/meta.json", "v1")
+        _ = try ops(fx).replace(path: "d/meta.json", clean)
+        #expect(try fx.text("d/meta.json") == "v2")
+    }
+
+    @Test func knownUnsupportedVolumeSkipsStagingOnFirstPass() async throws {
+        let fx = try LocalFixture()
+        let folder = try await fx.folder("d")
+        let memo = ExclusiveRenameMemo()
+        let request = try fx.request("a.bin", "data", in: folder)
+        // Supported volume: the unlocked pass succeeds.
+        _ = try ops(fx, memo: memo).upload(request, allowFallback: false)
+        let dev = try FileManager.default.attributesOfItem(atPath: fx.root.path)[.systemNumber] as! NSNumber
+        memo.markUnsupported(dev_t(dev.int32Value))
+        let second = try fx.request("b.bin", "data2", in: folder)
+        #expect(throws: ExclusiveRenameUnsupported.self) { _ = try ops(fx, memo: memo).upload(second, allowFallback: false) }
+        #expect(try fx.names(".photovault/tmp").isEmpty)
+        // The locked pass still places the file with the check-then-rename fallback.
+        _ = try ops(fx, memo: memo).upload(second, allowFallback: true)
+        #expect(try fx.text("d/b.bin") == "data2")
+        #expect(try fx.names(".photovault/tmp").isEmpty)
+    }
+
+    @Test func permissionErrorBelowTheRootIsItemLevel() async throws {
+        let fx = try LocalFixture()
+        let folder = try await fx.folder("locked")
+        let request = try fx.request("a.bin", "data", in: folder)
+        let path = fx.root.appendingPathComponent("locked").path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path) }
+        do {
+            _ = try await fx.upload(request)
+            Issue.record("expected a permission error")
+        } catch let error as DestinationError {
+            #expect(error == .itemRejected(reason: "permission"))
+        }
+        #expect(await fx.destination.checkAvailability() == .active)
+    }
+
+    @Test func sweepSparesPartsOfAnotherDestinationObject() async throws {
+        let fx = try LocalFixture()
+        let tmp = try DirectoryHandle.openRoot(fx.root).openDirectory(".photovault/tmp", create: true)
+        let payload = Data("in flight".utf8)
+        let part = try AtomicFileWriter().stage(.data(payload), expectedSHA256: FileHashing.sha256(payload), in: tmp)
+        let replacement = LocalFolderDestination(id: .local(), root: PlainURLRoot(fx.root))
+        #expect(await replacement.checkAvailability() == .active)
+        #expect(try fx.names(".photovault/tmp") == [part])
+        // An orphan nobody is writing is still removed.
+        let orphan = UUID().uuidString + ".part"
+        try fx.write(".photovault/tmp/" + orphan, "orphan")
+        #expect(await replacement.checkAvailability() == .active)
+        #expect(try fx.names(".photovault/tmp") == [part])
+    }
+}

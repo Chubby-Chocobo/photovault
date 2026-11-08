@@ -8,6 +8,23 @@ struct LocalFileOps: Sendable {
     let access: any RootAccess
     let writer: AtomicFileWriter
     let log: any LogSink
+    let renameMemo: ExclusiveRenameMemo
+    /// Test seam: runs after the new content is staged and before it is put in place.
+    var afterStaging: (@Sendable () -> Void)?
+
+    init(access: any RootAccess, writer: AtomicFileWriter, log: any LogSink,
+         renameMemo: ExclusiveRenameMemo = .volumes, afterStaging: (@Sendable () -> Void)? = nil) {
+        self.access = access
+        self.writer = writer
+        self.log = log
+        self.renameMemo = renameMemo
+        self.afterStaging = afterStaging
+    }
+
+    /// Before staging: a volume known to lack exclusive rename needs the write-locked path from the start.
+    func requireFallbackIfNeeded(_ device: dev_t, allowFallback: Bool) throws {
+        if !allowFallback, renameMemo.isUnsupported(device) { throw ExclusiveRenameUnsupported() }
+    }
 
     func withRoot<T>(_ body: (DirectoryHandle) throws -> T) throws -> T {
         try access.withRoot { url in try body(try DirectoryHandle.openRoot(url)) }
@@ -70,7 +87,7 @@ struct LocalFileOps: Sendable {
             }
             if old.isSymlink { throw DestinationError.itemRejected(reason: "symlink") }
             guard old.isDirectory else { throw DestinationError.foreignFile }
-            try parent.renameExclusive(oldName, to: newName, in: parent, allowCheckThenRename: true)
+            try parent.renameExclusive(oldName, to: newName, in: parent, allowCheckThenRename: true, memo: renameMemo)
             return renamed
         }
     }

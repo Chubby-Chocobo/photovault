@@ -17,30 +17,34 @@ extension stat {
 final class DirectoryHandle: @unchecked Sendable {
     private let fd: Int32
     let device: dev_t
+    /// `device:inode` of this directory; stable across URL spellings and handle instances.
+    let identity: String
 
-    private init(fd: Int32, device: dev_t) {
+    private init(fd: Int32, device: dev_t, inode: ino_t) {
         self.fd = fd
         self.device = device
+        self.identity = "\(device):\(inode)"
     }
 
     deinit { close(fd) }
 
     private static func fail(_ code: Int32) -> DestinationError { ErrorClassifier.destinationError(errno: code) }
 
-    /// Opens the root once. A missing root means the volume is not mounted.
+    /// Opens the root once. A missing root is `offline` when its volume is not mounted, else `rootMissing`;
+    /// a permission error here means the folder grant is gone.
     static func openRoot(_ url: URL) throws -> DirectoryHandle {
         let fd = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else {
             let code = errno
-            throw (code == ENOENT || code == ENOTDIR) ? DestinationError.offline : fail(code)
+            throw (code == ENOENT || code == ENOTDIR) ? RootState.missingError(path: url.path) : ErrorClassifier.destinationError(errno: code, atRoot: true)
         }
         var st = stat()
         guard fstat(fd, &st) == 0 else {
             let code = errno
             close(fd)
-            throw fail(code)
+            throw ErrorClassifier.destinationError(errno: code, atRoot: true)
         }
-        return DirectoryHandle(fd: fd, device: st.st_dev)
+        return DirectoryHandle(fd: fd, device: st.st_dev, inode: st.st_ino)
     }
 
     // MARK: Traversal
@@ -71,7 +75,7 @@ final class DirectoryHandle: @unchecked Sendable {
             close(child)
             throw DestinationError.itemRejected(reason: "other volume")
         }
-        return DirectoryHandle(fd: child, device: device)
+        return DirectoryHandle(fd: child, device: device, inode: st.st_ino)
     }
 
     /// `fstatat(AT_SYMLINK_NOFOLLOW)`; nil when the entry does not exist.
@@ -151,20 +155,25 @@ final class DirectoryHandle: @unchecked Sendable {
     // MARK: Placement
 
     /// Renames without overwriting: `RENAME_EXCL`, else `linkat` + removal of the `.part`, else (only when
-    /// `allowCheckThenRename`, i.e. the caller holds the folder write lock) check-then-rename.
-    func renameExclusive(_ from: String, to name: String, in destination: DirectoryHandle, allowCheckThenRename: Bool) throws {
+    /// `allowCheckThenRename`, i.e. the caller holds the folder write lock) check-then-rename. A volume that
+    /// supports neither is remembered in `memo`, so later calls go straight to the fallback.
+    func renameExclusive(_ from: String, to name: String, in destination: DirectoryHandle, allowCheckThenRename: Bool,
+                         memo: ExclusiveRenameMemo) throws {
         try LocalPath.validate(name: from)
         try LocalPath.validate(name: name)
-        if renameatx_np(fd, from, destination.fd, name, UInt32(RENAME_EXCL)) == 0 { return }
-        let code = errno
-        guard [ENOTSUP, EINVAL, ENOSYS].contains(code) else { throw Self.fail(code) }
-        if Self.isOwnedPartName(from) {
-            if linkat(fd, from, destination.fd, name, 0) == 0 {
-                try? unlinkOwned(from)
-                return
+        if !memo.isUnsupported(destination.device) {
+            if renameatx_np(fd, from, destination.fd, name, UInt32(RENAME_EXCL)) == 0 { return }
+            let code = errno
+            guard [ENOTSUP, EINVAL, ENOSYS].contains(code) else { throw Self.fail(code) }
+            if Self.isOwnedPartName(from) {
+                if linkat(fd, from, destination.fd, name, 0) == 0 {
+                    try? unlinkOwned(from)
+                    return
+                }
+                let linkCode = errno
+                guard [ENOTSUP, EPERM, EMLINK, EINVAL, ENOSYS].contains(linkCode) else { throw Self.fail(linkCode) }
+                memo.markUnsupported(destination.device)
             }
-            let linkCode = errno
-            guard [ENOTSUP, EPERM, EMLINK, EINVAL, ENOSYS].contains(linkCode) else { throw Self.fail(linkCode) }
         }
         guard allowCheckThenRename else { throw ExclusiveRenameUnsupported() }
         guard try destination.status(name) == nil else { throw Self.fail(EEXIST) }

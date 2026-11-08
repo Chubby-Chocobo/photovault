@@ -53,11 +53,12 @@ actor FolderLockManager {
         }
     }
 
-    /// Runs `body` (synchronous file work) while holding the lock; the body runs off this actor.
-    nonisolated func withLock<T: Sendable>(_ path: String, write: Bool, _ body: @Sendable () throws -> T) async throws -> T {
+    /// Runs `body` (synchronous file work) on `queue` while holding the lock.
+    nonisolated func withLock<T: Sendable>(_ path: String, write: Bool, on queue: BlockingQueue,
+                                           _ body: @escaping @Sendable () throws -> T) async throws -> T {
         let token = await acquire(path, write: write)
         do {
-            let value = try body()
+            let value = try await queue.run(body)
             await release(token)
             return value
         } catch {

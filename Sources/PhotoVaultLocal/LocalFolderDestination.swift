@@ -12,25 +12,32 @@ public actor LocalFolderDestination: Destination {
     private let ops: LocalFileOps
     private let access: any RootAccess
     private let locks = FolderLockManager()
+    private let queue: BlockingQueue
     private let disk: (any DiskSpaceProvider)?
     private let log: any LogSink
 
     public init(id: DestinationID, root: any RootAccess, disk: (any DiskSpaceProvider)? = nil, log: any LogSink = NullLogSink()) {
+        self.init(id: id, root: root, disk: disk, log: log, renameMemo: .volumes)
+    }
+
+    init(id: DestinationID, root: any RootAccess, disk: (any DiskSpaceProvider)? = nil, log: any LogSink = NullLogSink(),
+         renameMemo: ExclusiveRenameMemo) {
         self.id = id
+        self.queue = BlockingQueue(label: "photovault.local.\(id.rawValue)")
         self.access = root
         self.disk = disk
         self.log = log
-        self.ops = LocalFileOps(access: root, writer: AtomicFileWriter(), log: log)
+        self.ops = LocalFileOps(access: root, writer: AtomicFileWriter(), log: log, renameMemo: renameMemo)
     }
 
     /// Runs file work under the folder read lock; when the filesystem lacks an exclusive rename, repeats
     /// it under the write lock with the check-then-rename fallback enabled.
     private func placing<T: Sendable>(_ path: String, _ body: @escaping @Sendable (Bool) throws -> T) async throws -> T {
         do {
-            return try await locks.withLock(path, write: false) { try body(false) }
+            return try await locks.withLock(path, write: false, on: queue) { try body(false) }
         } catch is ExclusiveRenameUnsupported {
             log.log(.notice, category: "local", "exclusive rename unsupported, using locked check-then-rename")
-            return try await locks.withLock(path, write: true) { try body(true) }
+            return try await locks.withLock(path, write: true, on: queue) { try body(true) }
         }
     }
 
@@ -39,7 +46,7 @@ public actor LocalFolderDestination: Destination {
     public func checkAvailability() async -> DestinationStatus {
         let ops = self.ops
         do {
-            try await Task.detached { try ops.checkRootAndSweep() }.value
+            try await queue.run { try ops.checkRootAndSweep() }
             return .active
         } catch let error as DestinationError {
             return Self.status(for: error)
@@ -58,14 +65,14 @@ public actor LocalFolderDestination: Destination {
     /// Writes, reads back and deletes `.photovault-test` (FR-70).
     public func testConnection() async throws {
         let ops = self.ops
-        try await Task.detached { try ops.testConnection() }.value
+        try await queue.run { try ops.testConnection() }
     }
 
     // MARK: destination.json
 
     public func readMarker() async throws -> DestinationMarker? {
         let ops = self.ops
-        return try await Task.detached { try ops.readMarker() }.value
+        return try await queue.run { try ops.readMarker() }
     }
 
     /// Never overwrites: an existing marker with the same id is returned, another id throws `foreignFile`.
@@ -82,7 +89,7 @@ public actor LocalFolderDestination: Destination {
 
     public func ensureFolder(_ request: FolderRequest) async throws -> RemoteFolderRef {
         let ops = self.ops
-        return try await locks.withLock(request.parent.remoteId, write: false) { try ops.ensureFolder(request) }
+        return try await locks.withLock(request.parent.remoteId, write: false, on: queue) { try ops.ensureFolder(request) }
     }
 
     public func upload(_ request: UploadRequest, onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
@@ -98,25 +105,25 @@ public actor LocalFolderDestination: Destination {
 
     public func probe(remoteId: String) async throws -> RemoteItem? {
         let ops = self.ops
-        return try await Task.detached { try ops.probe(remoteId) }.value
+        return try await queue.run { try ops.probe(remoteId) }
     }
 
     /// SHA-256 of the file at `remoteId` (a relative path), nil when absent.
     public func contentHash(remoteId: String) async throws -> String? {
         let ops = self.ops
-        return try await Task.detached { try ops.contentHash(remoteId) }.value
+        return try await queue.run { try ops.contentHash(remoteId) }
     }
 
     /// Bytes of a small file (a sidecar) at `remoteId`, nil when absent; larger than `maxBytes` throws.
     public func readSmallFile(remoteId: String, maxBytes: Int = 1 << 20) async throws -> Data? {
         let ops = self.ops
-        return try await Task.detached { try ops.readSmallFile(remoteId, maxBytes: maxBytes) }.value
+        return try await queue.run { try ops.readSmallFile(remoteId, maxBytes: maxBytes) }
     }
 
     public func replaceContent(remoteId: String, _ request: UploadRequest) async throws -> UploadResult {
         let ops = self.ops
         let (parent, _) = try LocalPath.split(remoteId)
-        return try await locks.withLock(parent, write: true) { try ops.replace(path: remoteId, request) }
+        return try await locks.withLock(parent, write: true, on: queue) { try ops.replace(path: remoteId, request) }
     }
 
     public func move(remoteId: String, name: String, from: RemoteFolderRef, to: RemoteFolderRef) async throws -> RemoteItem {
@@ -129,7 +136,7 @@ public actor LocalFolderDestination: Destination {
 
     public func renameFolder(_ folder: RemoteFolderRef, newName: String) async throws -> RemoteFolderRef {
         let ops = self.ops
-        return try await locks.withLock(folder.remoteId, write: true) { try ops.renameFolder(folder, newName: newName) }
+        return try await locks.withLock(folder.remoteId, write: true, on: queue) { try ops.renameFolder(folder, newName: newName) }
     }
 
     public nonisolated func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> {
@@ -163,19 +170,5 @@ public actor LocalFolderDestination: Destination {
                 throw DestinationError.offline
             }
         }
-    }
-
-    // MARK: Maintenance
-
-    /// Compares the expected files with the disk and re-hashes the deterministic sample (FR-76).
-    public func verifyIntegrity(expected: [ExpectedFile], seed: String) async throws -> IntegrityReport {
-        let ops = self.ops
-        return try await Task.detached { try ops.verifyIntegrity(expected: expected, seed: seed) }.value
-    }
-
-    /// Startup decision for a folder rename left `inProgress` (spec 8.9.4).
-    public func recoverRename(oldPath: String, newPath: String) async throws -> RenameRecoveryDecision {
-        let ops = self.ops
-        return try await Task.detached { try ops.renameRecovery(oldPath: oldPath, newPath: newPath) }.value
     }
 }
