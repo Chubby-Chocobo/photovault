@@ -1,7 +1,7 @@
 ---
 phase: 04
 title: "Language picker and live switch"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1h

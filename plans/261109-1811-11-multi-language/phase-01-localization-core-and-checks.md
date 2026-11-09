@@ -1,7 +1,7 @@
 ---
 phase: 01
 title: "Language core and coverage test"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1h

@@ -1,7 +1,7 @@
 ---
 phase: 03
 title: "App target text"
-status: pending
+status: completed
 priority: P2
 size: L
 human_effort: 1-2h

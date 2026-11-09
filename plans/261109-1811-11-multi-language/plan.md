@@ -1,6 +1,6 @@
 ---
 title: "Support English and Vietnamese with an in-app language switch"
-status: pending
+status: in-review
 priority: P2
 issue: 11
 branch: feat/11-multi-language
@@ -26,11 +26,11 @@ PhotoVault's interface (menu bar, windows, Settings, onboarding, notifications, 
 
 | # | Phase | Status | Size | Depends |
 |---|---|---|---|---|
-| 01 | [Language core and coverage test](phase-01-localization-core-and-checks.md) | pending | M | — |
-| 02 | [AppSupport and Engine text](phase-02-appsupport-and-engine-text.md) | pending | L | 01 |
-| 03 | [App target text](phase-03-app-target-text.md) | pending | L | 01 |
-| 04 | [Language picker and live switch](phase-04-language-picker-and-launch.md) | pending | M | 01, 03 |
-| 05 | [Docs and verification](phase-05-docs-and-verification.md) | pending | S | 02, 03, 04 |
+| 01 | [Language core and coverage test](phase-01-localization-core-and-checks.md) | completed | M | — |
+| 02 | [AppSupport and Engine text](phase-02-appsupport-and-engine-text.md) | completed | L | 01 |
+| 03 | [App target text](phase-03-app-target-text.md) | completed | L | 01 |
+| 04 | [Language picker and live switch](phase-04-language-picker-and-launch.md) | completed | M | 01, 03 |
+| 05 | [Docs and verification](phase-05-docs-and-verification.md) | completed | S | 02, 03, 04 |
 
 02 and 03 own disjoint files; both only add `tr(vi:en:)` calls and need nothing from each other.
 

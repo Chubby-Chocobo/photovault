@@ -1,7 +1,7 @@
 ---
 phase: 02
 title: "AppSupport and Engine text"
-status: pending
+status: completed
 priority: P2
 size: L
 human_effort: 1-2h
