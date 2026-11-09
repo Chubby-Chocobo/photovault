@@ -8,24 +8,26 @@ public enum RuleKey: String, CaseIterable, Sendable {
     public var label: String {
         switch self {
         case .camera: "Camera"
-        case .screenshot: "Ảnh chụp màn hình"
-        case .saved: "Lưu từ app"
-        case .photo: "Ảnh (gồm video Live Photo)"
+        case .screenshot: tr(vi: "Ảnh chụp màn hình", en: "Screenshots")
+        case .saved: tr(vi: "Lưu từ app", en: "Saved from apps")
+        case .photo: tr(vi: "Ảnh (gồm video Live Photo)", en: "Photos (including Live Photo videos)")
         case .video: "Video"
         case .raw: "RAW"
-        case .original: "Bản gốc"
-        case .edited: "Bản chỉnh sửa"
+        case .original: tr(vi: "Bản gốc", en: "Originals")
+        case .edited: tr(vi: "Bản chỉnh sửa", en: "Edited versions")
         case .sidecarJson: "JSON"
         case .sidecarXmp: "XMP"
         }
     }
 
-    public static let groups: [(title: String, keys: [RuleKey])] = [
-        ("Category", [.camera, .screenshot, .saved]),
-        ("Loại", [.photo, .video, .raw]),
-        ("Phiên bản", [.original, .edited]),
-        ("Sidecar", [.sidecarJson, .sidecarXmp]),
-    ]
+    public static var groups: [(title: String, keys: [RuleKey])] {
+        [
+            ("Category", [.camera, .screenshot, .saved]),
+            (tr(vi: "Loại", en: "Type"), [.photo, .video, .raw]),
+            (tr(vi: "Phiên bản", en: "Version"), [.original, .edited]),
+            ("Sidecar", [.sidecarJson, .sidecarXmp]),
+        ]
+    }
 }
 
 extension DestinationRules {
@@ -92,7 +94,7 @@ public enum RuleEditor {
             return names.isEmpty ? "—" : names.joined(separator: " + ")
         }
         var text = parts.joined(separator: " · ")
-        if let skip = rules.skipLargerThanGB { text += " · bỏ qua > \(skip) GB" }
+        if let skip = rules.skipLargerThanGB { text += tr(vi: " · bỏ qua > \(skip) GB", en: " · skip > \(skip) GB") }
         return text
     }
 
@@ -103,22 +105,27 @@ public enum RuleEditor {
     ) -> [String] {
         var lines: [String] = []
         for key in RuleKey.allCases where old.isOn(key) != new.isOn(key) && !ceilingBlocks(key, settings: settings) {
-            let amount = counts[key].map { "~" + VietnameseFormat.integer($0) + " asset" }
+            let amount = counts[key].map { count -> String in
+                let n = VietnameseFormat.integer(count)
+                return tr(vi: "~\(n) asset", en: L10n.plural(count, one: "~\(n) asset", other: "~\(n) assets"))
+            }
             if new.isOn(key) {
-                lines.append("Bật \(key.label) → xếp hàng thêm" + (amount.map { " \($0)" } ?? ""))
+                lines.append(tr(vi: "Bật \(key.label) → xếp hàng thêm", en: "Turn on \(key.label) → queue more") + (amount.map { " \($0)" } ?? ""))
             } else {
-                lines.append("Tắt \(key.label) → huỷ job còn chờ" + (amount.map { " của \($0)" } ?? ""))
+                lines.append(
+                    tr(vi: "Tắt \(key.label) → huỷ job còn chờ", en: "Turn off \(key.label) → cancel pending jobs")
+                        + (amount.map { tr(vi: " của \($0)", en: " for \($0)") } ?? ""))
             }
         }
         if old.skipLargerThanBytes != new.skipLargerThanBytes {
             if let skip = new.skipLargerThanGB {
-                lines.append("Bỏ qua file > \(skip) GB → huỷ job còn chờ của file lớn hơn")
+                lines.append(tr(vi: "Bỏ qua file > \(skip) GB → huỷ job còn chờ của file lớn hơn", en: "Skip files > \(skip) GB → cancel pending jobs for larger files"))
             } else {
-                lines.append("Không bỏ qua file lớn → xếp hàng lại file đã bỏ qua")
+                lines.append(tr(vi: "Không bỏ qua file lớn → xếp hàng lại file đã bỏ qua", en: "Stop skipping large files → requeue skipped files"))
             }
         }
         if oldScope != newScope {
-            lines.append("Đổi phạm vi → mở rộng thì xếp hàng thêm, thu hẹp chỉ huỷ phần chưa upload")
+            lines.append(tr(vi: "Đổi phạm vi → mở rộng thì xếp hàng thêm, thu hẹp chỉ huỷ phần chưa upload", en: "Change scope → widening queues more, narrowing only cancels what isn't uploaded yet"))
         }
         return lines
     }

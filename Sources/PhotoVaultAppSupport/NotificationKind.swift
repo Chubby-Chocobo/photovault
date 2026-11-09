@@ -25,16 +25,16 @@ public enum NotificationKind: String, CaseIterable, Codable, Sendable {
     /// One line per kind, as the onboarding step lists them.
     public var summary: String {
         switch self {
-        case .photosPermissionLost: "Mất quyền Photos"
-        case .reauthRequired: "Cần đăng nhập Google lại"
-        case .destinationFull: "Đích sắp đầy hoặc đã đầy"
-        case .folderTrashedOrMissing: "Thư mục backup bị xoá hoặc vào Thùng rác"
-        case .integrityMissing: "Kiểm tra toàn vẹn thấy thiếu file"
-        case .checksumMismatch: "Checksum lệch"
-        case .destinationOfflineLong: "NAS offline quá 7 ngày"
-        case .bookmarkInvalid: "Mất quyền truy cập thư mục (bookmark hỏng)"
-        case .macDiskFullLong: "Ổ Mac đầy quá 24 giờ"
-        case .syncStalled: "Không sync được quá 24 giờ"
+        case .photosPermissionLost: tr(vi: "Mất quyền Photos", en: "Photos access lost")
+        case .reauthRequired: tr(vi: "Cần đăng nhập Google lại", en: "Google sign-in required")
+        case .destinationFull: tr(vi: "Đích sắp đầy hoặc đã đầy", en: "Destination full or almost full")
+        case .folderTrashedOrMissing: tr(vi: "Thư mục backup bị xoá hoặc vào Thùng rác", en: "Backup folder deleted or moved to Trash")
+        case .integrityMissing: tr(vi: "Kiểm tra toàn vẹn thấy thiếu file", en: "Integrity check found missing files")
+        case .checksumMismatch: tr(vi: "Checksum lệch", en: "Checksum mismatch")
+        case .destinationOfflineLong: tr(vi: "NAS offline quá 7 ngày", en: "NAS offline for over 7 days")
+        case .bookmarkInvalid: tr(vi: "Mất quyền truy cập thư mục (bookmark hỏng)", en: "Lost access to the folder (broken bookmark)")
+        case .macDiskFullLong: tr(vi: "Ổ Mac đầy quá 24 giờ", en: "Mac disk full for over 24 hours")
+        case .syncStalled: tr(vi: "Không sync được quá 24 giờ", en: "Sync not working for over 24 hours")
         }
     }
 }

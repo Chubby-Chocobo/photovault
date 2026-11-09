@@ -20,42 +20,42 @@ public enum StatusText {
         let code = status.description
         switch status {
         case .active:
-            return StatusPresentation(label: "Đang hoạt động", code: code, tone: .green, needsOwnerDecision: false)
+            return StatusPresentation(label: tr(vi: "Đang hoạt động", en: "Active"), code: code, tone: .green, needsOwnerDecision: false)
         case .paused(.userPaused):
-            return StatusPresentation(label: "Tạm dừng (bởi bạn)", code: code, tone: .gray, needsOwnerDecision: false)
+            return StatusPresentation(label: tr(vi: "Tạm dừng (bởi bạn)", en: "Paused (by you)"), code: code, tone: .gray, needsOwnerDecision: false)
         case .paused(let reason):
             return StatusPresentation(
-                label: "Tạm dừng · " + reasonText(reason), code: code, tone: .orange,
+                label: tr(vi: "Tạm dừng · ", en: "Paused · ") + reasonText(reason), code: code, tone: .orange,
                 needsOwnerDecision: [.rootTrashed, .rootMissing, .folderTrashed].contains(reason))
         case .unavailable(let reason):
-            return StatusPresentation(label: "Không khả dụng · " + reasonText(reason), code: code, tone: .red, needsOwnerDecision: false)
+            return StatusPresentation(label: tr(vi: "Không khả dụng · ", en: "Unavailable · ") + reasonText(reason), code: code, tone: .red, needsOwnerDecision: false)
         case .error(let reason):
-            return StatusPresentation(label: "Lỗi · " + reasonText(reason), code: code, tone: .red, needsOwnerDecision: false)
+            return StatusPresentation(label: tr(vi: "Lỗi · ", en: "Error · ") + reasonText(reason), code: code, tone: .red, needsOwnerDecision: false)
         }
     }
 
     public static func reasonText(_ reason: StatusReason) -> String {
         switch reason {
-        case .userPaused: "bởi bạn"
-        case .full: "đích đã đầy"
-        case .dailyCapReached: "đã đạt giới hạn upload trong ngày"
-        case .offline: "mất kết nối"
-        case .bookmarkInvalid: "mất quyền truy cập thư mục"
-        case .reauthRequired: "cần đăng nhập lại"
-        case .signedOut: "đã đăng xuất"
-        case .rootMissing: "không thấy thư mục gốc"
-        case .rootTrashed: "thư mục gốc trong Thùng rác"
-        case .folderTrashed: "thư mục backup trong Thùng rác"
-        case .recovering: "đang khôi phục trạng thái"
+        case .userPaused: tr(vi: "bởi bạn", en: "by you")
+        case .full: tr(vi: "đích đã đầy", en: "destination is full")
+        case .dailyCapReached: tr(vi: "đã đạt giới hạn upload trong ngày", en: "daily upload limit reached")
+        case .offline: tr(vi: "mất kết nối", en: "offline")
+        case .bookmarkInvalid: tr(vi: "mất quyền truy cập thư mục", en: "lost access to the folder")
+        case .reauthRequired: tr(vi: "cần đăng nhập lại", en: "sign-in required")
+        case .signedOut: tr(vi: "đã đăng xuất", en: "signed out")
+        case .rootMissing: tr(vi: "không thấy thư mục gốc", en: "root folder not found")
+        case .rootTrashed: tr(vi: "thư mục gốc trong Thùng rác", en: "root folder is in Trash")
+        case .folderTrashed: tr(vi: "thư mục backup trong Thùng rác", en: "backup folder is in Trash")
+        case .recovering: tr(vi: "đang khôi phục trạng thái", en: "recovering state")
         }
     }
 
     /// Label of the backup mode shown next to a destination.
     public static func scopeText(_ scope: ScopeMode) -> String {
         switch scope {
-        case .full: "Toàn bộ thư viện"
-        case .since(let day): "Từ " + dayText(day)
-        case .newOnly: "Chỉ ảnh mới"
+        case .full: tr(vi: "Toàn bộ thư viện", en: "Entire library")
+        case .since(let day): tr(vi: "Từ ", en: "From ") + dayText(day)
+        case .newOnly: tr(vi: "Chỉ ảnh mới", en: "New photos only")
         }
     }
 

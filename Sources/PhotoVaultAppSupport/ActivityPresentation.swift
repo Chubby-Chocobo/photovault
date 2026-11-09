@@ -9,12 +9,12 @@ public enum ActivityFilter: String, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .all: "Tất cả"
-        case .rename: "Đổi tên"
-        case .move: "Di chuyển"
-        case .missing: "File thiếu"
-        case .status: "Trạng thái"
-        case .restore: "Khôi phục"
+        case .all: tr(vi: "Tất cả", en: "All")
+        case .rename: tr(vi: "Đổi tên", en: "Rename")
+        case .move: tr(vi: "Di chuyển", en: "Move")
+        case .missing: tr(vi: "File thiếu", en: "Missing file")
+        case .status: tr(vi: "Trạng thái", en: "Status")
+        case .restore: tr(vi: "Khôi phục", en: "Restore")
         }
     }
 
@@ -48,19 +48,19 @@ public struct ActivityDayGroup: Identifiable, Equatable, Sendable {
 public enum ActivityPresenter {
     public static func kindLabel(_ kind: ActivityKind) -> String {
         switch kind {
-        case .renamed: "Đổi tên"
-        case .moved: "Di chuyển"
-        case .missingFile: "File thiếu"
-        case .statusChanged: "Trạng thái"
-        case .recovered: "Khôi phục"
-        case .notice: "Thông báo"
+        case .renamed: tr(vi: "Đổi tên", en: "Rename")
+        case .moved: tr(vi: "Di chuyển", en: "Move")
+        case .missingFile: tr(vi: "File thiếu", en: "Missing file")
+        case .statusChanged: tr(vi: "Trạng thái", en: "Status")
+        case .recovered: tr(vi: "Khôi phục", en: "Restore")
+        case .notice: tr(vi: "Thông báo", en: "Notice")
         }
     }
 
     /// Lowercase without diacritics; `đ` has no decomposition, so it is folded by hand.
     static func fold(_ text: String) -> String {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi"))
-            .replacingOccurrences(of: "đ", with: "d")
+            .replacingOccurrences(of: "đ", with: "d")  // l10n: verbatim
     }
 
     /// Newest-first events -> day groups, filtered by kind and a case/diacritic-insensitive search.
