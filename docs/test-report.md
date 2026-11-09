@@ -24,6 +24,14 @@ swift test --scratch-path .build-docs
 - Tests added by the audit fixes are in these suites: `SettingsFormTests`, `DestinationRulesEditorTests`, `SettingsSavableTests`, `JobTransitionsTests`, `DriveQueryTests`, `DriveAPIRequestTests`, `ResumableFlowTests`, `ClassifyPassWalkTests`, `DeletedAssetAndClockTests`, `DirtyQueueSweepTests`, `EditGateTests`, `EngineQueriesApplyTests`, `ExportPassFailureTests`, `IntegrityRootStateTests`, `LastSuccessfulSyncTests`, `PlaceRefreshTests`, `RecoveryTriggerTests`, `ResourceGuardTests`, `SettingsStoreTests`, `UploadResumeParentTests`, `ViewRepairTests`, `LocalResilienceTests`, `ImageIOMetadataReaderTests`, `UTTypeResolverTests`, `PhotosErrorMapperTests`, `StalledRequestGuardTests`, `DatabaseBackupTests`, `PlacementTests`, `DayStatTests`, `SnapshotCounterTests`.
 - An earlier snapshot taken while the Drive fixes were half applied showed 3 loopback OAuth failures; they do not reproduce on the final tree (`OAuthPrimitivesTests` 8 of 8 pass on their own and in the full run).
 - Two timing-sensitive tests were made deterministic: `AuthSessionTests` no longer shares one fake clock between parallel tests, and `TriggerDebouncerTests` polls for the expected fire instead of fixed sleeps.
+- **Real-file camera detection** is covered at two levels. `RawHeaderFixtureTests` uses the opening bytes of 21 public-domain RAW files kept in git. `MediaCorpusTests` uses 27 complete files (about 750 MB) that CI fetches by checksum and caches. Run locally on 2026-11-09:
+
+  ```text
+  PHOTOVAULT_MEDIA_CORPUS=.media-corpus swift test
+  ✔ Test run with 821 tests in 137 suites passed after 20.546 seconds.
+  ```
+
+  With the UTI hint removed, 26 issues fail across both suites.
 - Per-target counts: [codebase-summary.md](./architecture/codebase-summary.md#test-targets).
 
 ## Spec §11 coverage

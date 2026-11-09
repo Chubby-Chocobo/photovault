@@ -107,7 +107,10 @@ Conclusions:
 - **CR3, CRW and IIQ conclude only on the complete file.** The download is not wasted: the complete file is kept as the staged copy and uploaded from there.
 - **Samsung SRW has a model but no make in ImageIO.** It still counts as a camera (`hasCameraIdentity` needs make or model); only the sidecar lacks the make.
 - **Sigma X3F is not supported by macOS.** It has no system UTI and ImageIO cannot read it.
-- **Regression test:** `RawHeaderFixtureTests` holds the first 64 KiB of the five affected samples (`Tests/PhotoVaultPhotosTests/Fixtures/RawHeaders/`, public domain). Without the hint, all five cases fail.
+- **Regression tests:**
+  - `RawHeaderFixtureTests` runs on the opening bytes of 21 of these samples, kept in git (`Tests/PhotoVaultPhotosTests/Fixtures/RawHeaders/`).
+  - `MediaCorpusTests` runs on 27 complete files that CI fetches by checksum: camera, `isRaw`, and the byte budget of the header read.
+  - Without the hint, 26 issues fail across both suites.
 
 ## Changes this result drives
 

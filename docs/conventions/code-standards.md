@@ -50,4 +50,8 @@ These rules come from the code as it is built. Where this file and the code disa
 - Use Swift Testing (`@Test`, `#expect`). Write the test first for behaviour changes.
 - Tests are deterministic: use `TestClock` and the fakes in `PhotoVaultTestSupport`, poll with a timeout instead of sleeping for a fixed time, and do not share mutable clocks between parallel tests.
 - For crash safety, use fault injection (`CrashPoint`) and rebuild the engine over the same database.
+- Camera detection on real files is guarded at two levels:
+  - `RawHeaderFixtureTests` runs on the opening bytes of real RAW files kept in git (`Tests/PhotoVaultPhotosTests/Fixtures/RawHeaders/`, about 3.4 MB).
+  - `MediaCorpusTests` runs on complete files that stay out of git. They are listed with checksums and expectations in `Fixtures/MediaCorpus/manifest.json` and fetched by `scripts/fetch-media-corpus.py`. CI caches them and always runs this suite; locally it runs when `PHOTOVAULT_MEDIA_CORPUS` is set.
+  - A change to how files are read must keep both green. When a result changes on purpose (for example a new macOS reads a new format), update the manifest in the same change.
 - Do not put plan IDs, phase numbers or review finding codes in test names, code comments or commit messages.
