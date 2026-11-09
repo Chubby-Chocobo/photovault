@@ -18,6 +18,9 @@ final class OnboardingModel {
     var identity: GoogleIdentity?
     var signInError: String?
     private var signInGeneration = 0
+    /// The sign-in waiting for the browser. Cancelling it stops the loopback listener, so a tab the
+    /// owner abandoned cannot finish later and replace (or revoke) a newer sign-in.
+    private var signInTask: Task<Void, Never>?
 
     var photos: PhotosAuthorization
 
@@ -105,8 +108,15 @@ final class OnboardingModel {
         }
     }
 
+    func startSignIn() {
+        signInTask?.cancel()
+        signInTask = Task { await signIn() }
+    }
+
     func cancelSignIn() {
         signInGeneration += 1
+        signInTask?.cancel()
+        signInTask = nil
         google = .none
     }
 

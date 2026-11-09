@@ -143,8 +143,9 @@ extension AppModel {
     func removeDestination(_ record: DestinationRecord) async {
         guard let env, record.kind == .localFolder else { return }
         do {
-            try await env.store.write { db in try DestinationRepository.remove(db, id: record.id) }
+            // Stop its transfers first, so none finishes into a row that is already gone.
             await env.coordinator.destinationRemoved(record.id)
+            try await env.store.write { db in try DestinationRepository.remove(db, id: record.id) }
             await refresh()
             showNotice("Đã xoá đích khỏi PhotoVault; file ở đích giữ nguyên.")
         } catch {

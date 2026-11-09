@@ -46,6 +46,7 @@ extension AppModel {
         do {
             try await env.settings.setArchiveTimeZone(plan.timeZone)
             archiveTimeZone = plan.timeZone
+            try await reconcileUnstartedDestinations(plan, env: env)
             try await createDriveDestination(plan, env: env)
             if let nas = plan.nas, !destinations.contains(where: { $0.id == nas.destinationId }) {
                 try await commit(nas)
@@ -68,6 +69,40 @@ extension AppModel {
             firstStart?.failure = (error as? FirstStartError)?.message
                 ?? (error is CancellationError ? "Đã huỷ." : ErrorText.message(for: error))
         }
+    }
+
+    /// A start that failed before the baseline left rows behind; the owner may have changed their
+    /// answers since. Rows that no longer match the plan are forgotten (database only: nothing at the
+    /// destination is touched) so the plan is applied as chosen; a matching Drive row only takes the
+    /// new scope. After the baseline the start is resumed as it was.
+    private func reconcileUnstartedDestinations(_ plan: FirstStartPlan, env: AppEnvironment) async throws {
+        guard try await env.store.read({ db in try AppQueries.baselineTaken(db) }) == false else { return }
+        await refresh()
+        if let drive = driveRecord {
+            let sameAccount = drive.accountId == plan.identity.sub
+            let sameRoot: Bool = switch plan.root {
+            case .reuse(let id, _): drive.config.driveRootId == id
+            case .createNew(let name): !drive.recoveryRequired && drive.config.driveRootName == RootNameValidator.normalized(name)
+            }
+            if sameAccount, sameRoot {
+                if drive.scope != plan.scope {
+                    var updated = drive
+                    updated.scope = plan.scope
+                    let record = updated
+                    try await env.store.write { db in try DestinationRepository.save(db, record) }
+                }
+            } else {
+                await env.coordinator.destinationRemoved(.googleDrive)
+                try await env.store.write { db in try DestinationRepository.remove(db, id: .googleDrive) }
+                env.log.log(.notice, category: "onboarding", "forgot the Drive destination of an unfinished start")
+            }
+        }
+        for local in localRecords where local.id != plan.nas?.destinationId {
+            await env.coordinator.destinationRemoved(local.id)
+            try await env.store.write { db in try DestinationRepository.remove(db, id: local.id) }
+            env.log.log(.notice, category: "onboarding", "forgot a folder destination of an unfinished start")
+        }
+        await refresh()
     }
 
     private func createDriveDestination(_ plan: FirstStartPlan, env: AppEnvironment) async throws {

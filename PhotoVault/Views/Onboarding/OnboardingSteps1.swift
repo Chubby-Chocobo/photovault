@@ -14,7 +14,7 @@ struct GoogleStep: View {
         }
         switch model.google {
         case .none:
-            Button("Đăng nhập bằng Google…") { Task { await model.signIn() } }.buttonStyle(.borderedProminent)
+            Button("Đăng nhập bằng Google…") { model.startSignIn() }.buttonStyle(.borderedProminent)
         case .waiting:
             HStack {
                 ProgressView().controlSize(.small)
