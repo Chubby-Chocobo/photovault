@@ -18,18 +18,22 @@ enum LaunchFailure: Error {
 
     var alertTitle: String {
         switch self {
-        case .unsandboxed: "PhotoVault cần chạy với --dev-container"
-        case .alreadyRunning: "PhotoVault đang chạy"
-        case .other: "PhotoVault không thể khởi động"
+        case .unsandboxed: tr(vi: "PhotoVault cần chạy với --dev-container", en: "PhotoVault must run with --dev-container")
+        case .alreadyRunning: tr(vi: "PhotoVault đang chạy", en: "PhotoVault is already running")
+        case .other: tr(vi: "PhotoVault không thể khởi động", en: "PhotoVault can’t start")
         }
     }
 
     var alertText: String {
         switch self {
         case .unsandboxed:
-            "Bản này không chạy trong sandbox nên dùng chung dữ liệu với bản đã ký sẽ làm hỏng trạng thái. Chạy lại với đối số --dev-container để dùng thư mục dữ liệu riêng (PhotoVault-dev), hoặc build bản đã ký."
+            tr(
+                vi: "Bản này không chạy trong sandbox nên dùng chung dữ liệu với bản đã ký sẽ làm hỏng trạng thái. Chạy lại với đối số --dev-container để dùng thư mục dữ liệu riêng (PhotoVault-dev), hoặc build bản đã ký.",
+                en: "This build does not run in the sandbox, so sharing data with the signed build would corrupt its state. Run again with the --dev-container argument to use a separate data folder (PhotoVault-dev), or build the signed version.")
         case .alreadyRunning:
-            "Một bản PhotoVault khác đang dùng cùng thư mục dữ liệu. Tìm biểu tượng PhotoVault trên menu bar."
+            tr(
+                vi: "Một bản PhotoVault khác đang dùng cùng thư mục dữ liệu. Tìm biểu tượng PhotoVault trên menu bar.",
+                en: "Another PhotoVault is using the same data folder. Look for the PhotoVault icon in the menu bar.")
         case .other(let message): message
         }
     }
@@ -64,7 +68,7 @@ struct AppEnvironment: Sendable {
         arguments: [String] = CommandLine.arguments, bundle: Bundle = .main
     ) throws -> AppEnvironment {
         guard let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw LaunchFailure.other("Không tìm thấy thư mục Application Support.")
+            throw LaunchFailure.other(tr(vi: "Không tìm thấy thư mục Application Support.", en: "The Application Support folder was not found."))
         }
         let layout: ContainerLayout
         do {
@@ -73,7 +77,7 @@ struct AppEnvironment: Sendable {
         } catch EngineError.unsandboxedBuild {
             throw LaunchFailure.unsandboxed
         } catch {
-            throw LaunchFailure.other("Không tạo được thư mục dữ liệu: \(error.localizedDescription)")
+            throw LaunchFailure.other(tr(vi: "Không tạo được thư mục dữ liệu: \(error.localizedDescription)", en: "Could not create the data folder: \(error.localizedDescription)"))
         }
 
         let lock: InstanceLock
@@ -82,7 +86,7 @@ struct AppEnvironment: Sendable {
         } catch InstanceLock.LockError.alreadyRunning {
             throw LaunchFailure.alreadyRunning
         } catch {
-            throw LaunchFailure.other("Không khoá được thư mục dữ liệu: \(error.localizedDescription)")
+            throw LaunchFailure.other(tr(vi: "Không khoá được thư mục dữ liệu: \(error.localizedDescription)", en: "Could not lock the data folder: \(error.localizedDescription)"))
         }
 
         let fileLog = RotatingFileLog(directory: layout.logs)
@@ -95,7 +99,7 @@ struct AppEnvironment: Sendable {
             settings = try SettingsStore(store: store, log: log)
         } catch {
             log.log(.fault, category: "launch", "database could not be opened: \(type(of: error))")
-            throw LaunchFailure.other("Không mở được cơ sở dữ liệu. Chi tiết nằm trong thư mục log.")
+            throw LaunchFailure.other(tr(vi: "Không mở được cơ sở dữ liệu. Chi tiết nằm trong thư mục log.", en: "Could not open the database. Details are in the log folder."))
         }
 
         let clientID = (bundle.object(forInfoDictionaryKey: "PVGoogleClientID") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -111,7 +115,7 @@ struct AppEnvironment: Sendable {
         do {
             records = try store.read { db in try DestinationRepository.fetchAll(db) }
         } catch {
-            throw LaunchFailure.other("Không đọc được danh sách đích: \(error.localizedDescription)")
+            throw LaunchFailure.other(tr(vi: "Không đọc được danh sách đích: \(error.localizedDescription)", en: "Could not read the list of destinations: \(error.localizedDescription)"))
         }
         let driveRecord = records.first { $0.id == .googleDrive }
         let capFile = DailyCapFile(url: layout.root.appendingPathComponent("drive-daily-cap.json"))

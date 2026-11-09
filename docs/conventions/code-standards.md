@@ -43,7 +43,9 @@ These rules come from the code as it is built. Where this file and the code disa
 
 - Do not catch and swallow errors. Classify them, record the job transition, or surface them to the owner.
 - Logs and activity events never contain file names, coordinates, tokens, session URIs or e-mail addresses. Log the error type, not its message. File logs go through `LogRedactor`.
-- UI copy is Vietnamese. Messages never include file paths or photo names.
+- UI copy is bilingual: write every interface string as `tr(vi: "…", en: "…")`, never a bare Vietnamese literal; English counts use `L10n.plural`. `UITextCoverageTests` enforces it (a language's own name or a folding letter takes `// l10n: verbatim`). Tests pin a language with `L10n.$override.withValue(.en)`, never by setting `L10n.current`. See [0022](../decisions/0022-interface-languages.md).
+- Never localize what is written to destinations: folder names (`Camera Uploads`, `Screenshots`, `Saved`, `By device`, `By place`, `Favorites`, day and place folders) and sidecars stay the same whatever the interface language.
+- Messages never include file paths or photo names.
 
 ## Tests
 

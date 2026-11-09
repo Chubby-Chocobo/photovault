@@ -1,6 +1,7 @@
 import PhotoVaultAppSupport
 import PhotoVaultDrive
 import SwiftUI
+import PhotoVaultCore
 
 /// Reuse an earlier PhotoVault root or create a new one (FR-01 step 3, FR-08, FR-51).
 struct RootChooser: View {
@@ -16,7 +17,7 @@ struct RootChooser: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            LabeledContent("Tên thư mục") {
+            LabeledContent(tr(vi: "Tên thư mục", en: "Folder name")) {
                 TextField("Camera Uploads", text: $newName)
                     .textFieldStyle(.roundedBorder).frame(width: 260)
                     .disabled(reuseRootId != nil)
@@ -28,23 +29,31 @@ struct RootChooser: View {
                 Banner(
                     .info,
                     title: roots.count == 1
-                        ? "Tìm thấy thư mục “\(roots[0].name)” do PhotoVault tạo trước đây"
-                        : "Tìm thấy \(roots.count) thư mục do PhotoVault tạo trước đây",
-                    message: "Bạn muốn dùng lại hay tạo thư mục mới?") {
+                        ? tr(
+                            vi: "Tìm thấy thư mục “\(roots[0].name)” do PhotoVault tạo trước đây",
+                            en: "Found the folder “\(roots[0].name)” that PhotoVault created earlier")
+                        : tr(
+                            vi: "Tìm thấy \(roots.count) thư mục do PhotoVault tạo trước đây",
+                            en: "Found \(roots.count) folders that PhotoVault created earlier"),
+                    message: tr(vi: "Bạn muốn dùng lại hay tạo thư mục mới?", en: "Do you want to reuse one or create a new folder?")) {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(roots) { root in
                             optionRow(
-                                selected: reuseRootId == root.id, title: "Dùng lại “\(root.name)”",
-                                detail: "PhotoVault khôi phục trạng thái từ Drive trước khi upload, nên file đã có sẽ không bị upload trùng.",
+                                selected: reuseRootId == root.id, title: tr(vi: "Dùng lại “\(root.name)”", en: "Reuse “\(root.name)”"),
+                                detail: tr(
+                                    vi: "PhotoVault khôi phục trạng thái từ Drive trước khi upload, nên file đã có sẽ không bị upload trùng.",
+                                    en: "PhotoVault recovers its state from Drive before uploading, so files already there are not uploaded twice."),
                                 enabled: canReuse
                             ) { reuseRootId = root.id }
                         }
                         optionRow(
-                            selected: reuseRootId == nil, title: "Tạo thư mục mới",
-                            detail: "Thư mục cũ giữ nguyên, không bị xoá hay sửa.", enabled: true
+                            selected: reuseRootId == nil, title: tr(vi: "Tạo thư mục mới", en: "Create a new folder"),
+                            detail: tr(vi: "Thư mục cũ giữ nguyên, không bị xoá hay sửa.", en: "The old folder stays as it is, not deleted or changed."), enabled: true
                         ) { reuseRootId = nil }
                         if !canReuse {
-                            Text("Dùng lại thư mục cũ cần chức năng khôi phục, chưa khả dụng trong bản build này.")
+                            Text(tr(
+                                vi: "Dùng lại thư mục cũ cần chức năng khôi phục, chưa khả dụng trong bản build này.",
+                                en: "Reusing an old folder needs recovery, which is not available in this build."))
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }

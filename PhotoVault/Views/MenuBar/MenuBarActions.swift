@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotoVaultCore
 
 /// Actions list of the popover (FR-60): Pause/Resume all, Drive, NAS, activity, Settings, log, Quit.
 struct MenuBarActions: View {
@@ -8,13 +9,13 @@ struct MenuBarActions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if model.phase == .running {
-                row(model.isPausedAll ? "Tiếp tục tất cả" : "Tạm dừng tất cả", model.isPausedAll ? "play.fill" : "pause.fill") {
+                row(model.isPausedAll ? tr(vi: "Tiếp tục tất cả", en: "Resume all") : tr(vi: "Tạm dừng tất cả", en: "Pause all"), model.isPausedAll ? "play.fill" : "pause.fill") {
                     model.isPausedAll ? model.resumeAll() : model.pauseAll()
                 }
-                row("Mở Google Drive", "icloud") { model.openGoogleDrive() }
+                row(tr(vi: "Mở Google Drive", en: "Open Google Drive"), "icloud") { model.openGoogleDrive() }
                     .disabled(model.driveRecord?.config.driveRootId == nil)
                 if !model.localRecords.isEmpty {
-                    row("Mở thư mục NAS trong Finder", "externaldrive") {
+                    row(tr(vi: "Mở thư mục NAS trong Finder", en: "Show NAS folder in Finder"), "externaldrive") {
                         if model.localRecords.count == 1, let only = model.localRecords.first {
                             model.revealInFinder(only)
                         } else {
@@ -36,13 +37,13 @@ struct MenuBarActions: View {
                         }
                     }
                 }
-                row("Hoạt động gần đây…", "clock.arrow.circlepath") { model.open(.activity) }
+                row(tr(vi: "Hoạt động gần đây…", en: "Recent activity…"), "clock.arrow.circlepath") { model.open(.activity) }
             }
             row("Settings…", "gearshape", shortcut: "⌘,") { model.open(.settings(model.settingsTab)) }
                 .keyboardShortcut(",")
-            row("Xem log", "doc.text.magnifyingglass") { model.revealLog() }
+            row(tr(vi: "Xem log", en: "View log"), "doc.text.magnifyingglass") { model.revealLog() }
             Divider().padding(.vertical, 2)
-            row("Thoát PhotoVault", "power", shortcut: "⌘Q") { model.quit() }
+            row(tr(vi: "Thoát PhotoVault", en: "Quit PhotoVault"), "power", shortcut: "⌘Q") { model.quit() }
                 .keyboardShortcut("q")
         }
     }

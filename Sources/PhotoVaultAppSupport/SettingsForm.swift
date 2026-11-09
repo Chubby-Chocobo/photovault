@@ -12,13 +12,13 @@ public enum SettingsIssue: Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .criticalNotBelowLow: "Ngưỡng nguy cấp phải nhỏ hơn ngưỡng thấp."
-        case .dayThresholdOutOfRange: "Ngưỡng thư mục ngày phải từ 2 đến 200 ảnh."
-        case .rateNotPositive: "Tốc độ export phải lớn hơn 0 GB/giờ."
-        case .stagingNotPositive: "Giới hạn staging phải lớn hơn 0 GB."
-        case .integrityIntervalOutOfRange: "Chu kỳ kiểm tra toàn vẹn phải từ 1 đến 365 ngày."
-        case .unsupportedPlaceLanguage: "Ngôn ngữ địa danh chỉ hỗ trợ tiếng Việt hoặc English."
-        case .invalidHomeCountry: "Mã quốc gia nhà phải gồm 2 chữ cái."
+        case .criticalNotBelowLow: tr(vi: "Ngưỡng nguy cấp phải nhỏ hơn ngưỡng thấp.", en: "The critical threshold must be below the low threshold.")
+        case .dayThresholdOutOfRange: tr(vi: "Ngưỡng thư mục ngày phải từ 2 đến 200 ảnh.", en: "The day folder threshold must be between 2 and 200 photos.")
+        case .rateNotPositive: tr(vi: "Tốc độ export phải lớn hơn 0 GB/giờ.", en: "The export rate must be greater than 0 GB/hour.")
+        case .stagingNotPositive: tr(vi: "Giới hạn staging phải lớn hơn 0 GB.", en: "The staging limit must be greater than 0 GB.")
+        case .integrityIntervalOutOfRange: tr(vi: "Chu kỳ kiểm tra toàn vẹn phải từ 1 đến 365 ngày.", en: "The integrity check interval must be between 1 and 365 days.")
+        case .unsupportedPlaceLanguage: tr(vi: "Ngôn ngữ địa danh chỉ hỗ trợ tiếng Việt hoặc English.", en: "Place names support only Vietnamese or English.")
+        case .invalidHomeCountry: tr(vi: "Mã quốc gia nhà phải gồm 2 chữ cái.", en: "The home country code must be 2 letters.")
         }
     }
 }

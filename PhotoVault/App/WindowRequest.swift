@@ -1,4 +1,5 @@
 import Foundation
+import PhotoVaultCore
 
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general, content, organization, places, destinations, advanced
@@ -7,12 +8,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "Chung"
-        case .content: "Nội dung"
-        case .organization: "Sắp xếp"
-        case .places: "Địa danh & riêng tư"
-        case .destinations: "Đích"
-        case .advanced: "Nâng cao"
+        case .general: tr(vi: "Chung", en: "General")
+        case .content: tr(vi: "Nội dung", en: "Content")
+        case .organization: tr(vi: "Sắp xếp", en: "Organization")
+        case .places: tr(vi: "Địa danh & riêng tư", en: "Places & privacy")
+        case .destinations: tr(vi: "Đích", en: "Destinations")
+        case .advanced: tr(vi: "Nâng cao", en: "Advanced")
         }
     }
 

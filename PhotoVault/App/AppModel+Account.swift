@@ -44,7 +44,7 @@ extension AppModel {
             guard await markDriveSignedOut(env) else { throw EngineError.invalidState("could not pause Drive") }
             try await env.auth.signOut()
             await refresh()
-            showNotice("Đã đăng xuất Google.")
+            showNotice(tr(vi: "Đã đăng xuất Google.", en: "Signed out of Google."))
         } catch {
             showError(error)
         }
@@ -174,7 +174,9 @@ extension AppModel {
             await env.registry.add(env.drive)
             requestSync(.manual)
             await refresh()
-            showNotice(root.reused ? "Đang khôi phục trạng thái từ thư mục đã chọn." : "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.")
+            showNotice(root.reused
+            ? tr(vi: "Đang khôi phục trạng thái từ thư mục đã chọn.", en: "Recovering state from the chosen folder.")
+            : tr(vi: "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.", en: "Created the folder “\(root.name)” and reset the Drive destination."))
         } catch {
             if committed.isSet {
                 // The Keychain holds the new account but the reset did not finish: sign in again to continue.
@@ -248,7 +250,9 @@ extension AppModel {
         await env.registry.add(env.drive)
         requestSync(.manual)
         await refresh()
-        showNotice(root.reused ? "Đang khôi phục trạng thái từ thư mục đã chọn." : "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.")
+        showNotice(root.reused
+            ? tr(vi: "Đang khôi phục trạng thái từ thư mục đã chọn.", en: "Recovering state from the chosen folder.")
+            : tr(vi: "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.", en: "Created the folder “\(root.name)” and reset the Drive destination."))
     }
 
     /// Clears sign-in states; a user pause is lifted only when this sign-in set it.
@@ -285,7 +289,7 @@ extension AppModel {
                 try DestinationRepository.save(db, record)
             }
             await refresh()
-            showNotice("Đã đổi tên thư mục gốc thành “\(clean)”.")
+            showNotice(tr(vi: "Đã đổi tên thư mục gốc thành “\(clean)”.", en: "Renamed the root folder to “\(clean)”."))
         } catch {
             showError(error)
         }

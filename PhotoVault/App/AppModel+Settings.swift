@@ -38,7 +38,9 @@ extension AppModel {
         do {
             try await env.settings.setArchiveTimeZone(zone)
             archiveTimeZone = zone
-            showNotice("Múi giờ lưu trữ: \(zone.identifier). Chỉ áp dụng cho ảnh chưa được xếp chỗ.")
+            showNotice(tr(
+                vi: "Múi giờ lưu trữ: \(zone.identifier). Chỉ áp dụng cho ảnh chưa được xếp chỗ.",
+                en: "Archive time zone: \(zone.identifier). Applies only to photos not yet placed."))
         } catch {
             showError(error)
         }
@@ -56,11 +58,16 @@ extension AppModel {
         do {
             try LoginItemService.set(enabled)
             if enabled, LoginItemService.needsApproval {
-                showNotice("Cho phép PhotoVault trong System Settings › General › Login Items.")
+                showNotice(tr(
+                    vi: "Cho phép PhotoVault trong System Settings › General › Login Items.",
+                    en: "Allow PhotoVault in System Settings › General › Login Items."))
             }
         } catch {
             env?.log.log(.notice, category: "login-item", "could not change login item: \(type(of: error))")
-            showNotice("Không đổi được mục mở khi đăng nhập (bản chưa ký có thể không hỗ trợ).", isError: true)
+            showNotice(
+                tr(vi: "Không đổi được mục mở khi đăng nhập (bản chưa ký có thể không hỗ trợ).",
+                   en: "Could not change the login item (an unsigned build may not support it)."),
+                isError: true)
         }
     }
 }

@@ -7,15 +7,15 @@ public enum OnboardingStep: Int, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .googleSignIn: "Đăng nhập Google"
-        case .photosPermission: "Quyền Photos"
-        case .driveRoot: "Thư mục gốc Drive"
-        case .archiveTimeZone: "Múi giờ lưu trữ"
+        case .googleSignIn: tr(vi: "Đăng nhập Google", en: "Sign in to Google")
+        case .photosPermission: tr(vi: "Quyền Photos", en: "Photos access")
+        case .driveRoot: tr(vi: "Thư mục gốc Drive", en: "Drive root folder")
+        case .archiveTimeZone: tr(vi: "Múi giờ lưu trữ", en: "Archive time zone")
         case .syncMode: "Sync mode"
-        case .notifications: "Thông báo"
-        case .nas: "NAS (tuỳ chọn)"
-        case .summary: "Tóm tắt"
-        case .start: "Bắt đầu"
+        case .notifications: tr(vi: "Thông báo", en: "Notifications")
+        case .nas: tr(vi: "NAS (tuỳ chọn)", en: "NAS (optional)")
+        case .summary: tr(vi: "Tóm tắt", en: "Summary")
+        case .start: tr(vi: "Bắt đầu", en: "Start")
         }
     }
 }
@@ -106,19 +106,19 @@ public enum OnboardingPhase: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .baseline: "Chốt mốc thời gian (baseline)"
-        case .scan: "Quét metadata thư viện"
-        case .restore: "Khôi phục trạng thái từ đích"
-        case .upload: "Bắt đầu upload"
+        case .baseline: tr(vi: "Chốt mốc thời gian (baseline)", en: "Set the baseline (cut-off time)")
+        case .scan: tr(vi: "Quét metadata thư viện", en: "Scan library metadata")
+        case .restore: tr(vi: "Khôi phục trạng thái từ đích", en: "Restore state from the destination")
+        case .upload: tr(vi: "Bắt đầu upload", en: "Start uploading")
         }
     }
 
     public var detail: String {
         switch self {
-        case .baseline: "Từ lúc này, ảnh vào Photos được tính là “ảnh mới”."
-        case .scan: "Không export file nào trong lúc quét."
-        case .restore: "Đích chưa nhận upload trong lúc này."
-        case .upload: "Ảnh mới trước, sau đó backfill mới nhất trước."
+        case .baseline: tr(vi: "Từ lúc này, ảnh vào Photos được tính là “ảnh mới”.", en: "From now on, photos added to Photos count as “new photos”.")
+        case .scan: tr(vi: "Không export file nào trong lúc quét.", en: "No files are exported during the scan.")
+        case .restore: tr(vi: "Đích chưa nhận upload trong lúc này.", en: "The destination doesn't receive uploads during this phase.")
+        case .upload: tr(vi: "Ảnh mới trước, sau đó backfill mới nhất trước.", en: "New photos first, then backfill newest first.")
         }
     }
 
@@ -146,7 +146,11 @@ public enum SyncModeChoice: Equatable, Sendable {
     }
 
     /// The exact FR-06 note shown under the options.
-    public static let newPhotoNote = "Ảnh mới = ảnh xuất hiện trong Photos trên Mac sau thời điểm này, kể cả ảnh cũ import sau"
+    public static var newPhotoNote: String {
+        tr(
+            vi: "Ảnh mới = ảnh xuất hiện trong Photos trên Mac sau thời điểm này, kể cả ảnh cũ import sau",
+            en: "New photos = photos that appear in Photos on this Mac after this moment, including old photos imported later")
+    }
 }
 
 public enum RootNameValidator {
@@ -154,9 +158,9 @@ public enum RootNameValidator {
         case empty, tooLong, forbiddenCharacter
         public var message: String {
             switch self {
-            case .empty: "Tên thư mục không được để trống."
-            case .tooLong: "Tên thư mục tối đa 200 ký tự."
-            case .forbiddenCharacter: "Tên thư mục không được chứa dấu / hoặc ký tự điều khiển."
+            case .empty: tr(vi: "Tên thư mục không được để trống.", en: "The folder name can't be empty.")
+            case .tooLong: tr(vi: "Tên thư mục tối đa 200 ký tự.", en: "The folder name can be at most 200 characters.")
+            case .forbiddenCharacter: tr(vi: "Tên thư mục không được chứa dấu / hoặc ký tự điều khiển.", en: "The folder name can't contain / or control characters.")
             }
         }
     }

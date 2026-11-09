@@ -18,7 +18,9 @@ extension AppModel {
         do {
             let result = try await env.coordinator.resortApply()
             requestSync(.manual)
-            showNotice("Đã xếp hàng chuyển \(VietnameseFormat.integer(result.files)) file của \(VietnameseFormat.integer(result.days)) ngày.")
+            showNotice(tr(
+                vi: "Đã xếp hàng chuyển \(VietnameseFormat.integer(result.files)) file của \(VietnameseFormat.integer(result.days)) ngày.",
+                en: "Queued \(L10n.plural(result.files, one: "1 file", other: "\(VietnameseFormat.integer(result.files)) files")) from \(L10n.plural(result.days, one: "1 day", other: "\(VietnameseFormat.integer(result.days)) days")) to move."))
         } catch {
             showError(error)
         }
@@ -29,7 +31,7 @@ extension AppModel {
         do {
             try await env.coordinator.rebuildViews()
             requestSync(.manual)
-            showNotice("Đã yêu cầu dựng lại view.")
+            showNotice(tr(vi: "Đã yêu cầu dựng lại view.", en: "Requested a rebuild of the views."))
         } catch {
             showError(error)
         }
@@ -40,7 +42,7 @@ extension AppModel {
         do {
             try await env.coordinator.refreshPlaceNames()
             requestSync(.manual)
-            showNotice("Đang tra lại địa danh ở nền.")
+            showNotice(tr(vi: "Đang tra lại địa danh ở nền.", en: "Looking up place names again in the background."))
         } catch {
             showError(error)
         }
@@ -66,7 +68,7 @@ extension AppModel {
         do {
             for key in models { try await env.coordinator.mergeDeviceModel(key, into: groupId) }
             requestSync(.manual)
-            showNotice("Đã gộp nhóm thiết bị.")
+            showNotice(tr(vi: "Đã gộp nhóm thiết bị.", en: "Merged the device groups."))
         } catch {
             showError(error)
         }

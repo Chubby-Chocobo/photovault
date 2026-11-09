@@ -1,5 +1,6 @@
 import PhotoVaultAppSupport
 import SwiftUI
+import PhotoVaultCore
 
 extension StatusTone {
     var color: Color {
@@ -98,7 +99,7 @@ struct NoticeBanner: View {
                 Text(notice.text).font(.callout).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Button { model.notice = nil } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).accessibilityLabel("Đóng thông báo")
+                    .buttonStyle(.plain).accessibilityLabel(tr(vi: "Đóng thông báo", en: "Dismiss notice"))
             }
             .padding(8)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))

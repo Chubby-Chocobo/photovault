@@ -9,13 +9,15 @@ struct RulesEditor: View {
     var settings: GlobalSettings
 
     var body: some View {
-        SettingsSection("Rule nội dung") {
-            HStack(spacing: 4) {
-                Text("Setting ở tab")
-                Button("Nội dung") { model.settingsTab = .content }.buttonStyle(.link)
-                Text("là trần toàn cục: một loại chỉ tới đích này khi bật ở cả hai nơi. Ô bị khoá là loại đang tắt ở Nội dung.")
+        SettingsSection(tr(vi: "Rule nội dung", en: "Content rules")) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tr(vi: "Setting ở tab Nội dung là trần toàn cục: một loại chỉ tới đích này khi bật ở cả hai nơi. Ô bị khoá là loại đang tắt ở Nội dung.",
+                        en: "The Content tab sets the global limit: a kind reaches this destination only when it is on in both places. A locked box is a kind turned off in Content."))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(tr(vi: "Mở tab Nội dung", en: "Open the Content tab")) { model.settingsTab = .content }.buttonStyle(.link)
             }
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption)
             ForEach(RuleKey.groups, id: \.title) { group in
                 HStack(alignment: .firstTextBaseline) {
                     Text(group.title).frame(width: 90, alignment: .leading).foregroundStyle(.secondary)
@@ -25,23 +27,23 @@ struct RulesEditor: View {
                             get: { rules.isOn(key) && !blocked },
                             set: { rules.set(key, $0) })
                         ) {
-                            Text(key.label + (blocked ? " · trần tắt" : ""))
+                            Text(key.label + (blocked ? tr(vi: " · trần tắt", en: " · limit off") : ""))
                         }
                         .disabled(blocked)
-                        .help(blocked ? "Đang tắt ở Nội dung (trần toàn cục)" : "")
+                        .help(blocked ? tr(vi: "Đang tắt ở Nội dung (trần toàn cục)", en: "Off in Content (global limit)") : "")
                     }
                 }
             }
             HStack {
-                Toggle("Bỏ qua file lớn hơn", isOn: Binding(
+                Toggle(tr(vi: "Bỏ qua file lớn hơn", en: "Skip files larger than"), isOn: Binding(
                     get: { rules.skipLargerThanGB != nil },
                     set: { rules.skipLargerThanGB = $0 ? (rules.skipLargerThanGB ?? 4) : nil }))
                 TextField("", value: Binding(get: { rules.skipLargerThanGB ?? 4 }, set: { rules.skipLargerThanGB = $0 }), format: .number)
                     .frame(width: 60).multilineTextAlignment(.trailing).textFieldStyle(.roundedBorder)
-                    .disabled(rules.skipLargerThanGB == nil).accessibilityLabel("Ngưỡng GB")
+                    .disabled(rules.skipLargerThanGB == nil).accessibilityLabel(tr(vi: "Ngưỡng GB", en: "GB threshold"))
                 Text("GB")
             }
-            Text("Hiệu lực: " + RuleEditor.effectiveSummary(rules: rules, settings: settings)).font(.caption)
+            Text(tr(vi: "Hiệu lực: ", en: "Effective: ") + RuleEditor.effectiveSummary(rules: rules, settings: settings)).font(.caption)
         }
     }
 }

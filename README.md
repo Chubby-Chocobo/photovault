@@ -107,7 +107,8 @@ Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/M
 | Launch at login | on | |
 | Chat-app album names | WhatsApp, Zalo, Messenger, Telegram, Viber, LINE, Signal, Instagram, Facebook, Threads, X, TikTok | Exact name match, case-insensitive. |
 | Photos without camera EXIF go to Saved | on | See [known limits](#known-limits). |
-| Place names | on; language `vi`; home country `VN` | See [privacy](#privacy). |
+| Interface language | Tiếng Việt | Settings → General: System, Tiếng Việt or English; switches at once. Folder names on destinations never change with it. |
+| Place names | on; language `vi`; home country `VN` | A separate setting: changing it renames day folders on destinations. See [privacy](#privacy). |
 | Sidecars, JSON and XMP | on, on | Can also be set per destination. |
 | Views: By device, By place, Favorites | on | Google Drive only. |
 | Integrity check | every 7 days | |

@@ -32,5 +32,6 @@ Spec references use the FR, NFR, §, and T codes of [photovault-spec-v1.md](../r
 | [0019](0019-place-naming-edge-choices.md) | Place naming: edge-case choices | Pending M0 | FR-80 to FR-83, §8.11 |
 | [0020](0020-view-diff-choices.md) | View diff: how shortcuts converge | Accepted | FR-100 to FR-103, §8.13 |
 | [0021](0021-edited-extension-casing.md) | Edited file extensions: upper-case UTI extension | Accepted | FR-41 |
+| [0022](0022-interface-languages.md) | Interface languages: Vietnamese and English text pairs, switched live | Accepted | issue #11 |
 
 Adding a decision: copy the next free number, keep the same five sections, and link it from this table and from the affected spec or code notes. A `[VERIFY]` default that the code uses goes in a group file (0012–0014) or its own file, and its spike goes in [docs/spikes/](../spikes/README.md).

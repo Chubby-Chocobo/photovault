@@ -145,7 +145,9 @@ actor GeocodeScheduler {
                 """)
             for day in try OrganizationQueries.promotedDays(db) { try DirtyQueue.mark(db, [.place], id: day.description) }
             try ActivityRepository.record(db, ActivityEvent(
-                at: now, kind: .notice, message: "Apple đã trả về tỉnh/thành; địa danh dùng lại tên tỉnh"))
+                at: now, kind: .notice, message: tr(
+                    vi: "Apple đã trả về tỉnh/thành; địa danh dùng lại tên tỉnh",
+                    en: "Apple returned the province/city again; place names use the province name")))
         }
     }
 
@@ -165,7 +167,9 @@ actor GeocodeScheduler {
                 """)
             for day in try OrganizationQueries.promotedDays(db) { try DirtyQueue.mark(db, [.place], id: day.description) }
             try ActivityRepository.record(db, ActivityEvent(
-                at: now, kind: .notice, message: "Apple không trả về tỉnh/thành; địa danh dùng tên quốc gia"))
+                at: now, kind: .notice, message: tr(
+                    vi: "Apple không trả về tỉnh/thành; địa danh dùng tên quốc gia",
+                    en: "Apple did not return a province/city; place names use the country name")))
         }
     }
 

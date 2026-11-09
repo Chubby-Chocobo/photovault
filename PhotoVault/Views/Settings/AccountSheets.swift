@@ -21,30 +21,32 @@ struct AccountChangeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(reauth ? "Đăng nhập lại Google" : "Đổi tài khoản Google?").font(.title3.weight(.semibold))
+            Text(reauth ? tr(vi: "Đăng nhập lại Google", en: "Sign in to Google again") : tr(vi: "Đổi tài khoản Google?", en: "Change Google account?")).font(.title3.weight(.semibold))
             switch stage {
             case .confirm:
                 Text(reauth
-                     ? "Đăng nhập lại bằng \(model.accountEmail ?? "tài khoản đang dùng") để backup chạy tiếp, không mất gì. Nếu chọn tài khoản khác, đó là đổi tài khoản: trạng thái đích Drive được đặt lại."
-                     : "Nếu chọn tài khoản khác, trạng thái đích Drive sẽ được đặt lại; nếu tài khoản đó đã có thư mục PhotoVault, ứng dụng khôi phục từ đó trước khi upload. Chọn lại đúng tài khoản cũ thì chỉ là đăng nhập lại.")
+                     ? tr(vi: "Đăng nhập lại bằng \(model.accountEmail ?? "tài khoản đang dùng") để backup chạy tiếp, không mất gì. Nếu chọn tài khoản khác, đó là đổi tài khoản: trạng thái đích Drive được đặt lại.",
+                          en: "Sign in again with \(model.accountEmail ?? "the current account") so backups keep running; nothing is lost. Choosing a different account is a change of account: the Drive destination's state is reset.")
+                     : tr(vi: "Nếu chọn tài khoản khác, trạng thái đích Drive sẽ được đặt lại; nếu tài khoản đó đã có thư mục PhotoVault, ứng dụng khôi phục từ đó trước khi upload. Chọn lại đúng tài khoản cũ thì chỉ là đăng nhập lại.",
+                          en: "If you choose a different account, the Drive destination's state is reset; if that account already has a PhotoVault folder, the app restores from it before uploading. Choosing the same account again is just signing in again."))
                     .foregroundStyle(.secondary)
             case .signingIn:
-                HStack { ProgressView().controlSize(.small); Text("Đang chờ trình duyệt…") }
+                HStack { ProgressView().controlSize(.small); Text(tr(vi: "Đang chờ trình duyệt…", en: "Waiting for the browser…")) }
             case .chooseRoot:
-                Text("Đã đăng nhập: \(change?.identity.email ?? "tài khoản mới")").fontWeight(.medium)
-                Text("Tài khoản mới chỉ được dùng sau khi bạn bấm Áp dụng. Trong lúc chọn, đích Drive tạm dừng.")
+                Text(tr(vi: "Đã đăng nhập: \(change?.identity.email ?? "tài khoản mới")", en: "Signed in: \(change?.identity.email ?? "new account")")).fontWeight(.medium)
+                Text(tr(vi: "Tài khoản mới chỉ được dùng sau khi bạn bấm Áp dụng. Trong lúc chọn, đích Drive tạm dừng.", en: "The new account is used only after you click Apply. The Drive destination is paused while you choose."))
                     .font(.caption).foregroundStyle(.secondary)
                 RootChooser(roots: roots, canReuse: model.hardeningAvailable, reuseRootId: $reuseRootId, newName: $newName)
             }
             NoticeBanner()
             HStack {
                 Spacer()
-                Button("Huỷ") { Task { await cancel() } }.keyboardShortcut(.cancelAction).disabled(working)
+                Button(tr(vi: "Huỷ", en: "Cancel")) { Task { await cancel() } }.keyboardShortcut(.cancelAction).disabled(working)
                 switch stage {
-                case .confirm: Button("Tiếp tục") { signInTask = Task { await signIn() } }.keyboardShortcut(.defaultAction)
+                case .confirm: Button(tr(vi: "Tiếp tục", en: "Continue")) { signInTask = Task { await signIn() } }.keyboardShortcut(.defaultAction)
                 case .signingIn: EmptyView()
                 case .chooseRoot:
-                    Button("Áp dụng") { Task { await apply() } }
+                    Button(tr(vi: "Áp dụng", en: "Apply")) { Task { await apply() } }
                         .keyboardShortcut(.defaultAction)
                         .disabled(working || (reuseRootId == nil && RootNameValidator.validate(newName) != nil))
                 }
@@ -60,7 +62,7 @@ struct AccountChangeSheet: View {
         do {
             let result = try await model.beginAccountChange()
             if result.staged == nil {
-                model.showNotice(reauth ? "Đã đăng nhập lại, đích Drive chạy tiếp." : "Vẫn là tài khoản cũ nên đích Drive chạy tiếp.")
+                model.showNotice(reauth ? tr(vi: "Đã đăng nhập lại, đích Drive chạy tiếp.", en: "Signed in again; the Drive destination resumes.") : tr(vi: "Vẫn là tài khoản cũ nên đích Drive chạy tiếp.", en: "Same account as before, so the Drive destination resumes."))
                 dismiss()
                 return
             }
@@ -128,8 +130,8 @@ struct RootChangeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Đổi thư mục gốc?").font(.title3.weight(.semibold))
-            Text("Trạng thái đích Drive sẽ được đặt lại. Thư mục cũ giữ nguyên. Nếu thư mục mới đã có dữ liệu PhotoVault, ứng dụng khôi phục trước khi upload.")
+            Text(tr(vi: "Đổi thư mục gốc?", en: "Change root folder?")).font(.title3.weight(.semibold))
+            Text(tr(vi: "Trạng thái đích Drive sẽ được đặt lại. Thư mục cũ giữ nguyên. Nếu thư mục mới đã có dữ liệu PhotoVault, ứng dụng khôi phục trước khi upload.", en: "The Drive destination's state will be reset. The old folder is left as it is. If the new folder already has PhotoVault data, the app restores from it before uploading."))
                 .foregroundStyle(.secondary)
             if loaded {
                 RootChooser(roots: roots, canReuse: model.hardeningAvailable, reuseRootId: $reuseRootId, newName: $newName)
@@ -139,8 +141,8 @@ struct RootChangeSheet: View {
             NoticeBanner()
             HStack {
                 Spacer()
-                Button("Huỷ") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Áp dụng") { Task { await apply() } }
+                Button(tr(vi: "Huỷ", en: "Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr(vi: "Áp dụng", en: "Apply")) { Task { await apply() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!loaded || working || (reuseRootId == nil && RootNameValidator.validate(newName) != nil))
             }

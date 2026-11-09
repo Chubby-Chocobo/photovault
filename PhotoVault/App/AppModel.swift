@@ -19,6 +19,14 @@ final class AppModel {
 
     static let shared = AppModel()
 
+    init() {
+        setInterfaceLanguage(Self.storedInterfaceLanguage(), save: false)
+    }
+
+    /// What the owner picked, and the language it resolves to; views key their content on `language`
+    /// so a switch re-renders them.
+    var interfaceLanguage: InterfaceLanguageChoice = .vi
+    var language: AppLanguage = .vi
     var phase: Phase = .launching
     var env: AppEnvironment?
     var snapshot: EngineSnapshot?
@@ -201,7 +209,7 @@ final class AppModel {
         alert.alertStyle = .warning
         alert.messageText = failure.alertTitle
         alert.informativeText = failure.alertText
-        alert.addButton(withTitle: "Thoát")
+        alert.addButton(withTitle: tr(vi: "Thoát", en: "Quit"))
         alert.runModal()
         NSApp.terminate(nil)
     }

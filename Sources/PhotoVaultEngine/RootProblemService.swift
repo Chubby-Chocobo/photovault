@@ -89,7 +89,9 @@ struct RootProblemService: Sendable {
             try KeyValueRepository.set(db, RecoveryService.enqueueKey + id.rawValue, 1)
             try KeyValueRepository.set(db, marker, nil)
             try ActivityRepository.record(db, ActivityEvent(
-                at: now, kind: .notice, destinationId: id, message: "Đã tạo thư mục gốc mới; mọi thứ sẽ được upload lại theo phạm vi"))
+                at: now, kind: .notice, destinationId: id, message: tr(
+                    vi: "Đã tạo thư mục gốc mới; mọi thứ sẽ được upload lại theo phạm vi",
+                    en: "Created a new root folder; everything will be uploaded again within the scope")))
         }
         await forget(id)
         try await enqueue(id)
@@ -152,7 +154,12 @@ enum FolderGone {
             if count > 0 {
                 try ActivityRepository.record(db, ActivityEvent(
                     at: now, kind: .missingFile, destinationId: destinationId,
-                    message: "Một thư mục sao lưu đã bị xoá ở đích; \(count) file cần xác nhận trước khi upload lại"))
+                    message: tr(
+                        vi: "Một thư mục sao lưu đã bị xoá ở đích; \(count) file cần xác nhận trước khi upload lại",
+                        en: L10n.plural(
+                            count,
+                            one: "A backup folder was deleted at the destination; \(count) file needs confirmation before uploading again",
+                            other: "A backup folder was deleted at the destination; \(count) files need confirmation before uploading again"))))
             }
             return count
         }
