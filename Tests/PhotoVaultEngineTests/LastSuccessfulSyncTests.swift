@@ -22,6 +22,19 @@ import Testing
         #expect(try lastSync(h) == nil)
     }
 
+    /// On battery with "backfill only on AC power", nothing is exported or uploaded, by the owner's rule.
+    @Test func workHeldByTheOwnersRulesIsNotAFailure() async throws {
+        let h = try await Harness()
+        try await h.update { $0.backfillOnlyOnACPower = true }
+        h.system.set(SystemSnapshot(onACPower: false))
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("p", daysAgo: 1), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        #expect(try h.jobs(.done).isEmpty, "the backfill waits for AC power")
+        #expect(try lastSync(h) != nil)
+    }
+
     @Test func uploadingOrHavingNothingLeftIsASuccess() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)

@@ -209,18 +209,19 @@ extension SyncCoordinator {
         }
     }
 
-    /// "Last successful sync" (FR-61) means files reached a destination, or nothing was left to send
-    /// to an active one. A cycle that ran but could not upload what is waiting (server errors for days,
-    /// uploads held) does not count, so the owner is told when that lasts 24 hours.
+    /// "Last successful sync" (FR-61) means files reached a destination, or nothing waiting at an
+    /// active destination is failing. Work the owner's own rules hold back (battery, Low Power Mode,
+    /// an expensive network, the backfill rate) has no recorded error and does not count against it;
+    /// uploads that keep failing (server errors for days) do, so the owner is told after 24 hours.
     private func recordSuccess(_ report: CycleReport) async throws {
         let now = env.clock.now
         try await env.store.write { db in
             if report.uploaded == 0 {
-                let waiting = try Int.fetchOne(db, sql: """
+                let failing = try Int.fetchOne(db, sql: """
                     SELECT COUNT(*) FROM upload_job j JOIN destination d ON d.id = j.destination_id
-                    WHERE j.state IN ('pending', 'uploading') AND d.status = 'active'
+                    WHERE j.state IN ('pending', 'uploading') AND j.last_error IS NOT NULL AND d.status = 'active'
                     """) ?? 0
-                guard waiting == 0 else { return }
+                guard failing == 0 else { return }
             }
             try KeyValueRepository.set(db, KeyValueRepository.Key.lastSuccessfulSyncAt, now)
         }
