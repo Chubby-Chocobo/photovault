@@ -87,6 +87,15 @@ extension AppModel {
         windowRequest = request
     }
 
+    /// The window for a relaunch of the running app: onboarding until it is done, then Settings.
+    func openOnReopen() {
+        switch phase {
+        case .launching: return
+        case .needsOnboarding: open(.onboarding)
+        case .running: open(.settings(settingsTab))
+        }
+    }
+
     func quit() {
         shutdown()
         NSApp.terminate(nil)

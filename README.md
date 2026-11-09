@@ -146,6 +146,8 @@ Keep `privacy.html` true to what the app does: when the app starts using new Goo
 
 The menu bar shows the overall state, one line per destination, backfill progress, and the actions Sync now, Pause/Resume, Open Drive, Reveal NAS, recent activity, Settings, Log and Quit. The interface is described in [docs/design/README.md](docs/design/README.md), with interactive mockups in `docs/design/mockups/`.
 
+If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder or Launchpad): the running app shows Settings, or onboarding if it is not finished. On macOS 26, System Settings → Menu Bar chooses which apps keep an icon.
+
 ## Known limits
 
 - **`saved` is a heuristic.** A photo with no camera make or model goes to `saved` (FR-20), so a scan or a photo that looks like a screenshot can land in `Saved`. Videos never use that rule, so drone footage stays in `camera`. Rules run in order: screenshot subtype, chat-app album, missing camera EXIF, otherwise `camera`.
