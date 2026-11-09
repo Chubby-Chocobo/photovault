@@ -46,7 +46,7 @@ ImportStage: no pending item and no pending/uploading job ─► [completed] + o
 |---|---|---|---|---|---|
 | 01 | [Core source model and identity](phase-01-core-source-model.md) | completed | M | — | this |
 | 02 | [Store: sources schema](phase-02-store-sources-schema.md) | completed | M | 01 | this |
-| 03 | [Engine: source routing, Photos-only passes](phase-03-engine-source-routing.md) | pending | L | 01, 02 | this |
+| 03 | [Engine: source routing, Photos-only passes](phase-03-engine-source-routing.md) | completed | L | 01, 02 | this |
 | 04 | [Folder adapter and file metadata](phase-04-folder-adapter-and-metadata.md) | pending | M | 01 | this (parallel with 02–03) |
 | 05 | [Engine: folder import job](phase-05-engine-folder-import.md) | pending | L | 02, 03, 04 | this |
 | 06 | [App: Sources tab and import UI](phase-06-app-sources-ui.md) | pending | M | 05 | this |

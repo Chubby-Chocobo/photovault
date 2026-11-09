@@ -1,7 +1,7 @@
 ---
 phase: 03
 title: "Engine: source routing, Photos-only passes"
-status: pending
+status: completed
 priority: P1
 size: L
 human_effort: 1.5-3h

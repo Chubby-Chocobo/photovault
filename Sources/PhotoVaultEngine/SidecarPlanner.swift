@@ -25,8 +25,18 @@ enum SidecarFactory {
         let input = SidecarInput(
             asset: asset, albumTitles: try AssetRepository.albums(db, for: asset.assetKey).map(\.albumTitle),
             place: try OrganizationLookups.place(db, asset: asset, settings: settings),
-            deviceDisplayName: try OrganizationLookups.deviceName(db, asset: asset), resources: described, archiveTimeZone: timeZone)
+            deviceDisplayName: try OrganizationLookups.deviceName(db, asset: asset), resources: described, archiveTimeZone: timeZone,
+            source: try sourceBlock(db, asset: asset))
         return type == .sidecarXmp ? SidecarBuilder.buildXMP(input) : SidecarBuilder.buildJSON(input)
+    }
+
+    /// Where an imported asset came from; nil for Photos, whose sidecars carry no such block.
+    private static func sourceBlock(_ db: Database, asset: AssetRecord) throws -> SidecarSource? {
+        guard asset.sourceId != .photos else { return nil }
+        guard let source = try SourceRepository.fetch(db, id: asset.sourceId),
+              let primary = try ImportItemRepository.primary(db, assetKey: asset.assetKey, preferring: asset.sourceId) else { return nil }
+        let kind = source.kind.rawValue
+        return SidecarSource(kind: kind, name: source.displayName, path: primary.relativePath, dateSource: primary.dateSource)
     }
 
     /// Hash in the form the destination verifies, comparable with `job.uploaded_hash`.

@@ -67,6 +67,8 @@ public struct EngineTuning: Sendable {
 public struct EngineEnvironment: Sendable {
     public var store: Store
     public var photos: any PhotosSource
+    /// Where resource bytes are read from, by `asset.source_id`. Photos is always registered.
+    public var sources: SourceRegistry
     public var destinations: DestinationRegistry
     public var metadataReader: any MetadataReading
     public var utiResolver: any UTIResolver
@@ -92,10 +94,12 @@ public struct EngineEnvironment: Sendable {
         system: any SystemConditions, log: any LogSink = NullLogSink(), layout: any LayoutPolicy = DynamicLayout(),
         transform: any Transform = IdentityTransform(), stagingDirectory: URL, containerDirectory: URL,
         settings: SettingsStore, tuning: EngineTuning = EngineTuning(), faults: (any FaultInjecting)? = nil,
-        geocoder: (any ReverseGeocoding)? = nil, localContent: (any LocalContentReading)? = nil
+        geocoder: (any ReverseGeocoding)? = nil, localContent: (any LocalContentReading)? = nil,
+        sources: SourceRegistry? = nil
     ) {
         self.store = store
         self.photos = photos
+        self.sources = sources ?? SourceRegistry(photos: photos)
         self.destinations = destinations
         self.metadataReader = metadataReader
         self.utiResolver = utiResolver

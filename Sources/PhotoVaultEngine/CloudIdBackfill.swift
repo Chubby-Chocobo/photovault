@@ -36,7 +36,7 @@ struct CloudIdBackfill: Sendable {
             let batch: [Pending] = try await env.store.read { db in
                 try Row.fetchAll(db, sql: """
                     SELECT asset_key, local_id FROM asset
-                    WHERE cloud_id IS NULL AND deleted_at IS NULL AND asset_key > ? ORDER BY asset_key LIMIT ?
+                    WHERE cloud_id IS NULL AND deleted_at IS NULL AND source_id = 'photos' AND asset_key > ? ORDER BY asset_key LIMIT ?
                     """, arguments: [start, Self.batchSize]).map { Pending(key: $0["asset_key"], localId: $0["local_id"]) }
             }
             guard let last = batch.last else { break }
