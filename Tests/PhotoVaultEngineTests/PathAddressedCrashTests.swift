@@ -70,7 +70,7 @@ import Testing
         try await recover(h)
         let files = media(root)
         #expect(files.count == 1, "one file, not one per folder: \(files.keys.sorted())")
-        #expect(files.keys.allSatisfy { $0.contains("/\(day)/") }, "and the move worker put it in the day folder")
+        #expect(files.keys.allSatisfy { $0.contains("/\(day)/") }, "in the day folder")
         #expect(try h.jobs().allSatisfy { $0.state == .done })
     }
 

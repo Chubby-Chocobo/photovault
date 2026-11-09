@@ -4,8 +4,9 @@ import PhotoVaultCore
 import PhotoVaultStore
 
 /// Reverse geocoding of missing grid cells (FR-84, spec 8.11) at most 20 requests per sliding
-/// minute, with exponential backoff after errors. Results are cached forever per (cell, locale) for
-/// `en` (identity keys) and the display language. Cells of promoted day folders go first, then the
+/// minute, with exponential backoff after errors. Results are cached forever per cell for `en`
+/// (identity keys and English names) and for the cell's second locale (`PlaceNameRule`), kept under
+/// the key `local`. Cells of promoted day folders go first, then the
 /// newest cells. Only the cell centre leaves the Mac (FR-85); with place names off nothing is sent.
 actor GeocodeScheduler {
     static let requestsPerMinute = 20
@@ -33,7 +34,7 @@ actor GeocodeScheduler {
     private struct Need: Sendable {
         var cell: GeoCell
         var hasEnglish: Bool
-        var hasDisplay: Bool
+        var hasLocal: Bool
     }
 
     /// Geocodes what the budget allows; returns the number of requests made.
@@ -42,7 +43,7 @@ actor GeocodeScheduler {
         let settings = await env.settingsSnapshot().settings
         guard settings.placeNamesEnabled, await env.system.snapshot().networkAvailable else { return 0 }
         if let until = blockedUntil, until > env.clock.now { return 0 }
-        let language = settings.placeNameLanguage
+        let localKey = OrganizationLookups.localLocaleKey
         var requests = 0
         var skip = Set<GeoCell>()
         while true {
@@ -56,23 +57,27 @@ actor GeocodeScheduler {
                     guard let place = try await request(geocoder, need.cell, locale: "en", &requests) else { return requests }
                     english = place
                 }
-                guard language != "en", !need.hasDisplay else { continue }
+                guard !need.hasLocal else { continue }
                 if english == nil {
                     let cell = need.cell
                     english = try await env.store.read { db in try GeoCacheRepository.fetch(db, cell: cell, locale: "en")?.place }
                 }
-                if let english, Self.identity(english) == nil {
-                    // Nothing to name: keep the same (empty) answer for the display language instead of asking again.
-                    try await save(need.cell, locale: language, place: english)
+                guard let english else { continue }
+                guard Self.identity(english) != nil, let locale = PlaceNameRule.secondLocale(country: english.isoCountryCode ?? "") else {
+                    // Nothing to name, or an English-speaking country: the English answer stands in for
+                    // the second one instead of asking again.
+                    try await save(need.cell, locale: localKey, place: english)
                     continue
                 }
-                guard try await request(geocoder, need.cell, locale: language, &requests) != nil else { return requests }
+                guard try await request(geocoder, need.cell, locale: locale, saveAs: localKey, &requests) != nil else { return requests }
             }
         }
     }
 
     /// One request when the minute budget allows; nil when blocked (budget or backoff).
-    private func request(_ geocoder: any ReverseGeocoding, _ cell: GeoCell, locale: String, _ count: inout Int) async throws -> GeoPlace? {
+    private func request(
+        _ geocoder: any ReverseGeocoding, _ cell: GeoCell, locale: String, saveAs key: String? = nil, _ count: inout Int
+    ) async throws -> GeoPlace? {
         let now = env.clock.now
         requestTimes.removeAll { now.timeIntervalSince($0) >= Self.window }
         guard requestTimes.count < Self.requestsPerMinute else { return nil }
@@ -91,7 +96,7 @@ actor GeocodeScheduler {
         failures = 0
         blockedUntil = nil
         let stored = try await adapt(place, locale: locale)
-        try await save(cell, locale: locale, place: stored)
+        try await save(cell, locale: key ?? locale, place: stored)
         return stored
     }
 
@@ -155,7 +160,7 @@ actor GeocodeScheduler {
         let now = env.clock.now
         try await env.store.write { db in
             try KeyValueRepository.set(db, Self.countryOnlyKey, 1)
-            // Display-language answers of those cells are asked again, so every name is country-level.
+            // Second-locale answers of those cells are asked again, so every name is country-level.
             try db.execute(sql: """
                 DELETE FROM geo_cache WHERE locale != 'en' AND geo_cell IN (
                     SELECT geo_cell FROM geo_cache WHERE locale = 'en'
@@ -181,24 +186,24 @@ actor GeocodeScheduler {
     // MARK: Queries
 
     private func missing(settings: GlobalSettings, limit: Int) async throws -> [Need] {
-        let language = settings.placeNameLanguage
+        let localKey = OrganizationLookups.localLocaleKey
         return try await env.store.read { db in
             let since = try KeyValueRepository.date(db, Self.refreshSinceKey) ?? .distantPast
             return try Row.fetchAll(db, sql: """
                 SELECT a.geo_cell AS cell,
                     MAX(CASE WHEN d.promoted = 1 THEN 1 ELSE 0 END) AS prio, MAX(a.creation_date) AS newest,
                     EXISTS(SELECT 1 FROM geo_cache g WHERE g.geo_cell = a.geo_cell AND g.locale = 'en' AND g.fetched_at >= :since) AS hasEn,
-                    EXISTS(SELECT 1 FROM geo_cache g WHERE g.geo_cell = a.geo_cell AND g.locale = :language AND g.fetched_at >= :since) AS hasDisplay
+                    EXISTS(SELECT 1 FROM geo_cache g WHERE g.geo_cell = a.geo_cell AND g.locale = :local AND g.fetched_at >= :since) AS hasLocal
                 FROM asset a LEFT JOIN day_stat d ON d.day = a.placement_day
                 WHERE a.geo_cell IS NOT NULL AND a.category = 'camera' AND a.deleted_at IS NULL
                   AND (:hidden = 1 OR a.is_hidden = 0)
                 GROUP BY a.geo_cell
-                HAVING hasEn = 0 OR (:language != 'en' AND hasDisplay = 0)
+                HAVING hasEn = 0 OR hasLocal = 0
                 ORDER BY prio DESC, newest DESC, a.geo_cell
                 LIMIT :limit
-                """, arguments: ["language": language, "hidden": settings.includeHidden, "limit": limit, "since": since]).compactMap { row in
+                """, arguments: ["local": localKey, "hidden": settings.includeHidden, "limit": limit, "since": since]).compactMap { row in
                 (row["cell"] as String?).flatMap(GeoCell.init(key:)).map {
-                    Need(cell: $0, hasEnglish: (row["hasEn"] as Int) == 1, hasDisplay: (row["hasDisplay"] as Int) == 1)
+                    Need(cell: $0, hasEnglish: (row["hasEn"] as Int) == 1, hasLocal: (row["hasLocal"] as Int) == 1)
                 }
             }
         }

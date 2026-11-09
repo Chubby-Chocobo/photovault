@@ -4,13 +4,6 @@ import PhotoVaultStore
 
 /// Owner actions of the organization layer (day folders, places, views, device groups).
 extension SyncCoordinator {
-    /// "Sắp xếp lại": how many days and files would change with the current N (T10).
-    public func resortPreview() async throws -> ResortPreview { try await ResortService(env: organization.env).preview() }
-
-    /// Applies the current N to days that are not promoted yet; never demotes.
-    @discardableResult
-    public func resortApply() async throws -> ResortPreview { try await exclusive { try await ResortService(env: organization.env).apply() } }
-
     /// "Làm mới địa danh" (FR-106): forgets every geocode and asks again.
     public func refreshPlaceNames() async throws { try await exclusive { try await organization.scheduler.refreshAll() } }
 

@@ -15,13 +15,11 @@ struct UploadPlan: Sendable {
 
 enum LayoutResolver {
     static func chain(_ db: Database, placement: Placement, layout: any LayoutPolicy) throws -> [FolderLevel] {
-        var promoted = false
         var placeName: String?
         if placement.category == .camera, let day = placement.day.archiveDay, let stat = try DayStatRepository.fetch(db, day: day) {
-            promoted = stat.promoted
             placeName = stat.placeState == .named ? stat.placeName : nil
         }
-        return layout.folderChain(for: placement, dayPromoted: promoted, placeName: placeName)
+        return layout.folderChain(for: placement, placeName: placeName)
     }
 
     static func parentLogical(_ chain: [FolderLevel]) -> String { chain.last?.logicalPath ?? "" }

@@ -18,7 +18,7 @@ import Testing
         #expect(try h.jobs(.uploading).first?.sessionRef != nil)
         try await h.restart()
 
-        // The day crosses the threshold while the session is still open.
+        // The day is promoted while the session is still open.
         try h.write { db in
             let context = try PipelineContext(
                 db, snapshot: SettingsSnapshot(settings: GlobalSettings(), timeZone: utc), now: h.clock.now, utiResolver: FakeUTIResolver())
@@ -30,14 +30,11 @@ import Testing
         #expect(await h.drive.operationLog.contains(.resume))
         let job = try #require(try h.jobs().first)
         #expect(job.state == .done)
-        // The file landed in the month folder the session was opened for; the move to the day folder
-        // was queued from there (and may already have run in the same round).
-        let moves = try h.moveJobs(.pending, destination: .googleDrive) + h.moveJobs(.done, destination: .googleDrive)
-        #expect(moves.count == 1 && moves[0].fromValue == "camera/2026/10" && moves[0].toValue == "camera/2026/10/\(organizationDay)")
-
-        await h.settle()
-        #expect(await h.backupPaths(h.drive).allSatisfy { $0.hasPrefix("2026/10/\(organizationDay)/") })
-        #expect(try h.jobs().first?.remoteLogicalParent == "camera/2026/10/\(organizationDay)")
+        // The session was opened for the day folder; promotion does not change the layout, so
+        // nothing needs to move.
+        #expect(try h.moveJobs(.pending, destination: .googleDrive).isEmpty && h.moveJobs(.done, destination: .googleDrive).isEmpty)
+        #expect(await h.backupPaths(h.drive).allSatisfy { $0.hasPrefix("Camera Uploads/\(organizationDay)/") })
+        #expect(try h.jobs().first?.remoteLogicalParent == "camera/\(organizationDay)")
         #expect(await h.drive.contractViolations.isEmpty)
     }
 }

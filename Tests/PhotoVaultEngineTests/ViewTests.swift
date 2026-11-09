@@ -22,7 +22,7 @@ import Testing
         return h
     }
 
-    /// Display paths of the live shortcuts, e.g. `By device/Apple iPhone 15/2026/10/<name>`.
+    /// Display paths of the live shortcuts, e.g. `By device/Apple iPhone 15/<day>/<name>`.
     private func shortcutPaths(_ h: Harness) async -> [String] {
         var paths: [String] = []
         let items = await h.drive.items
@@ -60,8 +60,8 @@ import Testing
 
         var paths = await shortcutPaths(h)
         #expect(paths.count == 3, "\(paths)")
-        #expect(await pathsUnder("By device/Apple iPhone 15/2026/10/", h).count == 2)
-        #expect(await pathsUnder("By device/Sony A7 IV/2026/10/", h).count == 1)
+        #expect(await pathsUnder("By device/Apple iPhone 15/\(organizationDay)/", h).count == 2)
+        #expect(await pathsUnder("By device/Sony A7 IV/\(organizationDay)/", h).count == 1)
         // Every shortcut points at the original file of its asset.
         for shortcut in await h.drive.shortcuts {
             let target = try #require(await h.drive.items[shortcut.targetId ?? ""])
@@ -76,7 +76,7 @@ import Testing
         try await h.coordinator.renameDeviceGroup(sonyGroup, to: "Máy ảnh của tôi")
         await h.settle()
         paths = await shortcutPaths(h)
-        #expect(await pathsUnder("By device/Máy ảnh của tôi/2026/10/", h).count == 1)
+        #expect(await pathsUnder("By device/Máy ảnh của tôi/\(organizationDay)/", h).count == 1)
         #expect(await h.drive.shortcuts.map(\.id).sorted() == ids, "no shortcut was created or removed")
 
         // A name that is taken is refused with a hint to merge.
@@ -87,7 +87,7 @@ import Testing
         // Merge: the Sony shortcut moves into the Apple group.
         try await h.coordinator.mergeDeviceModel(sonyKey, into: appleGroup)
         await h.settle()
-        #expect(await pathsUnder("By device/Apple iPhone 15/2026/10/", h).count == 3)
+        #expect(await pathsUnder("By device/Apple iPhone 15/\(organizationDay)/", h).count == 3)
         #expect(await h.drive.shortcuts.filter { !$0.trashed }.count == 3)
         #expect(await h.drive.shortcuts.map(\.id).sorted() == ids, "moved, not recreated")
         #expect(await h.drive.contractViolations.isEmpty)
@@ -121,7 +121,8 @@ import Testing
         await h.settle()
         let favorites = await shortcutPaths(h)
         #expect(favorites.count == 2, "favorites of every category: \(favorites)")
-        #expect(await pathsUnder("Favorites/2026/", h).count == 2)
+        #expect(await pathsUnder("Favorites/\(organizationDay)/", h).count == 1)
+        #expect(favorites.allSatisfy { $0.hasPrefix("Favorites/20") }, "each favorite sits in its own day folder: \(favorites)")
 
         // Not a favorite any more: the shortcut is trashed, the file stays.
         await favorite(h, "f1", false)
@@ -153,15 +154,15 @@ import Testing
 
         try await h.coordinator.rebuildViews()
         await h.settle()
-        #expect(await pathsUnder("By device/Apple iPhone 15/2026/10/", h).count == 2, "restored by Dựng lại view")
+        #expect(await pathsUnder("By device/Apple iPhone 15/\(organizationDay)/", h).count == 2, "restored by Dựng lại view")
         #expect(try h.shortcutRecords(.googleDrive, state: .userRemoved).isEmpty)
     }
 
     @Test func t38ByPlaceGroupsByCountryAndProvinceAndIgnoresAssetsWithoutGps() async throws {
         let h = try await harness()
         try await h.update { $0.viewByDeviceEnabled = false; $0.viewFavoritesEnabled = false }
-        await h.geocoder.seed(daLat, en: daLatEnglish, vi: daLatVietnamese)
-        await h.geocoder.seed(tokyo, en: tokyoEnglish, vi: tokyoVietnamese)
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
+        await h.geocoder.seed(tokyo, en: tokyoEnglish, local: tokyoNative)
         await h.add(h.snapshot("vn", daysAgo: 3, location: daLat), recordChange: false)
         await h.add(h.snapshot("jp", daysAgo: 4, location: tokyo), recordChange: false)
         await h.add(h.snapshot("nogps", daysAgo: 5), recordChange: false)
@@ -169,20 +170,10 @@ import Testing
         await h.settle()
         var paths = await shortcutPaths(h)
         #expect(paths.count == 2, "\(paths)")
-        #expect(await pathsUnder("By place/Việt Nam/Lâm Đồng/2026/", h).count == 1)
-        #expect(await pathsUnder("By place/Nhật Bản/Tokyo/2026/", h).count == 1)
-
-        // Another language only renames folders: same shortcuts, same keys.
-        let ids = await h.drive.shortcuts.map(\.id).sorted()
-        let logical = try h.read { db in try RemoteFolderRepository.fetchAll(db, destinationId: .googleDrive).map(\.logicalPath).sorted() }
-        try await h.update { $0.placeNameLanguage = "en" }
-        try await h.coordinator.settingsChanged()
-        await h.settle()
+        #expect(await pathsUnder("By place/Vietnam/Lâm Đồng/\(organizationDay)/", h).count == 1, "\(paths)")
+        #expect(await pathsUnder("By place/Japan/Tokyo (東京都)/", h).count == 1, "\(paths)")
         paths = await shortcutPaths(h)
-        #expect(await pathsUnder("By place/Vietnam/Lam Dong/2026/", h).count == 1, "\(paths)")
-        #expect(await h.drive.shortcuts.map(\.id).sorted() == ids)
-        #expect(try h.read { db in try RemoteFolderRepository.fetchAll(db, destinationId: .googleDrive).map(\.logicalPath).sorted() } == logical)
-        #expect(await pathsUnder("By place/Japan/Tokyo/2026/", h).count == 1)
+        #expect(paths.allSatisfy { $0.split(separator: "/").count == 5 }, "country / area / day / file: \(paths)")
     }
 
     @Test func t39SwitchingViewsOffAndOnAndRebuildingAfterTheOwnerDeletedAFolder() async throws {
@@ -206,8 +197,8 @@ import Testing
         #expect(await h.drive.shortcuts.count == 1)
 
         // The owner trashes the whole view folder; a later favorite does not stop Drive.
-        let year = try #require(await h.drive.folders.first { $0.name == "2026" && $0.appProperties[AppPropertyKey.logical]?.hasPrefix("view/favorites") == true })
-        await h.drive.externallyTrash(year.id)
+        let favoritesFolder = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == "view/favorites" })
+        await h.drive.externallyTrash(favoritesFolder.id)
         await h.add(h.snapshot("f2", daysAgo: 4))
         await favorite(h, "f2", true, daysAgo: 4)
         await h.settle()
@@ -219,7 +210,7 @@ import Testing
         try await h.coordinator.rebuildViews()
         await h.settle()
         let rebuilt = await shortcutPaths(h)
-        #expect(rebuilt.filter { $0.hasPrefix("Favorites/2026/") }.count == 2, "\(rebuilt)")
+        #expect(rebuilt.filter { $0.hasPrefix("Favorites/20") }.count == 2, "\(rebuilt)")
         #expect(try h.shortcutRecords(.googleDrive, state: .userRemoved).isEmpty)
         #expect(await h.drive.contractViolations.isEmpty)
     }
