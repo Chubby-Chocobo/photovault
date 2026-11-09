@@ -4,6 +4,8 @@ import PhotoVaultStore
 
 public struct ClassifyResult: Sendable, Equatable {
     public var classified = 0
+    /// Provisional assets looked at in the pass (each at most once).
+    public var walked = 0
     /// The guard refused new work (critical disk or staging full); retry later.
     public var blocked = false
 }
@@ -41,18 +43,23 @@ actor ClassifyWorker {
 
     func runPass() async throws -> ClassifyResult {
         var result = ClassifyResult()
-        var seen = Set<AssetKey>()
+        var cursor: EngineQueries.ProvisionalCursor?
+        let batch = max(1, env.tuning.classifyBatchSize)
         while true {
             try Task.checkCancellation()
-            let want = env.tuning.classifyBatchSize + seen.count
-            let keys = try await env.store.read { db in try EngineQueries.provisionalAssetKeys(db, limit: want) }
-            let fresh = keys.filter { !seen.contains($0) }
-            if fresh.isEmpty { return result }
-            for key in fresh {
-                seen.insert(key)
-                switch try await classify(key) {
+            let start = cursor
+            let page = try await env.store.read { db in
+                let scope = ClassifyScope(destinations: try DestinationRepository.fetchAll(db))
+                return try EngineQueries.provisionalPage(db, after: start, limit: batch, scope: scope)
+            }
+            guard let last = page.last else { return result }
+            cursor = last.cursor
+            for entry in page {
+                result.walked += 1
+                switch try await classify(entry.key) {
                 case .classified: result.classified += 1
                 case .skipped: break
+                case .rateLimited: return result
                 case .blocked:
                     result.blocked = true
                     return result
@@ -61,7 +68,7 @@ actor ClassifyWorker {
         }
     }
 
-    private enum Outcome { case classified, skipped, blocked }
+    private enum Outcome { case classified, skipped, rateLimited, blocked }
 
     private struct Work: Sendable {
         var asset: AssetRecord
@@ -92,7 +99,8 @@ actor ClassifyWorker {
         let permit: ExportPermit
         switch admission {
         case .denied(.stopAll): return .blocked
-        case .denied(.rateLimited): return .skipped
+        // Everything after this asset in the order is rate limited the same way: stop the pass.
+        case .denied(.rateLimited): return work.asset.insertedAt == nil ? .rateLimited : .skipped
         case .granted(let granted): permit = granted
         }
         let spill = staging.fileURL(assetKey: key, type: work.primary.type, generation: work.primary.contentGen)

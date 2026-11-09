@@ -6,6 +6,8 @@ enum Schema {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1", migrate: createV1)
         migrator.registerMigration("v2-upload-intent", migrate: createUploadIntent)
+        migrator.registerMigration("v3-snapshot-counters", migrate: createSnapshotCounters)
+        migrator.registerMigration("v4-provisional-index", migrate: createProvisionalIndex)
         return migrator
     }
 

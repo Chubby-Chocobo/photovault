@@ -92,7 +92,7 @@ struct AppEnvironment: Sendable {
         let settings: SettingsStore
         do {
             store = try Self.openStore(at: layout.database, backups: backups, log: log)
-            settings = try SettingsStore(store: store)
+            settings = try SettingsStore(store: store, log: log)
         } catch {
             log.log(.fault, category: "launch", "database could not be opened: \(type(of: error))")
             throw LaunchFailure.other("Không mở được cơ sở dữ liệu. Chi tiết nằm trong thư mục log.")

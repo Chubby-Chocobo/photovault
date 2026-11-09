@@ -76,11 +76,14 @@ public actor ChangeTracker {
             let context = try env.context(db, settings)
             var touched: [AssetKey] = []
             var dirty = Set<ArchiveDay>()
+            // A change replayed from the history happened after the baseline token, so its time
+            // never precedes a baseline even when the wall clock stepped backwards in between.
+            let stamp = context.destinations.compactMap(\.baselineAt).reduce(context.now, max)
             for localId in wanted {
                 guard let snapshot = snapshots[localId] else { continue }
                 let membership = try Self.albumTitles(db, localId: localId, key: nil)
                 let result = try AssetRecordFactory.ingest(
-                    db, snapshot, albums: membership, insertedAt: context.now,
+                    db, snapshot, albums: membership, insertedAt: stamp,
                     stampInsertedOnExisting: inserted.contains(localId), context: context)
                 touched.append(result.record.assetKey)
             }
