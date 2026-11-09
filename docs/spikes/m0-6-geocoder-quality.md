@@ -80,7 +80,7 @@ Conclusions:
 - **Bug found and fixed.** Hạ Long bay answers with a country and no province. The country-only fallback started after 3 such answers in a row, so a boat trip switched the whole library to country names. It then stored "Vietnam" as the area of the water cells. That clashed with the Quảng Ninh cells on shore, so the day lost its name. The fallback now starts only when no answer has carried a province since the last refresh, after 10 in a row. A province arriving later undoes it. Test: `PlaceNameTests.aBoatTripStillNamesTheDayAfterItsProvince`.
 - **Throttling shows up as a network error**, which the scheduler already backs off on. The 20-per-minute limit is well below what Apple allows.
 - **Apple's data follows the 2025 merger of provinces and the removal of districts.** Keys such as `VN|Quang Nam` (old cache) and `VN|Da Nang` (new answer) name the same place. Cached answers stay as they are until "Làm mới địa danh", which then renames those days.
-- **Owner decision: how a one-ward day is named.** The locality is now a ward. A day spent in one ward is named after it, for example "P. Cửa Nam" or "P. Lâm Viên - Đà Lạt", rather than the city. The current rule (FR-81: same locality → locality) is kept until the owner chooses. One option is to use the province whenever the locality starts with a ward prefix.
+- **How a one-ward day is named: kept as it is (owner, 2026-11-09).** The locality is now a ward. A day spent in one ward is named after it, prefix included, for example "P. Cửa Nam" or "P. Lâm Viên - Đà Lạt", rather than the city. FR-81 (same locality → locality) is unchanged. The owner turned down using the province when the locality starts with "P.", "X." or "Đặc Khu".
 
 ## Changes this result drives
 

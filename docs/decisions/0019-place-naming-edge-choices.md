@@ -1,6 +1,6 @@
 # 0019 Place naming: edge-case choices for day-folder names
 
-- **Status:** Accepted after M0-6 (2026-11-09), with the country-only fallback changed; the 24-hour key check and the one-ward day name are open
+- **Status:** Accepted after M0-6 (2026-11-09), with the country-only fallback changed; the 24-hour key check is open. A day in one ward keeps the ward's name (for example "P. Cửa Nam"), as the owner chose on 2026-11-09
 - **Spec refs:** FR-80 to FR-83, FR-106, §8.11, T28, T36, T38
 - **Review trigger:** after M0-6 ([spike](../spikes/m0-6-geocoder-quality.md)), or when the owner changes how a day with mixed places is named
 
