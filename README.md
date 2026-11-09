@@ -56,11 +56,11 @@ Do this once, in your own Google account. The app cannot do it for you.
 
 The build writes the two values into the app's `Info.plist` (`PVGoogleClientID`, `PVGoogleClientSecret`). The client secret of a Desktop client is not treated as confidential (see the note in `Sources/PhotoVaultDrive/OAuthClient.swift`). Do not reuse this OAuth client for other apps.
 
-## Signing with a Personal Team
+## Signing
 
 The app needs a stable signature. macOS ties its Photos and folder permissions (TCC) to the signature and the bundle ID `com.annh.photovault`. Each change of signature asks for those permissions again.
 
-1. In Xcode, open Settings → Accounts and add your Apple ID. This creates a Personal Team.
+1. In Xcode, open Settings → Accounts and add your Apple ID. A paid Apple Developer account works best (its certificates and profiles last a year); without one, Xcode creates a free Personal Team. Use your own team, not an employer's. Then click Manage Certificates → + → Apple Development.
 2. Copy the template and set your Team ID (from the same Accounts pane):
 
    ```sh
@@ -69,7 +69,14 @@ The app needs a stable signature. macOS ties its Photos and folder permissions (
 
    Set `DEVELOPMENT_TEAM` in the file. It is gitignored.
 3. In the target's Signing & Capabilities, keep **Automatic** signing with that team. Do **not** choose **Sign to Run Locally**. That is ad-hoc signing, and every build loses the permissions.
-4. Build the app, then copy `PhotoVault.app` to `/Applications` and run it from there. Repeat the copy after each build. In Xcode, Product → Show Build Folder in Finder shows the built app.
+4. The app stores the Google token in the data-protection Keychain, which needs a Keychain access group (`Config/PhotoVault.entitlements`). That entitlement comes with a provisioning profile, and the profile must list this Mac. Xcode registers the Mac and creates the profile on the first build; from the command line:
+
+   ```sh
+   xcodebuild -project PhotoVault.xcodeproj -scheme PhotoVault -configuration Release \
+     -derivedDataPath build/DerivedData -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+   ```
+
+5. Build the app, then copy `PhotoVault.app` to `/Applications` and run it from there. Repeat the copy after each build. In Xcode, Product → Show Build Folder in Finder shows the built app.
 
 Personal Team profiles expire. If Xcode reports the profile as expired, sign again and copy the app again. [M0-4](docs/spikes/m0-4-signing-sandbox-and-filesystems.md) measures how long a profile lasts.
 

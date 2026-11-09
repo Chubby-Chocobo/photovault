@@ -25,5 +25,5 @@ Access tokens are kept in memory only (`GoogleAuthSession`).
 ## Consequences
 
 - The item never leaves this Mac and is not in iCloud Keychain.
-- Items in the data-protection Keychain need a signed host. Unsigned builds fail with `-34018` (recorded in [0013](0013-drive-defaults.md), item 6).
+- Items in the data-protection Keychain need a signed host with the `keychain-access-groups` entitlement, which a provisioning profile grants. Unsigned builds, and team-signed builds without that entitlement, fail with `-34018` (recorded in [0013](0013-drive-defaults.md), item 6).
 - Sign-out deletes the item first, then revokes the token best-effort (`GoogleAuthSession.signOut`).
