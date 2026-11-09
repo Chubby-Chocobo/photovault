@@ -347,6 +347,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Shortcut trỏ theo ID nên không hỏng khi file di chuyển hoặc đổi tên.
 - Số item tăng theo mỗi view [VERIFY giới hạn My Drive] → Settings ước tính và cảnh báo.
 - Bật view → backfill từ DB. Tắt view → giữ nguyên cây. "Dựng lại view" = đưa cây về đúng trạng thái mong muốn.
+- Ảnh bị xoá khỏi Photos vẫn còn bản backup nên giữ shortcut ở mọi view (By device, Favorites, By place); view không tạo shortcut mới cho ảnh đã xoá.
 **FR-104 `By device/<Thiết bị>/YYYY-MM-DD/`:**
 - Thành viên: asset `camera` có `camera_model`; không có nhóm Unknown.
 - Khoá `make|model` chuẩn hoá. Tên mặc định `<Make> <Model>` (bỏ lặp hãng), cộng bảng `Resources/device-names.json` (ví dụ `ILCE-7M4` → `Sony A7 IV`; [VERIFY] từng mã).

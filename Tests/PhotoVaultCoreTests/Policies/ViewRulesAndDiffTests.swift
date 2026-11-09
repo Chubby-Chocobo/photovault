@@ -60,6 +60,15 @@ import Testing
         #expect(ViewRules.path(for: fixtureAsset(location: daLat), in: .byPlace, context: noArea) == nil)
     }
 
+    @Test func aDeletedAssetKeepsItsPathInEveryView() {
+        let context = ViewContext(englishGeocodes: [GeoCell(daLat): GeoPlace(isoCountryCode: "VN", country: "Vietnam", administrativeArea: "Lam Dong")])
+        let live = fixtureAsset(favorite: true, location: daLat)
+        var deleted = live
+        deleted.deletedAt = Date(timeIntervalSince1970: 1_000)
+        #expect(ViewRules.paths(for: deleted, context: context) == ViewRules.paths(for: live, context: context))
+        #expect(ViewRules.paths(for: deleted, context: context).count == 3)
+    }
+
     @Test func areaKeyIsSafeForLogicalPaths() {
         let en = GeoPlace(isoCountryCode: "XX", country: "X", administrativeArea: "A/B")
         let context = ViewContext(englishGeocodes: [GeoCell(daLat): en])
