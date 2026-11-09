@@ -25,12 +25,12 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private var acceptedCallback: LoopbackCallback?
 
     public init(expectedState: String, timeout: TimeInterval = LoopbackRedirectServer.defaultTimeout,
-                connectionTimeout: TimeInterval = 10) throws {
+                connectionTimeout: TimeInterval = 10, port: UInt16 = 0) throws {
         self.expectedState = expectedState
         self.timeout = timeout
         self.connectionTimeout = connectionTimeout
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: 0)
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port) ?? .any)
         listener = try NWListener(using: parameters)
     }
 
