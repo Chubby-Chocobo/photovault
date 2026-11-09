@@ -13,6 +13,13 @@ import Testing
         var chunks: Int { lock.withLock { $0.chunks } }
     }
 
+    /// A clock only the test moves, so load on the machine cannot fake a stall.
+    final class ManualClock: @unchecked Sendable {
+        private let lock = OSAllocatedUnfairLock(initialState: Date(timeIntervalSince1970: 0))
+        var now: Date { lock.withLock { $0 } }
+        func advance(_ seconds: TimeInterval) { lock.withLock { $0 = $0.addingTimeInterval(seconds) } }
+    }
+
     private let fast = StalledRequestGuard(stallTimeout: 0.2, checkInterval: 0.05)
 
     @Test func aRequestThatNeverDeliversIsCancelledAndReportedAsANetworkError() async throws {
@@ -23,18 +30,24 @@ import Testing
         #expect(calls.cancels == 1)
     }
 
+    /// The whole request (10 chunks, 100 s apart) outlasts the 60 s stall limit; no single gap does.
     @Test func steadyChunksKeepALongRequestAlive() async throws {
         let calls = Calls()
-        try await fast.run(start: { chunk, completion in
+        let clock = ManualClock()
+        let guarded = StalledRequestGuard(stallTimeout: 60, checkInterval: 0.01, now: { clock.now })
+        try await guarded.run(start: { chunk, completion in
             Task.detached {
-                for _ in 0..<8 {
-                    try? await Task.sleep(for: .milliseconds(60))
+                for _ in 0..<10 {
+                    clock.advance(30)
+                    try? await Task.sleep(for: .milliseconds(20))
+                    clock.advance(20)
                     _ = chunk(Data([1]))
                 }
                 completion(nil)
             }
         }, cancel: { calls.cancelled() }, onChunk: { _ in calls.chunk(); return true })
-        #expect(calls.chunks == 8 && calls.cancels == 0)
+        #expect(calls.chunks == 10 && calls.cancels == 0)
+        #expect(clock.now.timeIntervalSince1970 == 500)
     }
 
     @Test func aLateCompletionAfterAStallIsIgnored() async throws {

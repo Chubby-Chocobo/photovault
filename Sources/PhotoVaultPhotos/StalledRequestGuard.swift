@@ -13,16 +13,24 @@ struct StalledRequestGuard: Sendable {
 
     var stallTimeout: TimeInterval = Self.defaultStallTimeout
     var checkInterval: TimeInterval = 30
+    /// Time source for the idle measure; tests drive it by hand.
+    var now: @Sendable () -> Date = { Date() }
 
     private final class Outcome: @unchecked Sendable {
         private struct State {
             var continuation: CheckedContinuation<Void, Error>?
             var finished = false
             var stalled = false
-            var lastActivity = Date()
+            var lastActivity: Date
         }
 
-        private let state = OSAllocatedUnfairLock(initialState: State())
+        private let state: OSAllocatedUnfairLock<State>
+        private let now: @Sendable () -> Date
+
+        init(now: @escaping @Sendable () -> Date) {
+            self.now = now
+            state = OSAllocatedUnfairLock(initialState: State(lastActivity: now()))
+        }
 
         func install(_ continuation: CheckedContinuation<Void, Error>) {
             let alreadyDone = state.withLock { s -> Bool in
@@ -33,10 +41,14 @@ struct StalledRequestGuard: Sendable {
             if alreadyDone { continuation.resume(throwing: PhotosSourceError.cancelled) }
         }
 
-        func touch() { state.withLock { $0.lastActivity = Date() } }
+        func touch() {
+            let time = now()
+            state.withLock { $0.lastActivity = time }
+        }
 
         func idle(longerThan limit: TimeInterval) -> Bool {
-            state.withLock { !$0.finished && Date().timeIntervalSince($0.lastActivity) >= limit }
+            let time = now()
+            return state.withLock { !$0.finished && time.timeIntervalSince($0.lastActivity) >= limit }
         }
 
         var stalled: Bool { state.withLock { $0.stalled } }
@@ -62,7 +74,7 @@ struct StalledRequestGuard: Sendable {
         cancel: @escaping @Sendable () -> Void,
         onChunk: @escaping @Sendable (Data) -> Bool
     ) async throws {
-        let outcome = Outcome()
+        let outcome = Outcome(now: now)
         let limit = stallTimeout
         let interval = checkInterval
         let watchdog = Task.detached {
