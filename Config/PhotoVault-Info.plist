@@ -32,5 +32,7 @@
 	<string>$(GOOGLE_CLIENT_ID)</string>
 	<key>PVGoogleClientSecret</key>
 	<string>$(GOOGLE_CLIENT_SECRET)</string>
+	<key>PVDropboxAppKey</key>
+	<string>$(DROPBOX_APP_KEY)</string>
 </dict>
 </plist>

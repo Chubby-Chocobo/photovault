@@ -50,6 +50,10 @@ final class AppModel {
     var factoryResetInProgress = false
     var windowRequest: WindowRequest?
     var settingsTab: SettingsTab = .general
+    /// A Dropbox account token is stored (the folder browser needs no new sign-in).
+    var dropboxSignedIn = false
+    /// A Google or Dropbox sign-in is waiting for the browser; further starts are ignored meanwhile.
+    var cloudFlowBusy = false
     var hardening: (any HardeningCommands)?
     /// Set before `bootstrap()`: builds the engine adapter for `HardeningCommands`.
     @ObservationIgnored var hardeningFactory: (@MainActor (AppEnvironment) -> any HardeningCommands)?
@@ -124,6 +128,7 @@ final class AppModel {
             return
         }
         env = environment
+        dropboxSignedIn = environment.cloud.hasDropboxAccount()
         hardening = hardeningFactory?(environment)
             ?? EngineHardeningCommands(coordinator: environment.coordinator, store: environment.store, log: environment.log)
         notificationService.configure()

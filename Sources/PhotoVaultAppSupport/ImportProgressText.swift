@@ -15,6 +15,14 @@ public enum ImportProgressText {
         }
     }
 
+    /// Status line of one import: a cloud import that waits says so in its own words.
+    public static func statusLabel(_ item: ImportSnapshot) -> String {
+        guard item.status == .offline, item.kind == .googleDrive || item.kind == .dropbox else { return statusLabel(item.status) }
+        return CloudImportText.needsSignIn(item)
+            ? tr(vi: "Cần đăng nhập lại", en: "Sign in again")
+            : tr(vi: "Chưa kết nối được, sẽ tiếp tục khi có lại", en: "Can’t connect right now; it will continue when it is back")
+    }
+
     /// One bar for both stages: reading fills the first half, uploading the second. With nothing to
     /// upload the second half counts as done once everything is read.
     public static func fraction(_ item: ImportSnapshot) -> Double {

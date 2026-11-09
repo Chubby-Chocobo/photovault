@@ -50,6 +50,16 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
         #expect(entries.first?.uti == "com.apple.quicktime-movie")
     }
 
+    @Test func singlePickedFolderNameOnlyForOneFolder() async throws {
+        let rig = try Rig()
+        rig.stub.add(.init(id: "F", name: " Trip 2024 ", mime: DriveMime.folder))
+        rig.stub.add(.init(id: "A", name: "a.jpg"))
+        #expect(await rig.source(["F"]).singlePickedFolderName() == "Trip 2024")
+        #expect(await rig.source(["A"]).singlePickedFolderName() == nil)
+        #expect(await rig.source(["F", "A"]).singlePickedFolderName() == nil)
+        #expect(await rig.source(["gone"]).singlePickedFolderName() == nil)
+    }
+
     @Test func duplicateNamesGetDistinctPaths() async throws {
         let rig = try Rig()
         rig.stub.add(.init(id: "F", name: "Dir", mime: DriveMime.folder))

@@ -1,6 +1,8 @@
 import AppKit
+import PhotoVaultAppSupport
 import PhotoVaultCore
 import PhotoVaultEngine
+import PhotoVaultStore
 
 extension AppModel {
     /// Factory Reset (start over): stops syncing, signs out of Google, marks the data folder for
@@ -14,6 +16,9 @@ extension AppModel {
         await env.coordinator.pauseAll()
         do {
             try await env.auth.signOut()
+            let imports = (try? await env.store.read { db in try SourceRepository.fetchAll(db) }) ?? []
+            let failed = env.cloud.deleteTokens(accounts: CloudImportKeychain.accountsToDelete(imports: imports))
+            if failed > 0 { env.log.log(.error, category: "reset", "\(failed) cloud tokens could not be deleted") }
             try FactoryReset.request(env.layout)
         } catch {
             env.log.log(.error, category: "reset", "factory reset could not start: \(type(of: error))")

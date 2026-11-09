@@ -21,8 +21,6 @@ public struct SourceID: Hashable, Codable, Sendable, Comparable, CustomStringCon
         SourceID(rawValue: "folder-" + uuid.uuidString.lowercased())!
     }
 
-    public var kind: SourceKind { rawValue == "photos" ? .photos : .localFolder }
-
     public init(from decoder: any Decoder) throws {
         let value = try decoder.singleValueContainer().decode(String.self)
         guard let id = SourceID(rawValue: value) else {

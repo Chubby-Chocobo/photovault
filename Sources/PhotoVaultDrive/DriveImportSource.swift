@@ -40,6 +40,15 @@ public final class DriveImportSource: FolderImportSource, Sendable {
         } catch { throw Self.map(error, forFile: false) }
     }
 
+    /// Name of the picked folder when exactly one folder was picked, for the import's display name.
+    /// nil for several picks, a single file, or when Drive does not answer.
+    public func singlePickedFolderName() async -> String? {
+        guard lister.pickedIds.count == 1, let id = lister.pickedIds.first,
+              let item = try? await lister.item(id), item.isFolder, item.trashed != true,
+              let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        return name
+    }
+
     public func listFiles() async throws -> [FolderFileEntry] {
         do {
             let listing = try await lister.list()

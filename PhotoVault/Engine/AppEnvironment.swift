@@ -62,7 +62,8 @@ struct AppEnvironment: Sendable {
     let notificationLedger: NotificationLedgerFile
     let dailyCapFile: DailyCapFile
     /// Adapters of imports that were still open when the app last ran; registered before recovery.
-    let folderSources: [LocalFolderSource]
+    let folderSources: [any FolderImportSource]
+    let cloud: CloudImportServices
 
     static let setupReadmeSection = "README › Google Cloud setup"
 
@@ -159,7 +160,12 @@ struct AppEnvironment: Sendable {
             }
         }
         let registry = DestinationRegistry(live)
-        let folderSources = Self.openFolderSources(store: store, log: log)
+        let dropboxAppKey = (bundle.object(forInfoDictionaryKey: "PVDropboxAppKey") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let cloud = CloudImportServices(
+            googleConfig: OAuthConfig(clientID: clientID, clientSecret: clientSecret.isEmpty ? nil : clientSecret),
+            oauth: oauth, transport: transport, keychain: SystemKeychainStore(), dropboxAppKey: dropboxAppKey,
+            scratchDirectory: layout.staging.appendingPathComponent("cloud-import", isDirectory: true))
+        let folderSources = Self.openImportSources(store: store, cloud: cloud, log: log)
 
         let system = SystemMonitor()
         let photos = PhotoKitSource()
@@ -173,15 +179,28 @@ struct AppEnvironment: Sendable {
             coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth, transport: transport,
             googleConfigured: !clientID.isEmpty, fileLog: fileLog, log: log, system: system, disk: disk, backups: backups,
             notificationLedger: NotificationLedgerFile(url: layout.root.appendingPathComponent("notification-ledger.json")),
-            dailyCapFile: capFile, folderSources: folderSources)
+            dailyCapFile: capFile, folderSources: folderSources, cloud: cloud)
     }
 
-    /// One read-only adapter per import, finished or not. A stale bookmark is refreshed in place.
-    private static func openFolderSources(store: Store, log: AppLogSink) -> [LocalFolderSource] {
+    /// One read-only adapter per import, finished or not. A stale bookmark is refreshed in place; a cloud
+    /// import is adopted only while its token is in the Keychain.
+    private static func openImportSources(store: Store, cloud: CloudImportServices, log: AppLogSink) -> [any FolderImportSource] {
         // Finished imports too: a destination added later still receives their files.
-        let rows = (try? store.read { db in try SourceRepository.withBookmarks(db) }) ?? []
-        return rows.compactMap { row in
-            row.config.bookmark.map { makeFolderSource(id: row.id, bookmark: $0, store: store, log: log) }
+        let rows = (try? store.read { db in try SourceRepository.readableImports(db) }) ?? []
+        let readable = CloudImportKeychain.registrable(rows, hasGrant: cloud.hasGrant)
+        let skipped = rows.count - readable.count
+        if skipped > 0 { log.log(.notice, category: "launch", "\(skipped) cloud imports have no stored token") }
+        return readable.compactMap { row -> (any FolderImportSource)? in
+            switch row.kind {
+            case .localFolder:
+                row.config.bookmark.map { makeFolderSource(id: row.id, bookmark: $0, store: store, log: log) }
+            case .googleDrive:
+                cloud.driveSource(id: row.id, pickedIds: row.config.remoteItems ?? [])
+            case .dropbox:
+                cloud.dropboxSource(id: row.id, rootPath: row.config.remoteItems?.first ?? "")
+            case .photos:
+                nil
+            }
         }
     }
 
