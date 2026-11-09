@@ -28,6 +28,38 @@ import Testing
         #expect(try h.activity().allSatisfy { $0.kind != .recovered })
     }
 
+    /// Drive lists the whole account: the new root itself, an empty folder of it and another
+    /// PhotoVault root's files are not backup data of this destination.
+    @Test func aNewRootIsNotMistakenForBackupDataInAnAccountWithOtherRoots() async throws {
+        let h = try await Harness()
+        await h.drive.setListsWholeAccount(true)
+        let schema = [AppPropertyKey.schema: AppPropertyCodec.schemaVersion]
+        await h.drive.put(.init(id: "root", name: "Camera Uploads", parentId: "", kind: .folder, appProperties: schema.merging([AppPropertyKey.root: "1"]) { a, _ in a }))
+        await h.drive.put(.init(id: "empty", name: "2027", parentId: "root", kind: .folder, appProperties: schema))
+        await h.drive.put(.init(id: "other", name: "Old Mac", parentId: "", kind: .folder, appProperties: schema))
+        await h.drive.put(.init(id: "old-file", name: "x.HEIC", parentId: "other", kind: .file, appProperties: schema))
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        #expect(try h.activity().allSatisfy { !$0.message.contains("đã có dữ liệu sao lưu") })
+        #expect(try h.activity().allSatisfy { $0.kind != .recovered })
+        #expect(try h.jobs(.done).count >= 1)
+    }
+
+    @Test func aFileUnderTheRootInAWholeAccountListingStillRequiresRecovery() async throws {
+        let h = try await Harness()
+        await h.drive.setListsWholeAccount(true)
+        let schema = [AppPropertyKey.schema: AppPropertyCodec.schemaVersion]
+        await h.drive.put(.init(id: "m", name: "01", parentId: "root", kind: .folder, appProperties: schema))
+        await h.drive.put(.init(id: "f", name: "x.HEIC", parentId: "m", kind: .file, appProperties: schema))
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.run()
+        #expect(try h.destinationRecord(.googleDrive).recoveryRequired)
+    }
+
     @Test func aReusedRootIsRecoveredBeforeAnythingIsUploaded() async throws {
         let h = try await firstLife()
         let files = await h.drive.files.map(\.id).sorted()

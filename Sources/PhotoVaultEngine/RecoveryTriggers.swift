@@ -34,7 +34,7 @@ struct RecoveryTriggers: Sendable {
                   await destination.checkAvailability() == .active else { continue }
             let found: Bool
             do {
-                found = try await hasBackupFiles(destination)
+                found = try await hasBackupFiles(destination, rootId: record.config.driveRootId)
             } catch let error as DestinationError {
                 env.log.log(.notice, category: "recovery", "probe failed destination=\(record.id) error=\(error)")
                 continue
@@ -52,14 +52,34 @@ struct RecoveryTriggers: Sendable {
         }
     }
 
-    private func hasBackupFiles(_ destination: any Destination) async throws -> Bool {
-        let drive = destination.capabilities.supportsAppProperties
-        for try await item in destination.list(under: nil) {
-            if item.trashed { continue }
-            if drive ? item.appProperties[AppPropertyKey.schema] == AppPropertyCodec.schemaVersion
-                : (item.kind == .file && NameFingerprint.parse(item.name) != nil) { return true }
+    /// Backup files, not folders: the root itself and the folders made for the first uploads carry
+    /// the app's schema too. On Drive the listing covers the whole account, so only files under this
+    /// destination's root count; another PhotoVault root in the same account is not this one's data.
+    private func hasBackupFiles(_ destination: any Destination, rootId: String?) async throws -> Bool {
+        guard destination.capabilities.supportsAppProperties else {
+            for try await item in destination.list(under: nil) where !item.trashed {
+                if item.kind == .file, NameFingerprint.parse(item.name) != nil { return true }
+            }
+            return false
         }
-        return false
+        guard let rootId else { return false }
+        var parents: [String: String] = [:]
+        var files: [RemoteItem] = []
+        for try await item in destination.list(under: nil) where !item.trashed
+            && item.appProperties[AppPropertyKey.schema] == AppPropertyCodec.schemaVersion {
+            if let parent = item.parentIds.first { parents[item.remoteId] = parent }
+            if item.kind == .file { files.append(item) }
+        }
+        return files.contains { file in
+            var current = file.parentIds.first
+            var hops = 0
+            while let id = current, hops < 64 {
+                if id == rootId { return true }
+                current = parents[id]
+                hops += 1
+            }
+            return false
+        }
     }
 
     // MARK: Commands
