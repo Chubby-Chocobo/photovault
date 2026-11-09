@@ -132,7 +132,7 @@ The examples come from this input (sample values, not a real asset):
 | Type | image, camera, favourite, no subtypes |
 | Camera | SONY ILCE-7M4, lens `FE 24-70mm F2.8 GM II`, device name `Sony A7 IV` |
 | Location | 11.940412, 108.458312 |
-| Place | VN, Việt Nam, Lâm Đồng, Đà Lạt |
+| Place | VN, Vietnam, Lâm Đồng, Đà Lạt (names follow `PlaceNameRule` without the native name in parentheses: decision 0023) |
 | Albums | `Đà Lạt 2026`, `Family` |
 | Resources | original `DSC01234.ARW` (done, with size, md5 and sha256); edited `FullSizeRender.JPG` as `(edited).JPG` (pending) |
 | Extended metadata | none (current SDK) |
@@ -176,7 +176,7 @@ The hashes in the resource entries are placeholders. The edited resource has no 
   "pixelWidth": 6000,
   "place": {
     "administrativeArea": "Lâm Đồng",
-    "country": "Việt Nam",
+    "country": "Vietnam",
     "isoCountryCode": "VN",
     "locality": "Đà Lạt"
   },
@@ -224,7 +224,7 @@ The hashes in the resource entries are placeholders. The edited resource has no 
    </lr:hierarchicalSubject>
    <photoshop:City>Đà Lạt</photoshop:City>
    <photoshop:State>Lâm Đồng</photoshop:State>
-   <photoshop:Country>Việt Nam</photoshop:Country>
+   <photoshop:Country>Vietnam</photoshop:Country>
   </rdf:Description>
  </rdf:RDF>
 </x:xmpmeta>

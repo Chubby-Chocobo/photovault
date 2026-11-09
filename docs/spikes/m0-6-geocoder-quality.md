@@ -87,7 +87,7 @@ Conclusions:
 | Setting or constant | File and symbol | Default now |
 |---|---|---|
 | Structured-field requirement | `Sources/PhotoVaultCore/Policies/PlaceNamingPolicy.swift`, `identity(_:)` | ISO code and administrative area required; a cell without them is unusable |
-| Display language | `Sources/PhotoVaultCore/Models/Settings.swift`, `GlobalSettings.placeNameLanguage` | `vi` |
+| Name languages | `Sources/PhotoVaultCore/Policies/PlaceNameRule.swift` (decision 0023) | `en` + `vi` in Vietnam, `en` + native language abroad |
 | Home country | `GlobalSettings.homeCountryCode` | `VN` |
 | Geocoder | `Sources/PhotoVaultPhotos/CLGeocoderReverseGeocoder.swift`, `reverseGeocode(cell:locale:)` | `CLGeocoder`, cell centre |
 | Rate limit | `Sources/PhotoVaultEngine/GeocodeScheduler.swift`, `requestsPerMinute` | 20 per sliding minute |
