@@ -122,4 +122,9 @@ private nonisolated(unsafe) let fileJSON: [String: Any] = ["id": "F1", "name": "
         let (client, _) = api { _ in throw URLError(.notConnectedToInternet) }
         await #expect(throws: DestinationError.offline) { try await client.get("x") }
     }
+
+    @Test func aCancelledTransferIsACancellationNotAFailedAttempt() async throws {
+        let (client, _) = api { _ in throw URLError(.cancelled) }
+        await #expect(throws: CancellationError.self) { try await client.get("x") }
+    }
 }

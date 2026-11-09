@@ -49,9 +49,14 @@ enum DriveErrorMapper {
 
     /// 403 for the reasons that mean "this scope/account may not do that" (shortcut operations, FR-103).
     /// Throttling 403s are `rateLimited` and any other reason stays an item error.
+    static let forbiddenReasons: Set<String> = [
+        "http 403 insufficientPermissions", "http 403 insufficientFilePermissions",
+        "http 403 appNotAuthorizedToFile", "http 403 forbidden",
+    ]
+
     static func isForbidden(_ error: DestinationError) -> Bool {
         if case .itemRejected(let reason) = error {
-            return reason == "http 403 insufficientPermissions" || reason == "http 403 forbidden"
+            return forbiddenReasons.contains(reason)
         }
         return false
     }

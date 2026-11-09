@@ -32,7 +32,7 @@ private func body(_ reason: String) -> Data {
     }
 
     @Test func onlyPermissionReasonsAreForbidden() {
-        for reason in ["insufficientPermissions", "forbidden"] {
+        for reason in ["insufficientPermissions", "insufficientFilePermissions", "appNotAuthorizedToFile", "forbidden"] {
             #expect(DriveErrorMapper.error(data: body(reason), response: response(403)).map(DriveErrorMapper.isForbidden) == true)
         }
         #expect(DriveErrorMapper.error(data: body("somethingElse"), response: response(403)).map(DriveErrorMapper.isForbidden) == false)

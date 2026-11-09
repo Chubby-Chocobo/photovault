@@ -53,7 +53,7 @@ public struct OAuthClient: Sendable {
         let query = FormEncoding.encode([
             ("client_id", clientID), ("redirect_uri", redirectURI), ("response_type", "code"),
             ("scope", OAuthConfig.scopes), ("state", state), ("code_challenge", challenge),
-            ("code_challenge_method", "S256"), ("access_type", "offline"), ("prompt", "consent"),
+            ("code_challenge_method", "S256"), ("access_type", "offline"), ("prompt", "select_account consent"),
         ])
         var components = URLComponents(url: OAuthConfig.authEndpoint, resolvingAgainstBaseURL: false)!
         components.percentEncodedQuery = query

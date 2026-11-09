@@ -23,7 +23,7 @@ private func client(_ transport: StubTransport, opener: @escaping URLOpening = {
         let items = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
         #expect(url.host == "accounts.google.com" && url.path == "/o/oauth2/v2/auth")
         #expect(items["scope"] == "https://www.googleapis.com/auth/drive.file openid email")
-        #expect(items["access_type"] == "offline" && items["prompt"] == "consent")
+        #expect(items["access_type"] == "offline" && items["prompt"] == "select_account consent")
         #expect(items["code_challenge_method"] == "S256" && items["code_challenge"] == "ch")
         #expect(items["redirect_uri"] == "http://127.0.0.1:5555/oauth2/callback")
         #expect(items["response_type"] == "code" && items["state"] == "st")
