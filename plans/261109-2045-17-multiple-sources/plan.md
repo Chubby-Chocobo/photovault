@@ -50,7 +50,7 @@ ImportStage: no pending item and no pending/uploading job ─► [completed] + o
 | 04 | [Folder adapter and file metadata](phase-04-folder-adapter-and-metadata.md) | completed | M | 01 | this (parallel with 02–03) |
 | 05 | [Engine: folder import job](phase-05-engine-folder-import.md) | completed | L | 02, 03, 04 | this |
 | 06 | [App: Sources tab and import UI](phase-06-app-sources-ui.md) | completed | M | 05 | this |
-| 07 | [Docs, spec amendment, decision 0024](phase-07-docs-and-decision.md) | pending | S | 05, 06 | this |
+| 07 | [Docs, spec amendment, decision 0024](phase-07-docs-and-decision.md) | completed | S | 05, 06 | this |
 | 08 | [Continuous non-Photos source runtime](phase-08-continuous-source-runtime.md) | pending | L | 05 | **deferred** |
 | 09 | [Google Drive folder import (one-time)](phase-09-google-drive-folder-import.md) | pending | L | 05 | **deferred**, owner setup |
 | 10 | [Another Google account](phase-10-another-google-account.md) | pending | L | 08, 09 | **deferred**, owner choice + setup |

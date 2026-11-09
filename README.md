@@ -1,6 +1,6 @@
 # PhotoVault
 
-Personal macOS menu-bar app. It backs up the Photos library (originals and edits) to one Google Drive folder and to any number of local or NAS folders. It never deletes backup data and never changes the Photos library.
+Personal macOS menu-bar app. It backs up the Photos library (originals and edits) to one Google Drive folder and to any number of local or NAS folders. It never deletes backup data and never changes the Photos library. Photos is the main, ongoing source; Settings › Nguồn (Sources) can also import a folder of photos from this Mac once, and the imported files get the same folder layout, names and sidecars as Photos assets ([decision 0024](docs/decisions/0024-multiple-sources-and-folder-import.md)).
 
 > **Status:** the engine, the core packages, the menu bar, onboarding and Settings are in the repo. The M0 spikes have not been run, so several defaults are unverified. See [docs/spikes/README.md](docs/spikes/README.md).
 
@@ -180,7 +180,18 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 - **digiKam** looks for `file.ext.xmp`. The app writes `<stem>.xmp`, so digiKam does not find it by default.
 - **RAW and JPEG share one sidecar pair** (`<stem>.json` and `<stem>.xmp`).
 - **Drive views add shortcuts.** Shortcuts count toward My Drive's item limit (the limit is [VERIFY] in M0-3). The app trashes only shortcuts it created; backup files are never touched.
+- **Imports use file metadata.** Screenshots are recognised by the EXIF marker iOS and macOS write; screen recordings and screenshots from other tools go to `Camera Uploads`. A Live Photo pair is joined only when both files carry Apple's content identifier.
 - **Backfill is slow by design.** It runs at 20 GB per hour on power, and Photos downloads each original first (spec §8.5).
+
+## Import from a folder
+
+Settings › **Nguồn** › **Nhập ảnh…** › **Từ thư mục trên Mac…** picks a folder. PhotoVault reads it recursively, groups RAW+JPEG and Live Photo pairs, reads the dates and places inside the files, skips what is already backed up, and then backs the rest up like any other photo. The folder is only read: nothing in it is changed or deleted. Progress shows in Settings and in the menu bar; **Huỷ** stops a job (files already uploaded stay), and a notification and one line in Recent activity report the result.
+
+- **Photos access is still required.** An import runs in the same cycle as Photos, so it waits until setup is done and Photos is allowed.
+- **Only folders on this Mac** (internal, external or a mounted share). Google Drive, Dropbox, Flickr and another Google account come later.
+- **Keep the folder and its disk connected until the job completes.** An unplugged disk pauses that job only and it continues when the disk is back.
+- **Duplicates are matched by content, or by capture second + name + size.** A photo that is already in Photos or already exported is not uploaded twice. A photo added to Photos after it was imported is uploaded again.
+- **Files that only had a file date** (no EXIF or QuickTime date) use the earlier of the file's creation and modification dates for the day folder.
 
 ## Start over (factory reset)
 

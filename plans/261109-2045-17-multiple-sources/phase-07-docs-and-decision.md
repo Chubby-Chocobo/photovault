@@ -1,7 +1,7 @@
 ---
 phase: 07
 title: "Docs, spec amendment, decision 0024"
-status: pending
+status: completed
 priority: P2
 size: S
 human_effort: 0.5-1h
