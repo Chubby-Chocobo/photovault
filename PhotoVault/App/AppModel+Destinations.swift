@@ -45,6 +45,14 @@ extension AppModel {
                 showNotice(tr(vi: "Thư mục này đã là một đích của PhotoVault.", en: "This folder is already a PhotoVault destination."), isError: true)
                 return nil
             }
+            if marker != nil, try await LegacyRootProbe.hasLegacyContent({ path in
+                try await probe.childFolderNames(under: path.joined(separator: "/"))
+            }) {
+                showNotice(tr(
+                    vi: "Thư mục này chứa bản sao lưu của PhotoVault 0.1.0 (bố cục cũ) nên không dùng lại được. Ảnh trong đó không bị xoá hay sửa: hãy chuyển thư mục vào Thùng rác trong Finder, hoặc chọn một thư mục khác để tạo bản sao lưu mới.",
+                    en: "This folder holds a PhotoVault 0.1.0 backup (the old layout), so it can’t be reused. Nothing in it is deleted or changed: move the folder to the Trash in Finder, or pick another folder for a new backup."), isError: true)
+                return nil
+            }
             return PendingLocalDestination(
                 destinationId: marker?.id ?? .local(), url: pick.url, bookmark: pick.bookmark,
                 name: pick.volumeName ?? pick.url.lastPathComponent, existingMarker: marker)

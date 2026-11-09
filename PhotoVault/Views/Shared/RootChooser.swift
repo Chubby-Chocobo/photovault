@@ -13,7 +13,12 @@ struct RootChooser: View {
     struct RemoteItemSummary: Identifiable, Equatable {
         var id: String
         var name: String
+        /// Holds a 0.1.0 backup (year folders): not offered for reuse.
+        var isLegacy = false
     }
+
+    private var reusable: [RemoteItemSummary] { roots.filter { !$0.isLegacy } }
+    private var legacy: [RemoteItemSummary] { roots.filter(\.isLegacy) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -25,7 +30,9 @@ struct RootChooser: View {
             if let issue = RootNameValidator.validate(newName), reuseRootId == nil {
                 Text(issue.message).font(.caption).foregroundStyle(.red)
             }
-            if !roots.isEmpty {
+            if !legacy.isEmpty { OldBackupBanner(names: legacy.map(\.name)) }
+            if !reusable.isEmpty {
+                let roots = reusable
                 Banner(
                     .info,
                     title: roots.count == 1
@@ -77,5 +84,21 @@ struct RootChooser: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// A folder from 0.1.0 is not offered for reuse: its year folders do not fit the day layout.
+struct OldBackupBanner: View {
+    var names: [String]
+
+    var body: some View {
+        Banner(
+            .warning,
+            title: names.count == 1
+                ? tr(vi: "Thư mục “\(names[0])” là bản sao lưu của PhotoVault 0.1.0", en: "The folder “\(names[0])” is a PhotoVault 0.1.0 backup")
+                : tr(vi: "\(names.count) thư mục là bản sao lưu của PhotoVault 0.1.0", en: "\(names.count) folders are PhotoVault 0.1.0 backups"),
+            message: tr(
+                vi: "Bản này xếp ảnh theo từng ngày nên không dùng lại được thư mục cũ. Ảnh trong đó không bị xoá hay sửa: hãy chuyển thư mục vào Thùng rác trong Google Drive hoặc Finder, hoặc tạo thư mục mới với tên khác.",
+                en: "This version files photos by day, so the old folder can’t be reused. Nothing in it is deleted or changed: move the folder to the Trash in Google Drive or Finder, or create a new folder with a different name."))
     }
 }

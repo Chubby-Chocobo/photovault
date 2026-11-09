@@ -146,8 +146,8 @@ final class OnboardingModel {
     func loadRoots() async {
         rootsError = nil
         do {
-            roots = try await app.driveRoots().map { .init(id: $0.remoteId, name: $0.name) }
-            reuseRootId = app.hardeningAvailable ? roots.first?.id : nil
+            roots = try await app.driveRoots()
+            reuseRootId = app.hardeningAvailable ? roots.first { !$0.isLegacy }?.id : nil
         } catch {
             roots = []
             rootsError = ErrorText.message(for: error)

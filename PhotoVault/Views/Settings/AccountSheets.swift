@@ -68,7 +68,7 @@ struct AccountChangeSheet: View {
             }
             change = result
             let found = try await model.driveRoots(for: result)
-            roots = found.map { .init(id: $0.remoteId, name: $0.name) }
+            roots = found
             reuseRootId = canReuseFirst(found)
             newName = model.driveRecord?.config.driveRootName ?? "PhotoVault"
             stage = .chooseRoot
@@ -91,8 +91,8 @@ struct AccountChangeSheet: View {
         if dismissing { dismiss() }
     }
 
-    private func canReuseFirst(_ found: [RemoteItem]) -> String? {
-        model.hardeningAvailable ? found.first?.remoteId : nil
+    private func canReuseFirst(_ found: [RootChooser.RemoteItemSummary]) -> String? {
+        model.hardeningAvailable ? found.first { !$0.isLegacy }?.id : nil
     }
 
     private func apply() async {
@@ -152,7 +152,7 @@ struct RootChangeSheet: View {
         .task {
             do {
                 let currentId = model.driveRecord?.config.driveRootId
-                roots = try await model.driveRoots().filter { $0.remoteId != currentId }.map { .init(id: $0.remoteId, name: $0.name) }
+                roots = try await model.driveRoots().filter { $0.id != currentId }
             } catch {
                 model.showError(error)
             }

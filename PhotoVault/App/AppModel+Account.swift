@@ -31,9 +31,18 @@ extension AppModel {
         return try await env.auth.signIn()
     }
 
-    func driveRoots() async throws -> [RemoteItem] {
+    func driveRoots() async throws -> [RootChooser.RemoteItemSummary] {
         guard let env else { return [] }
-        return try await DriveRootService(drive: env.drive).existingRoots()
+        return try await rootSummaries(DriveRootService(drive: env.drive))
+    }
+
+    /// The roots found, each marked when it holds a 0.1.0 backup (the owner is told to move it to the Trash).
+    private func rootSummaries(_ service: DriveRootService) async throws -> [RootChooser.RemoteItemSummary] {
+        var summaries: [RootChooser.RemoteItemSummary] = []
+        for root in try await service.existingRoots() {
+            summaries.append(.init(id: root.remoteId, name: root.name, isLegacy: await service.holdsOldLayout(rootId: root.remoteId)))
+        }
+        return summaries
     }
 
     /// Pauses Drive as signed out, then deletes the Keychain item and revokes the token. Pausing first
@@ -96,9 +105,9 @@ extension AppModel {
     }
 
     /// PhotoVault roots in the staged account, listed before that account goes live.
-    func driveRoots(for change: AccountChange) async throws -> [RemoteItem] {
+    func driveRoots(for change: AccountChange) async throws -> [RootChooser.RemoteItemSummary] {
         guard let env, let staged = change.staged else { return try await driveRoots() }
-        return try await DriveRootService(drive: stagedDrive(env, staged)).existingRoots()
+        return try await rootSummaries(DriveRootService(drive: stagedDrive(env, staged)))
     }
 
     /// "Huỷ": the old account and its state stay exactly as they were. Does nothing for a change that
