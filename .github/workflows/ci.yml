@@ -1,6 +1,7 @@
 # Build and test on macOS. Runs on pull requests and release branches, and is called by the
 # git workflow's verify job before a release is tagged. Private repo: macOS minutes are billed
-# at 10x, so this stays one job and cancels superseded runs.
+# at 10x, so this stays one job and cancels superseded pull request runs. Pushes and calls from the
+# git workflow get one group per commit: a later push must never cancel the run a release tag waits on.
 name: CI
 
 on:
@@ -13,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-test:
