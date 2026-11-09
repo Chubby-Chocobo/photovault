@@ -95,7 +95,7 @@ Phases 02 and 03 run in parallel. Their file sets do not overlap.
   - Parameters: `trigger_onepick=true`, `allow_multiple=true`, `allow_folder_selection=true`, `prompt=select_account consent`, scope `drive.file` only.
   - Redirect: loopback `127.0.0.1` with a random port, as for sign-in.
   - Each import keeps the refresh token of its own pick. The account can differ from the destination account.
-  - The email comes from `about.get` and is used for display only.
+  - The email comes from `about.get`. It is the account identity for signing in again: accepted decision. If the owner changes the email of the account, a re-sign-in is refused and the owner imports again (nothing is lost).
 - Alternatives:
   - `drive.readonly`: rejected by the owner, and a restricted scope.
   - A web Picker page hosted by us: needs an API key and a bridge page.
@@ -158,12 +158,13 @@ Phases 02 and 03 run in parallel. Their file sets do not overlap.
 - Why: all found in review as ways to lose or mislabel a file.
 - Review later: no.
 
-### One blocked file does not block the import; give up after 24 hours
-- Chosen: a cloud group that cannot be read now (no disk room, busy, dropped connection while the probe answers) is skipped for the cooldown and the others continue. A file waiting for disk room waits without limit and the row shows `statusReason = "diskFull"`. A file busy or dropped for 24 hours of wall-clock (first failure kept in memory per file; a relaunch resets it) is marked failed "read" so the import can finish.
-- Alternatives: pause the whole job (stalled everything behind one file); count attempts (depends on cycle frequency).
-- Why: lead decision after the first release review; recorded in ADR 0026.
+### One blocked file does not block the import; give up after a day and ten tries
+- Chosen: a cloud group that cannot be read now (no disk room, busy, dropped connection while the probe answers) is skipped for the cooldown and the others continue. A file waiting for disk room waits without limit and the row shows `statusReason = "diskFull"`. A group that keeps failing (busy or dropped) is given up as a whole, only when at least 24 hours of wall-clock have passed since its first failure and it has failed at least 10 times; if its last failure is more than 2 hours old, the clock and the count start again (time with no tries does not count). Streaks are kept in memory per group (a relaunch resets them). The files are then marked failed "read" so the import can finish.
+- After 3 groups in a row that end busy or unreachable in one pass, the pass for that source stops and waits out the cooldown; while a cloud import is reading, the app re-checks every 5 minutes so blocked groups are retried soon.
+- Alternatives: pause the whole job (stalled everything behind one file); count attempts only (depends on cycle frequency); 24 h per file (a pair took about 46 h).
+- Why: lead decision after the second release review; recorded in ADR 0026.
 - Review later: no.
 
 ### A finished import with a revoked grant asks once; no 0.2.0 downgrade
-- Chosen: one failed export pushes all of that source's waiting exports an hour ahead; signing in again releases them. Going back to 0.2.0 after a cloud import is unsupported.
+- Chosen: one failed export pushes all of that source's waiting exports an hour ahead and drops its queued candidates in that pass, so the provider is asked once (at most once per export running side by side); signing in again releases them. Going back to 0.2.0 after a cloud import is unsupported.
 - Why: avoids a token refresh per file per hour; the downgrade path would need a migration for little value.

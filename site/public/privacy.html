@@ -59,7 +59,7 @@
   <ul>
     <li>Signing out of Google in the app stops the backup account's access. To stop access for any other Google account you imported from, remove PhotoVault at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. To stop Dropbox access, remove PhotoVault in your <a href="https://www.dropbox.com/account/connected_apps">Dropbox account</a>. Start over in the app deletes every sign-in from this Mac.</li>
     <li>Delete the backup folder in Google Drive or on your disks to remove the copies.</li>
-    <li>Uninstalling the app and removing its folders in <code>~/Library</code> removes the local data.</li>
+    <li>Uninstalling the app and removing its folders in <code>~/Library</code> removes the local data, but not the sign-in tokens in the macOS Keychain. Use Start over in the app before you uninstall it, or search for <code>com.annh.photovault</code> in Keychain Access and delete the items it finds. To stop access at the provider as well, remove PhotoVault in your Google or Dropbox account as described above.</li>
   </ul>
 
   <h2>Children</h2>

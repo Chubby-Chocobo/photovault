@@ -48,7 +48,7 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 
 ### Cloud imports reuse `folder-<uuid>` ids; the kind lives on the source row
 
-- **Chosen:** ids stay `folder-<uuid>`. `SourceConfig` gains optional fields: `account` (display email) and `remoteItems` (Drive picked ids, or one Dropbox root path). Rows written by 0.2.0 decode unchanged, so there is no migration.
+- **Chosen:** ids stay `folder-<uuid>`. `SourceConfig` gains optional fields: `account` (the email; it is also the account identity checked when the owner signs in again) and `remoteItems` (Drive picked ids, or one Dropbox root path). Rows written by 0.2.0 decode unchanged, so there is no migration.
 - **Alternatives:** new id prefixes; a migration `v6`.
 - **Why:** an import is a folder-shaped job whatever the provider. `ImportLocator`, the `x:` keys and recovery stay as they are.
 
@@ -64,6 +64,7 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 - **Chosen:** the adapters throw `SourceError.accessRevoked` on `invalid_grant` or `invalid_client` from the token endpoint, or on a 401 that still fails after one refresh. Any other refusal of the token endpoint is "unavailable", not "revoked".
   - On an open import, the source goes to `offline` with `statusReason = "signInRequired"`. The app shows "Cần đăng nhập lại" (sign in again) on that import, and the action reuses the start flow. The job holds.
   - On a closed import, the exports wait, as for a disk that is away: they retry hourly, record no error and do not count as a failing sync. The import row keeps `statusReason = "signInRequired"` and Settings shows "Đăng nhập lại" on the finished row. This also covers a cloud import whose token is missing at launch (no adapter). A file that is gone while the source answers is still skipped.
+  - The email is the account identity for signing in again: accepted decision. If the owner changes the email of their Google or Dropbox account, every re-sign-in of an older import is refused and the owner imports again; nothing is lost. A provider account id would survive that but needs a second request and a migration of old rows.
   - Signing in again must be the same account (Google: same email, and the new pick is added to the old one; Dropbox: same email). Another account changes nothing and shows "Hãy đăng nhập đúng tài khoản <email>". A command to the engine then clears the hold, so the import resumes in the next cycle.
   - A network failure is not a revoked grant: an open import holds as `offline` and resumes by itself, as for a disconnected folder (FR-116).
   - A rate limit or a 5xx (Drive 403 `rateLimitExceeded`/`userRateLimitExceeded`, 429, 5xx; Dropbox 429, 5xx) is `SourceError.busy`: the item stays pending, the job is not marked offline and it waits a short cooldown (30 s) before reading again. An export retries later without costing an attempt.
@@ -80,16 +81,17 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 ### One file that cannot be read now never holds back the import
 
 - **Chosen:** a group that cannot be read now (not enough disk room; `busy`; a dropped connection or timeout on a cloud read while the probe still answers) is left pending and skipped for a cooldown (30 s), and the import goes on with the other groups. Only when nothing in a pass could be read does the whole job back off. A Drive 403 `downloadQuotaExceeded` counts as `busy`.
-  - A file that stays unreadable (busy or dropped) for 24 hours of wall-clock time is marked `failed` with reason `read`, so the import can finish; the "lỗi" count shows it and the owner imports the folder again to retry. The first-failure time is kept in memory per file, so a relaunch starts the 24 hours again. That is acceptable: a restart only delays giving up.
+  - A group that keeps failing (busy or dropped) is given up as a whole, so a Live Photo or RAW+JPEG pair does not take twice as long, and only when both limits are reached: at least 24 hours of wall-clock time since its first failure and at least 10 failed tries. If its last failure is more than 2 hours old the clock and the count start again, because time with no tries does not count (the Mac asleep, the import offline). The files that cannot be read are then marked `failed` with reason `read`, so the import can finish; the "lỗi" count shows them and the owner imports the folder again to retry. The streak is kept in memory per group, so a relaunch starts it again; that only delays giving up.
+  - After 3 groups in a row that end busy or unreachable in one pass, the pass for that source stops and the source waits out the cooldown: the provider is in trouble, and this also bounds the give-ups to the groups actually tried. While a cloud import is still reading, the app re-checks every 5 minutes, so a blocked group is retried soon after its cooldown and not at the next hourly timer.
   - A file that waits for disk room has no limit: the owner can free space.
   - A Mac folder file that cannot be read still fails at once.
-- **Alternatives:** pause the whole job on the first blocked file (the first version: one oversized or always-failing file stalled everything behind it, silently); give up after N attempts (counts depend on how often cycles run, wall-clock does not).
+- **Alternatives:** pause the whole job on the first blocked file (the first version: one oversized or always-failing file stalled everything behind it, silently); give up after a number of attempts alone (counts depend on how often cycles run, wall-clock does not).
 - **Why:** found in review as the way a big import could stay "scanning" for ever with no reason shown.
 - **Review later:** no.
 
 ### A finished import with a revoked grant asks the provider once
 
-- **Chosen:** the first export of a closed import that hits `accessRevoked` marks the row `signInRequired` and pushes the retry time of all that source's waiting exports one hour ahead in one statement; each hour one file asks again. A waiting export clears any earlier recorded error so it cannot block "last successful sync". Signing in again clears the retry times of that source's exports, so they run in the next cycle. An import that is offline is probed once per cooldown (30 s; 10 min when only signing in helps), not on every pass.
+- **Chosen:** the first export of a closed import that hits `accessRevoked` marks the row `signInRequired` and pushes the retry time of all that source's waiting exports one hour ahead in one statement and drops that source's candidates already queued in the pass, so the provider is asked once (at most as many times as exports run side by side) and not once per file; each hour it asks again. A waiting export clears any earlier recorded error so it cannot block "last successful sync". Signing in again clears the retry times of that source's exports, so they run in the next cycle. An import that is offline is probed once per cooldown (30 s; 10 min when only signing in helps), not on every pass.
 - **Why:** otherwise every file of a 20,000-file import refreshed the token and failed the same way every hour.
 
 ### Loopback callback size
@@ -108,7 +110,7 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 
 - Each cloud import keeps its own refresh token in the Keychain (`import-<sourceId>`). At launch an import with a token is registered again.
 - Factory reset (FR-117) lists the Keychain items of the app's service and deletes every `import-*` item and `dropbox-account`, whether or not a database row names them. It does not revoke them at the provider: every import copy shares the account's Dropbox refresh token, and revoking it would disable all of them.
-- Signing out of the Google backup destination revokes the app's grant for that Google account at Google. Imports from the same account share that revocation: they then wait and show "Đăng nhập lại". Google also allows at most 100 refresh tokens per account for one client, so very many picks or sign-ins can evict the oldest, which then asks to sign in again.
+- Signing out of the Google backup destination revokes the app's grant for that Google account at Google. Imports from the same account share that revocation: they then wait and show "Đăng nhập lại". Google also allows at most 100 refresh tokens per account for one client. Each Picker import and each "Đăng nhập lại" creates one, so very many of them can evict the oldest token, which may be the backup sign-in or an older import's grant; that one then asks to sign in again.
 - The Dropbox redirect uses `localhost` while the listener binds `127.0.0.1` only. A browser that resolves `localhost` to `::1` could reach another program on that port; PKCE still stops that program from using the code. This is a known, accepted risk.
 - Logs and the activity list never carry file names, paths, folder ids or emails. The email and the folder name show only in Settings, the menu bar card and the completion notification.
 
