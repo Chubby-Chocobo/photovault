@@ -49,30 +49,24 @@ final class ResourceRequestSession: @unchecked Sendable {
 }
 
 extension PhotoKitSource {
-    /// Streams one resource through `onChunk`; throws what PhotoKit reports, or `.cancelled` when the
-    /// surrounding task is cancelled. Returns normally when PhotoKit completed without error.
+    /// Streams one resource through `onChunk`; throws what PhotoKit reports, `.cancelled` when the
+    /// surrounding task is cancelled, or `.networkError` when the download stalls. Returns normally
+    /// when PhotoKit completed without error.
     func stream(
         localId: String,
         type: ResourceType,
         onChunk: @escaping @Sendable (Data) -> Bool
     ) async throws {
         let session = ResourceRequestSession()
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                do {
-                    guard let resource = try Self.resource(localId: localId, type: type) else {
-                        throw PhotosSourceError.resourceNotFound(localId: localId, type: type)
-                    }
-                    session.start(resource: resource, onChunk: onChunk) { error in
-                        if let error { continuation.resume(throwing: error) } else { continuation.resume() }
-                    }
-                } catch {
-                    continuation.resume(throwing: error)
+        try await StalledRequestGuard().run(
+            start: { chunk, completion in
+                guard let resource = try Self.resource(localId: localId, type: type) else {
+                    throw PhotosSourceError.resourceNotFound(localId: localId, type: type)
                 }
-            }
-        } onCancel: {
-            session.cancel()
-        }
+                session.start(resource: resource, onChunk: chunk, completion: completion)
+            },
+            cancel: { session.cancel() },
+            onChunk: onChunk)
     }
 
     /// The asset's resource of `type`; nil when the asset has none. Throws `.assetNotFound`.
