@@ -22,6 +22,7 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private var localHost: String?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var callbackConnection: NWConnection?
+    private var acceptedCallback: LoopbackCallback?
 
     public init(expectedState: String, timeout: TimeInterval = LoopbackRedirectServer.defaultTimeout,
                 connectionTimeout: TimeInterval = 10) throws {
@@ -32,6 +33,9 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: 0)
         listener = try NWListener(using: parameters)
     }
+
+    /// The parsed redirect that carried the expected `state`; lets flows read extra query items.
+    public var receivedCallback: LoopbackCallback? { lock.withLock { acceptedCallback } }
 
     /// Local address of the first accepted connection; lets tests prove the loopback binding.
     public var acceptedLocalHost: String? { lock.withLock { localHost } }
@@ -159,6 +163,7 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             answer(connection, status: "400 Bad Request", body: Self.failurePage)
             return
         }
+        lock.withLock { acceptedCallback = callback }
         switch Result(catching: { try LoopbackRequestParser.authorizationCode(from: callback, expectedState: expectedState) }) {
         case .failure(let error):
             answer(connection, status: "400 Bad Request", body: Self.failurePage)

@@ -4,6 +4,8 @@ public struct LoopbackCallback: Equatable, Sendable {
     public var code: String?
     public var state: String?
     public var error: String?
+    /// Comma-separated ids from Google's desktop Picker flow (`picked_file_ids`).
+    public var pickedFileIds: String? = nil
 }
 
 public enum LoopbackError: Error, Equatable, Sendable {
@@ -35,7 +37,7 @@ public enum LoopbackRequestParser {
         guard components.path == callbackPath else { throw LoopbackError.wrongPath }
         let items = components.queryItems ?? []
         func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
-        return LoopbackCallback(code: value("code"), state: value("state"), error: value("error"))
+        return LoopbackCallback(code: value("code"), state: value("state"), error: value("error"), pickedFileIds: value("picked_file_ids"))
     }
 
     /// Checks the callback against the expected `state` (constant time) and extracts the code.
