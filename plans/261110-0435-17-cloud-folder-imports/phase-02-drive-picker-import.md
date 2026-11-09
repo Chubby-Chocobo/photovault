@@ -1,7 +1,7 @@
 ---
 phase: 02
 title: "Google Drive picker import adapter"
-status: pending
+status: completed
 priority: P2
 size: L
 human_effort: 2-3h

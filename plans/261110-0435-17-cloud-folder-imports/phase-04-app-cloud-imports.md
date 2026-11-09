@@ -1,7 +1,7 @@
 ---
 phase: 04
 title: "App: entries, auth flows, Dropbox browser, registration"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1-2h

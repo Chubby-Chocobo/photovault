@@ -1,7 +1,7 @@
 ---
 phase: 01
 title: "Core/Store/Engine: cloud import kinds"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1-2h

@@ -1,7 +1,7 @@
 ---
 phase: 05
 title: "Docs, decision 0026, privacy page"
-status: pending
+status: completed
 priority: P3
 size: S
 human_effort: 0.5-1h

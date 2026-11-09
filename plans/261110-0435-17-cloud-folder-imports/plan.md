@@ -41,11 +41,11 @@ Settings › Nguồn › **Nhập ảnh…** gets three items: Từ thư mục t
 
 | # | Phase | Status | Size | Depends | Owner of files |
 |---|---|---|---|---|---|
-| 01 | [Core/Store/Engine: cloud import kinds](phase-01-core-cloud-import-kinds.md) | pending | M | — | Core, Store, Engine, their tests |
-| 02 | [Google Drive picker import adapter](phase-02-drive-picker-import.md) | pending | L | 01 | Sources/PhotoVaultDrive (except LoopbackRedirectServer), Drive tests |
-| 03 | [Dropbox module and import adapter](phase-03-dropbox-import.md) | pending | L | 01 | Sources/PhotoVaultDropbox, LoopbackRedirectServer, KeychainStore, Package.swift, Dropbox tests |
-| 04 | [App: entries, auth flows, Dropbox browser, registration](phase-04-app-cloud-imports.md) | pending | M | 02, 03 | PhotoVault/**, Config/**, Xcode project |
-| 05 | [Docs, decision 0026, privacy page](phase-05-docs.md) | pending | S | 04 | docs/**, README.md, site/** |
+| 01 | [Core/Store/Engine: cloud import kinds](phase-01-core-cloud-import-kinds.md) | completed | M | — | Core, Store, Engine, their tests |
+| 02 | [Google Drive picker import adapter](phase-02-drive-picker-import.md) | completed | L | 01 | Sources/PhotoVaultDrive (except LoopbackRedirectServer), Drive tests |
+| 03 | [Dropbox module and import adapter](phase-03-dropbox-import.md) | completed | L | 01 | Sources/PhotoVaultDropbox, LoopbackRedirectServer, KeychainStore, Package.swift, Dropbox tests |
+| 04 | [App: entries, auth flows, Dropbox browser, registration](phase-04-app-cloud-imports.md) | completed | M | 02, 03 | PhotoVault/**, Config/**, Xcode project |
+| 05 | [Docs, decision 0026, privacy page](phase-05-docs.md) | completed | S | 04 | docs/**, README.md, site/** |
 
 Phases 02 and 03 run in parallel. Their file sets do not overlap.
 
