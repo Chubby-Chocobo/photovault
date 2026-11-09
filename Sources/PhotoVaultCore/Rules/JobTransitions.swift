@@ -139,6 +139,12 @@ public enum JobTransitions {
             j.state = .pending
             j.attempts = 0
             j.nextAttemptAt = nil
+            if j.stateReason == .tooLargeForDisk {
+                // Time spent waiting for disk space never counted toward the 30 days; a later
+                // deferral for another reason starts its own window.
+                j.deferredSince = nil
+                j.stateReason = nil
+            }
 
         case (.deferred, .deferralExpired):
             guard j.stateReason != .tooLargeForDisk else { return job }
@@ -193,6 +199,8 @@ public enum JobTransitions {
             j.origin = origin
             j.attempts = 0
             j.nextAttemptAt = nil
+            j.deferredSince = nil
+            j.stateReason = nil
 
         default:
             throw JobTransitionError.invalid(from: job.state, event: String(describing: event))

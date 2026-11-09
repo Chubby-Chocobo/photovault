@@ -85,6 +85,25 @@ import Testing
         #expect(j.deferredSince == now, "deferred_since is only written when NULL")
     }
 
+    @Test func aJobLeavingTheTooLargeWaitStartsAFreshThirtyDayWindow() throws {
+        var j = try JobTransitions.apply(.tooLargeForDisk, to: job(), now: now)
+        let later = now.addingTimeInterval(45 * 24 * 3600)
+        j = try JobTransitions.apply(.retryDeferred, to: j, now: later)
+        #expect(j.state == .pending && j.deferredSince == nil && j.stateReason == nil)
+        j = try JobTransitions.apply(.exportGaveUp, to: j, now: later)
+        #expect(j.deferredSince == later)
+        let next = try JobTransitions.apply(.deferralExpired, to: j, now: later.addingTimeInterval(3600))
+        #expect(next.state == .skipped, "the sweeper decides when; the window itself starts at \(later)")
+    }
+
+    @Test func aReinstatedJobStartsAFreshThirtyDayWindow() throws {
+        var j = try JobTransitions.apply(.exportGaveUp, to: job(), now: now)
+        j = try JobTransitions.apply(.cancel, to: j, now: now)
+        let later = now.addingTimeInterval(60 * 24 * 3600)
+        j = try JobTransitions.apply(.reinstate(origin: .backfill), to: j, now: later)
+        #expect(j.deferredSince == nil && j.stateReason == nil)
+    }
+
     @Test func exportGaveUpDefers() throws {
         let j = try JobTransitions.apply(.exportGaveUp, to: job(), now: now)
         #expect(j.state == .deferred && j.stateReason == .exportFailures)
