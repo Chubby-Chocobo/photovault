@@ -44,7 +44,12 @@ extension ExportWorker {
         // A cloud import with no valid grant waits for the owner to sign in again; the row says so.
         if source.kind != .localFolder {
             let adapterMissing = await env.sources.content(for: id) == nil
-            if error == .accessRevoked || (error == .unavailable && adapterMissing) { try await markNeedsSignIn(id) }
+            if error == .accessRevoked || (error == .unavailable && adapterMissing) {
+                try await markNeedsSignIn(id)
+                // Every file of this source would ask the provider and fail the same way; ask again in an hour.
+                let retryAt = env.clock.now.addingTimeInterval(Self.closedSourceRetry)
+                try await env.store.write { db in try EngineQueries.deferExports(db, sourceId: id, until: retryAt) }
+            }
         }
         return (base, Self.closedSourceRetry)
     }

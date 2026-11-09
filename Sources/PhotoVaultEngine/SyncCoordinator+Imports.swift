@@ -41,6 +41,7 @@ extension SyncCoordinator {
             let now = env.clock.now
             try await env.store.write { db in
                 guard let source = try SourceRepository.fetch(db, id: id), source.kind.isImport else { return }
+                try EngineQueries.releaseExports(db, sourceId: id)
                 if source.status == .offline {
                     try SourceRepository.setStatus(db, id: id, status: .scanning, reason: nil, now: now)
                 } else if source.statusReason != nil {

@@ -21,6 +21,10 @@ final class FakeCloudSource: FolderImportSource, @unchecked Sendable {
     private let lock = NSLock()
     private var revoked: Revoked = []
     private var failures: [Int: any Error] = [:]
+    private var oneShots: [Int: any Error] = [:]
+    private var pathFailures: [String: any Error] = [:]
+    private var sizes: [String: Int64] = [:]
+    private var probeCalls = 0
     var id: SourceID { inner.id }
 
     init(_ folder: ImportFolder) { inner = folder.source() }
@@ -28,15 +32,36 @@ final class FakeCloudSource: FolderImportSource, @unchecked Sendable {
     func setRevoked(_ value: Revoked) { lock.withLock { revoked = value } }
     /// Makes one call throw `error` (nil clears it); takes precedence over `setRevoked`.
     func setFailure(_ call: Revoked, _ error: (any Error)?) { lock.withLock { failures[call.rawValue] = error } }
+    /// Makes the next call throw `error`, once.
+    func failOnce(_ call: Revoked, _ error: any Error) { lock.withLock { oneShots[call.rawValue] = error } }
+    /// Makes every read of `path` throw `error` (nil clears it).
+    func setFailure(path: String, _ error: (any Error)?) { lock.withLock { pathFailures[path] = error } }
+    /// Lists `path` with a different size, as a huge file would be.
+    func setSize(of path: String, _ bytes: Int64) { lock.withLock { sizes[path] = bytes } }
+    var probeCount: Int { lock.withLock { probeCalls } }
     private func check(_ call: Revoked) throws {
+        if let error = lock.withLock({ oneShots.removeValue(forKey: call.rawValue) }) { throw error }
         if let error = lock.withLock({ failures[call.rawValue] }) { throw error }
         if lock.withLock({ revoked.contains(call) }) { throw SourceError.accessRevoked }
     }
 
-    func probe() async throws { try check(.probe); try await inner.probe() }
-    func listFiles() async throws -> [FolderFileEntry] { try check(.list); return try await inner.listFiles() }
+    func probe() async throws {
+        lock.withLock { probeCalls += 1 }
+        try check(.probe)
+        try await inner.probe()
+    }
+    func listFiles() async throws -> [FolderFileEntry] {
+        try check(.list)
+        return try await inner.listFiles().map { entry in
+            guard let size = lock.withLock({ sizes[entry.relativePath] }) else { return entry }
+            var entry = entry
+            entry.sizeBytes = size
+            return entry
+        }
+    }
     func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
         try check(.inspect)
+        if let error = lock.withLock({ pathFailures[relativePath] }) { throw error }
         return try await inner.inspect(relativePath: relativePath, uti: uti, mediaType: mediaType, control: control)
     }
     func exportResource(_ l: ResourceLocator, to d: URL, control: ExportControl) async throws -> ExportedFile {

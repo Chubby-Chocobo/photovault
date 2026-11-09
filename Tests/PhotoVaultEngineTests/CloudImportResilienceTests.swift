@@ -133,7 +133,7 @@ import Testing
         let source = FakeCloudSource(try tree(h))
         h.disk.set(available: 1 << 20)
         let id = try await h.startCloudImport(source)
-        #expect(try h.source(id)?.status == .scanning && h.source(id)?.statusReason == nil)
+        #expect(try h.source(id)?.status == .scanning && h.source(id)?.statusReason == "diskFull")
         #expect(try h.importCounts(id)[.pending] == 2 && h.importCounts(id)[.failed] == nil)
         h.disk.set(available: 500 * GlobalSettings.GiB)
         await finish(h)

@@ -280,7 +280,10 @@ actor ExportWorker {
             let held = folder != nil && (folder == .busy || { if case .destinationLevel = classification { true } else { false } }())
             try await env.store.write { db in
                 try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(delay))
-                if !held { try ResourceRepository.noteExportError(db, key: key, type: type, message: message) }
+                // A source that is away is waiting, not failing: an error from before must not keep counting.
+                if held { try ResourceRepository.clearExportError(db, key: key, type: type) } else {
+                    try ResourceRepository.noteExportError(db, key: key, type: type, message: message)
+                }
             }
         case .itemLevel:
             let delay = Backoff().delay(forAttempt: started.resource.exportAttempts)

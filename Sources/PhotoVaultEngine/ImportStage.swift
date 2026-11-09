@@ -3,27 +3,6 @@ import GRDB
 import PhotoVaultCore
 import PhotoVaultStore
 
-/// Machine reasons stored with an offline import (`source.status_reason`).
-enum SourceStatusReason {
-    static let unavailable = "unavailable"
-    static let signInRequired = "signInRequired"
-}
-
-/// When each job was last held, so a folder that comes and goes cannot keep the cycle busy.
-final class ImportHolds: @unchecked Sendable {
-    /// A held job is not probed again before this much time has passed.
-    static let backoff: TimeInterval = 30
-
-    private let lock = NSLock()
-    private var heldAt: [SourceID: Date] = [:]
-
-    func mark(_ id: SourceID, at date: Date) { lock.withLock { heldAt[id] = date } }
-    func clear(_ id: SourceID) { lock.withLock { heldAt[id] = nil } }
-    func isCoolingDown(_ id: SourceID, now: Date) -> Bool {
-        lock.withLock { heldAt[id].map { now.timeIntervalSince($0) < Self.backoff } ?? false }
-    }
-}
-
 /// Runs the folder imports inside the cycle (spec 8.4, after classification): lists a folder, reads and
 /// hashes its files group by group outside any transaction, then ingests each group in one
 /// transaction so a crash leaves either the whole group or nothing. Bounded work per run.
@@ -90,16 +69,20 @@ struct ImportStage: CycleStage {
             try await adapter { try await folder.probe() }
             return true
         } catch SourceError.accessRevoked {
-            if source.status != .offline || source.statusReason != SourceStatusReason.signInRequired { try await holdForSignIn(source.id) }
+            if source.status != .offline || source.statusReason != SourceStatusReason.signInRequired {
+                try await holdForSignIn(source.id)
+            } else {
+                holds.mark(source.id, at: env.clock.now, wait: ImportHolds.signInBackoff)
+            }
             return false
         } catch SourceError.busy {
             pauseBriefly(source.id)
             return false
         } catch is SourceError {
-            if source.status != .offline { try await hold(source.id) }
+            try await holdUnreachable(source)
             return false
         } catch is AdapterFault {
-            if source.status != .offline { try await hold(source.id) }
+            try await holdUnreachable(source)
             return false
         }
     }
@@ -126,9 +109,14 @@ struct ImportStage: CycleStage {
     /// A grant the provider no longer accepts: waiting does not help, so the job says so and stays held
     /// until the adapter answers again (the owner signed in).
     func holdForSignIn(_ id: SourceID) async throws {
-        holds.mark(id, at: env.clock.now)
+        holds.mark(id, at: env.clock.now, wait: ImportHolds.signInBackoff)
         try await setStatus(id, .offline, reason: SourceStatusReason.signInRequired)
         env.log.log(.notice, category: "import", "source access revoked; import held")
+    }
+
+    /// An unreachable source is marked offline once; later failed probes only renew the cooldown.
+    private func holdUnreachable(_ source: SourceRecord) async throws {
+        if source.status != .offline { try await hold(source.id) } else { holds.mark(source.id, at: env.clock.now) }
     }
 
     func hold(_ id: SourceID) async throws {
