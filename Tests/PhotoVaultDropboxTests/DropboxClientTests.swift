@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import PhotoVaultCore
+import PhotoVaultDrive
 import Testing
 @testable import PhotoVaultDropbox
 
@@ -60,10 +61,10 @@ import Testing
 
     @Test func downloadSendsEscapedHeaderAndHashesTheBytes() async throws {
         let bytes = Data((0..<5000).map { UInt8($0 % 251) })
-        let streamer = StubStreamer { _ in StubResponse(status: 200, body: bytes) }
+        let streamer = StubTransport { _ in StubResponse(status: 200, body: bytes) }
         let dir = tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let file = try await makeClient(streamer: streamer).download(path: "/Ảnh/a.jpg", to: dir.appendingPathComponent("a"), control: nil)
+        let file = try await makeClient(transport: streamer).download(path: "/Ảnh/a.jpg", to: dir.appendingPathComponent("a"), control: nil)
         #expect(try Data(contentsOf: file.url) == bytes)
         #expect(file.size == 5000)
         #expect(file.sha256 == SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
@@ -95,20 +96,20 @@ import Testing
     @Test func revokedRefreshTokenSurfacesFromTheProvider() async throws {
         let tokens = StubTokens()
         tokens.failRefreshWith = .accessRevoked
-        let streamer = StubStreamer { _ in StubResponse(status: 401) }
+        let streamer = StubTransport { _ in StubResponse(status: 401) }
         let dir = tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         await #expect(throws: SourceError.accessRevoked) {
-            try await makeClient(tokens: tokens, streamer: streamer).download(path: "/a.jpg", to: dir.appendingPathComponent("a"), control: nil)
+            try await makeClient(tokens: tokens, transport: streamer).download(path: "/a.jpg", to: dir.appendingPathComponent("a"), control: nil)
         }
     }
 
     @Test func missingPathMapsToFileMissingAndLeavesNoFile() async throws {
-        let streamer = StubStreamer { _ in .json(409, ["error_summary": "path/not_found/.."]) }
+        let streamer = StubTransport { _ in .json(409, ["error_summary": "path/not_found/.."]) }
         let dir = tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let target = dir.appendingPathComponent("a")
-        await #expect(throws: SourceError.fileMissing) { try await makeClient(streamer: streamer).download(path: "/a.jpg", to: target, control: nil) }
+        await #expect(throws: SourceError.fileMissing) { try await makeClient(transport: streamer).download(path: "/a.jpg", to: target, control: nil) }
         #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 
@@ -121,12 +122,58 @@ import Testing
         #expect(transport.requests.count == 2)
     }
 
-    @Test func longRetryAfterAndServerErrorsAreUnavailable() async throws {
+    @Test func longRetryAfterAndServerErrorsAreBusyNotUnavailable() async throws {
         let long = StubTransport { _ in StubResponse(status: 503, headers: ["Retry-After": "600"]) }
-        await #expect(throws: SourceError.unavailable) { try await makeClient(transport: long).currentAccountEmail() }
+        await #expect(throws: SourceError.busy) { try await makeClient(transport: long).currentAccountEmail() }
         #expect(long.requests.count == 1)
         let down = StubTransport { _ in StubResponse(status: 500) }
-        await #expect(throws: SourceError.unavailable) { try await makeClient(transport: down).currentAccountEmail() }
+        await #expect(throws: SourceError.busy) { try await makeClient(transport: down).currentAccountEmail() }
+        let limited = StubTransport { _ in StubResponse(status: 429) }
+        await #expect(throws: SourceError.busy) { try await makeClient(transport: limited).currentAccountEmail() }
+    }
+
+    @Test func aThrottledDownloadIsBusyAndLeavesNoFile() async throws {
+        let transport = StubTransport { _ in StubResponse(status: 429, headers: ["Retry-After": "600"]) }
+        let dir = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let target = dir.appendingPathComponent("a")
+        await #expect(throws: SourceError.busy) { try await makeClient(transport: transport).download(path: "id:x", to: target, control: nil) }
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+    }
+
+    @Test func transferFailuresAreMappedNotPassedThrough() async throws {
+        struct Odd: Error {}
+        for (error, expected): (any Error, SourceError) in [
+            (URLError(.secureConnectionFailed), .busy), (URLError(.timedOut), .unavailable), (Odd(), .unavailable),
+        ] {
+            let transport = StubTransport { _ in throw error }
+            await #expect(throws: expected) { try await makeClient(transport: transport).currentAccountEmail() }
+        }
+    }
+
+    @Test func aTokenProviderFailureThatIsNotASourceErrorIsMapped() async throws {
+        struct Provider: DropboxAccessTokenProviding {
+            func accessToken(forceRefresh: Bool) async throws -> String { throw DropboxAuthError.malformedResponse }
+        }
+        let client = DropboxClient(tokens: Provider(), transport: StubTransport { _ in .json([:]) }, sleep: { _ in })
+        await #expect(throws: SourceError.unavailable) { try await client.currentAccountEmail() }
+    }
+
+    @Test func cancellingARealDownloadMidBodyThrowsCancelledAndLeavesNoFile() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HangingURLProtocol.self]
+        let client = makeClient(transport: URLSessionTransport(configuration: configuration))
+        let dir = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let target = dir.appendingPathComponent("a")
+        let task = Task { try await client.download(path: "id:x", to: target, control: nil) }
+        try await Task.sleep(for: .milliseconds(300))
+        task.cancel()
+        switch await task.result {
+        case .success: Issue.record("a cancelled download must not succeed")
+        case .failure(let error): #expect(error as? SourceError == .cancelled, "\(error)")
+        }
+        #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 
     @Test func networkFailureIsUnavailable() async throws {
@@ -135,13 +182,13 @@ import Testing
     }
 
     @Test func cancellationStopsTheDownloadAndRemovesThePartialFile() async throws {
-        let streamer = StubStreamer { _ in StubResponse(status: 200, body: Data(repeating: 1, count: 4000)) }
+        let streamer = StubTransport { _ in StubResponse(status: 200, body: Data(repeating: 1, count: 4000)) }
         let control = ExportControl(checkpointBytes: 1, checkpoint: { _ in true })
         control.cancel()
         let dir = tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let target = dir.appendingPathComponent("a")
-        await #expect(throws: SourceError.cancelled) { try await makeClient(streamer: streamer).download(path: "/a.jpg", to: target, control: control) }
+        await #expect(throws: SourceError.cancelled) { try await makeClient(transport: streamer).download(path: "/a.jpg", to: target, control: control) }
         #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 }

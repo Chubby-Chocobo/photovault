@@ -45,6 +45,28 @@ private func components(_ url: URL) -> [String: String] {
         await #expect(throws: SourceError.accessRevoked) { try await auth.refresh(refreshToken: "RT") }
     }
 
+    @Test func onlyAConfirmedDeadGrantIsRevoked() async throws {
+        let cases: [(StubResponse, SourceError)] = [
+            (.json(400, ["error": "invalid_client"]), .accessRevoked),
+            (.json(401, ["error": "invalid_client"]), .accessRevoked),
+            (.json(400, ["error": "invalid_request"]), .unavailable),
+            (.json(400, [:]), .unavailable),
+            (.json(403, ["error": "access_denied"]), .unavailable),
+            (StubResponse(status: 429), .busy),
+            (StubResponse(status: 503), .busy),
+        ]
+        for (response, expected) in cases {
+            let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in response }, openURL: { _ in false })
+            await #expect(throws: expected) { try await auth.refresh(refreshToken: "RT") }
+        }
+    }
+
+    @Test func anUnreadableRefreshAnswerIsASourceErrorNotASignInError() async throws {
+        let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 200, body: Data("not json".utf8)) },
+                               openURL: { _ in false })
+        await #expect(throws: SourceError.unavailable) { try await auth.refresh(refreshToken: "RT") }
+    }
+
     @Test func networkFailureOnRefreshIsUnavailable() async throws {
         let transport = StubTransport { _ in throw URLError(.timedOut) }
         let auth = DropboxAuth(appKey: "KEY", transport: transport, openURL: { _ in false })

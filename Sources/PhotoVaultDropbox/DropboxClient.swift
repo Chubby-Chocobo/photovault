@@ -15,15 +15,12 @@ public struct DropboxClient: Sendable {
 
     private let tokens: any DropboxAccessTokenProviding
     private let transport: any HTTPTransport
-    private let streamer: any DropboxByteStreaming
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
     public init(tokens: any DropboxAccessTokenProviding, transport: any HTTPTransport,
-                streamer: any DropboxByteStreaming = URLSessionByteStreamer(),
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }) {
         self.tokens = tokens
         self.transport = transport
-        self.streamer = streamer
         self.sleep = sleep
     }
 
@@ -84,7 +81,8 @@ public struct DropboxClient: Sendable {
 
     // MARK: Download
 
-    /// Streams the file at `path` to `destination`, hashing it (MD5, SHA-256) while it is written.
+    /// Streams the file at `path` (a path or `id:…`) to `destination`, hashing it (MD5, SHA-256) while it is
+    /// written. A failed or cancelled download leaves no file behind.
     public func download(path: String, to destination: URL, control: ExportControl?) async throws -> ExportedFile {
         let header = DropboxArg.header(path: path)
         return try await withRetries { token in
@@ -97,13 +95,14 @@ public struct DropboxClient: Sendable {
                 throw Self.map(failure)
             }
             do {
-                let head = try await streamer.stream(request) { chunk in
+                let (errorBody, response) = try await transport.streamBody(request) { chunk in
                     if !writer.append(chunk) { throw writer.failure.map(Self.map) ?? SourceError.cancelled }
                 }
-                guard (200..<300).contains(head.status) else {
+                guard (200..<300).contains(response.statusCode) else {
                     writer.abort()
-                    return .failed(status: head.status, body: head.errorBody, retryAfter: head.retryAfter)
+                    return .failed(status: response.statusCode, body: errorBody, retryAfter: DropboxHTTP.retryAfter(response))
                 }
+                try Task.checkCancellation()
                 return .done(try writer.finish())
             } catch {
                 writer.abort()
@@ -147,7 +146,8 @@ public struct DropboxClient: Sendable {
         var refreshed = false
         var waited = false
         while true {
-            let token = try await tokens.accessToken(forceRefresh: forceRefresh)
+            let token: String
+            do { token = try await tokens.accessToken(forceRefresh: forceRefresh) } catch { throw Self.mapThrown(error) }
             forceRefresh = false
             switch try await attempt(token) {
             case .done(let value):
@@ -173,7 +173,7 @@ public struct DropboxClient: Sendable {
         switch status {
         case 409: DropboxHTTP.errorSummary(body)?.hasPrefix("path/not_found") == true ? .fileMissing : .readFailed(code: 409)
         case 401, 403: .accessRevoked
-        case 429, 500...599: .unavailable
+        case 429, 500...599: .busy
         default: .readFailed(code: status)
         }
     }
@@ -185,11 +185,21 @@ public struct DropboxClient: Sendable {
         }
     }
 
-    static func mapThrown(_ error: any Error) -> any Error {
+    private static let offlineCodes: Set<URLError.Code> = [
+        .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+        .internationalRoamingOff, .dataNotAllowed,
+    ]
+
+    /// Only `SourceError` leaves the adapter: connectivity problems mean the source is away, other transfer
+    /// failures are worth another try later, anything unknown counts as away.
+    static func mapThrown(_ error: any Error) -> SourceError {
         if let source = error as? SourceError { return source }
-        if error is CancellationError { return SourceError.cancelled }
-        if let url = error as? URLError { return url.code == .cancelled ? SourceError.cancelled : SourceError.unavailable }
+        if error is CancellationError { return .cancelled }
+        if let url = error as? URLError {
+            if url.code == .cancelled { return .cancelled }
+            return offlineCodes.contains(url.code) ? .unavailable : .busy
+        }
         if let failure = error as? StreamingFileWriter.Failure { return map(failure) }
-        return error
+        return .unavailable
     }
 }

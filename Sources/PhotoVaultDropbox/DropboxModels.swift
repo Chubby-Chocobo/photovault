@@ -2,6 +2,8 @@ import Foundation
 
 struct DropboxListEntry: Decodable, Sendable {
     var tag: String
+    /// Stable across renames and moves ("id:…"); downloads address a file by it.
+    var id: String?
     var name: String
     var pathDisplay: String?
     var pathLower: String?
@@ -11,7 +13,7 @@ struct DropboxListEntry: Decodable, Sendable {
     var serverModified: String?
 
     enum CodingKeys: String, CodingKey {
-        case tag = ".tag", name
+        case tag = ".tag", id, name
         case pathDisplay = "path_display", pathLower = "path_lower", size
         case isDownloadable = "is_downloadable", clientModified = "client_modified", serverModified = "server_modified"
     }

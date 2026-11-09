@@ -52,28 +52,25 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
-/// Download seam: answers from a closure, delivering the body in two chunks.
-final class StubStreamer: DropboxByteStreaming, @unchecked Sendable {
-    private let lock = NSLock()
-    private var recorded: [RecordedRequest] = []
-    private let handler: @Sendable (RecordedRequest) throws -> StubResponse
+/// A transport whose connection never ends after the first chunk, so a download can be cancelled mid-body.
+final class HangingURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var stoppedHosts: Set<String> = []
 
-    init(_ handler: @escaping @Sendable (RecordedRequest) throws -> StubResponse) { self.handler = handler }
+    static func wasStopped(host: String) -> Bool { lock.withLock { stoppedHosts.contains(host) } }
 
-    var requests: [RecordedRequest] { lock.withLock { recorded } }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
-    func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> DropboxStreamHead {
-        lock.withLock {
-            recorded.append(RecordedRequest(method: request.httpMethod ?? "GET", url: request.url!, headers: request.allHTTPHeaderFields ?? [:], body: Data()))
-        }
-        let response = try handler(recorded.last!)
-        guard (200..<300).contains(response.status) else {
-            return DropboxStreamHead(status: response.status, retryAfter: response.headers["Retry-After"].flatMap(TimeInterval.init), errorBody: response.body)
-        }
-        let half = response.body.count / 2
-        try sink(response.body.prefix(half))
-        try sink(response.body.dropFirst(half))
-        return DropboxStreamHead(status: response.status)
+    override func startLoading() {
+        guard let url = request.url else { return }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(count: 256 << 10))
+    }
+
+    override func stopLoading() {
+        if let host = request.url?.host { Self.lock.withLock { _ = Self.stoppedHosts.insert(host) } }
     }
 }
 
@@ -104,6 +101,7 @@ final class MemoryKeychain: KeychainStore, @unchecked Sendable {
     func read(account: String) throws -> Data? { lock.withLock { items[account] } }
     func write(_ data: Data, account: String) throws { lock.withLock { items[account] = data } }
     func delete(account: String) throws { lock.withLock { items[account] = nil } }
+    func accounts() throws -> [String] { lock.withLock { items.keys.sorted() } }
 }
 
 struct StubMetadata: FileMetadataReading {
@@ -116,7 +114,6 @@ func tempDirectory() -> URL {
     return url
 }
 
-func makeClient(tokens: StubTokens = StubTokens(), transport: StubTransport = StubTransport { _ in .json([:]) },
-                streamer: StubStreamer = StubStreamer { _ in StubResponse(status: 200) }) -> DropboxClient {
-    DropboxClient(tokens: tokens, transport: transport, streamer: streamer, sleep: { _ in })
+func makeClient(tokens: StubTokens = StubTokens(), transport: any HTTPTransport = StubTransport { _ in .json([:]) }) -> DropboxClient {
+    DropboxClient(tokens: tokens, transport: transport, sleep: { _ in })
 }

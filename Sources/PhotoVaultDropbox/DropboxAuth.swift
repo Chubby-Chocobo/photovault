@@ -81,7 +81,7 @@ public struct DropboxAuth: Sendable {
         do {
             let reply = try await tokenRequest([
                 ("grant_type", "authorization_code"), ("code", code), ("code_verifier", pkce.verifier), ("redirect_uri", Self.redirectURI),
-            ])
+            ], interactive: true)
             guard let refresh = reply.refresh_token else { throw DropboxAuthError.malformedResponse }
             let email = try await DropboxClient.currentAccountEmail(accessToken: reply.access_token, transport: transport)
             server.respond(success: true)
@@ -92,9 +92,9 @@ public struct DropboxAuth: Sendable {
         }
     }
 
-    /// `invalid_grant` means the refresh token is dead: `SourceError.accessRevoked`.
+    /// `invalid_grant` means the refresh token is dead: `SourceError.accessRevoked`. Throws `SourceError` only.
     public func refresh(refreshToken: String) async throws -> DropboxAccessToken {
-        access(try await tokenRequest([("grant_type", "refresh_token"), ("refresh_token", refreshToken)]))
+        access(try await tokenRequest([("grant_type", "refresh_token"), ("refresh_token", refreshToken)], interactive: false))
     }
 
     // MARK: Internals
@@ -109,7 +109,9 @@ public struct DropboxAuth: Sendable {
         DropboxAccessToken(token: reply.access_token, expiresAt: clock.now.addingTimeInterval(reply.expires_in ?? 14_400))
     }
 
-    private func tokenRequest(_ fields: [(String, String)]) async throws -> TokenReply {
+    /// - Parameter interactive: a sign-in reports an unreadable answer as `DropboxAuthError`; a refresh, which
+    ///   runs unattended, reports it as `SourceError.unavailable`.
+    private func tokenRequest(_ fields: [(String, String)], interactive: Bool) async throws -> TokenReply {
         var request = URLRequest(url: DropboxEndpoint.token)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -119,11 +121,14 @@ public struct DropboxAuth: Sendable {
             throw error.code == .cancelled ? SourceError.cancelled : SourceError.unavailable
         }
         guard (200..<300).contains(response.statusCode) else {
-            if DropboxHTTP.errorTag(data) == "invalid_grant" { throw SourceError.accessRevoked }
-            if response.statusCode == 429 || response.statusCode >= 500 { throw SourceError.unavailable }
-            throw SourceError.accessRevoked
+            let tag = DropboxHTTP.errorTag(data)
+            if tag == "invalid_grant" || tag == "invalid_client" { throw SourceError.accessRevoked }
+            if response.statusCode == 429 || response.statusCode >= 500 { throw SourceError.busy }
+            throw SourceError.unavailable
         }
-        guard let reply = try? JSONDecoder().decode(TokenReply.self, from: data) else { throw DropboxAuthError.malformedResponse }
+        guard let reply = try? JSONDecoder().decode(TokenReply.self, from: data) else {
+            throw interactive ? DropboxAuthError.malformedResponse : SourceError.unavailable
+        }
         return reply
     }
 }
