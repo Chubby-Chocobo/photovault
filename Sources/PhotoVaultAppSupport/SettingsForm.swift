@@ -3,21 +3,17 @@ import PhotoVaultCore
 
 public enum SettingsIssue: Equatable, Sendable {
     case criticalNotBelowLow
-    case dayThresholdOutOfRange
     case rateNotPositive
     case stagingNotPositive
     case integrityIntervalOutOfRange
-    case unsupportedPlaceLanguage
     case invalidHomeCountry
 
     public var message: String {
         switch self {
         case .criticalNotBelowLow: tr(vi: "Ngưỡng nguy cấp phải nhỏ hơn ngưỡng thấp.", en: "The critical threshold must be below the low threshold.")
-        case .dayThresholdOutOfRange: tr(vi: "Ngưỡng thư mục ngày phải từ 2 đến 200 ảnh.", en: "The day folder threshold must be between 2 and 200 photos.")
         case .rateNotPositive: tr(vi: "Tốc độ export phải lớn hơn 0 GB/giờ.", en: "The export rate must be greater than 0 GB/hour.")
         case .stagingNotPositive: tr(vi: "Giới hạn staging phải lớn hơn 0 GB.", en: "The staging limit must be greater than 0 GB.")
         case .integrityIntervalOutOfRange: tr(vi: "Chu kỳ kiểm tra toàn vẹn phải từ 1 đến 365 ngày.", en: "The integrity check interval must be between 1 and 365 days.")
-        case .unsupportedPlaceLanguage: tr(vi: "Ngôn ngữ địa danh chỉ hỗ trợ tiếng Việt hoặc English.", en: "Place names support only Vietnamese or English.")
         case .invalidHomeCountry: tr(vi: "Mã quốc gia nhà phải gồm 2 chữ cái.", en: "The home country code must be 2 letters.")
         }
     }
@@ -47,17 +43,14 @@ extension GlobalSettings {
 }
 
 public enum SettingsValidator {
-    public static let dayThresholdRange = 2...200
     public static let integrityDaysRange = 1...365
 
     public static func validate(_ settings: GlobalSettings) -> [SettingsIssue] {
         var issues: [SettingsIssue] = []
         if settings.criticalWatermarkBytes >= settings.lowWatermarkBytes { issues.append(.criticalNotBelowLow) }
-        if !dayThresholdRange.contains(settings.dayFolderThreshold) { issues.append(.dayThresholdOutOfRange) }
         if settings.backfillBytesPerHour <= 0 { issues.append(.rateNotPositive) }
         if settings.stagingSoftLimitBytes <= 0 { issues.append(.stagingNotPositive) }
         if !integrityDaysRange.contains(settings.integrityCheckIntervalDays) { issues.append(.integrityIntervalOutOfRange) }
-        if !["vi", "en"].contains(settings.placeNameLanguage) { issues.append(.unsupportedPlaceLanguage) }
         let country = settings.homeCountryCode
         if country.count != 2 || !country.allSatisfy({ $0.isASCII && $0.isLetter }) { issues.append(.invalidHomeCountry) }
         return issues
@@ -72,11 +65,9 @@ public enum SettingsValidator {
             case .criticalNotBelowLow:
                 result.criticalWatermarkBytes = persisted.criticalWatermarkBytes
                 result.lowWatermarkBytes = persisted.lowWatermarkBytes
-            case .dayThresholdOutOfRange: result.dayFolderThreshold = persisted.dayFolderThreshold
             case .rateNotPositive: result.backfillBytesPerHour = persisted.backfillBytesPerHour
             case .stagingNotPositive: result.stagingSoftLimitBytes = persisted.stagingSoftLimitBytes
             case .integrityIntervalOutOfRange: result.integrityCheckIntervalDays = persisted.integrityCheckIntervalDays
-            case .unsupportedPlaceLanguage: result.placeNameLanguage = persisted.placeNameLanguage
             case .invalidHomeCountry: result.homeCountryCode = persisted.homeCountryCode
             }
         }

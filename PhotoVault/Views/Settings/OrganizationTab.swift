@@ -3,11 +3,9 @@ import PhotoVaultCore
 import PhotoVaultEngine
 import SwiftUI
 
-/// Settings › Sắp xếp: day folders (spec 8.7), classification (FR-20), Drive views (FR-103), device groups (FR-104).
+/// Settings › Sắp xếp: classification (FR-20), Drive views (FR-103), device groups (FR-104).
 struct OrganizationTab: View {
     @Environment(AppModel.self) private var model
-    @State private var preview: ResortPreview?
-    @State private var confirmResort = false
     @State private var confirmRebuild = false
     @State private var newAlbum = ""
     @State private var counts: AppQueries.ViewCounts?
@@ -15,30 +13,6 @@ struct OrganizationTab: View {
     private static let itemWarningThreshold = 400_000
 
     var body: some View {
-        SettingsSection(tr(vi: "Thư mục ngày", en: "Day folders")) {
-            FormRow(tr(vi: "Tách thư mục ngày khi một ngày có hơn", en: "Split the day folder when a day has more than"), detail: tr(vi: "Chỉ tính ảnh camera. Áp dụng cho ngày mới từ giờ.", en: "Counts camera photos only. Applies to new days from now on.")) {
-                HStack {
-                    TextField("", value: model.binding(\.dayFolderThreshold), format: .number)
-                        .frame(width: 60).multilineTextAlignment(.trailing).textFieldStyle(.roundedBorder)
-                        .accessibilityLabel(tr(vi: "Ngưỡng thư mục ngày", en: "Day folder threshold"))
-                    Text(tr(vi: "ảnh", en: "photos"))
-                }
-            }
-            issues(for: [.dayThresholdOutOfRange])
-            FormRow(resortCaption) {
-                Button(tr(vi: "Sắp xếp lại…", en: "Re-sort…")) { confirmResort = true }.disabled((preview?.files ?? 0) == 0)
-            }
-        }
-        .task(id: model.persistedSettings.dayFolderThreshold) { preview = await model.resortPreview() }
-        .confirmationDialog(resortTitle, isPresented: $confirmResort) {
-            Button(tr(vi: "Sắp xếp lại", en: "Re-sort")) { Task { await model.resortApply(); preview = await model.resortPreview() } }
-            Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
-        } message: {
-            Text(tr(
-                vi: "PhotoVault sẽ chuyển \(VietnameseFormat.integer(preview?.files ?? 0)) file (bản gốc, bản chỉnh sửa, sidecar) của \(VietnameseFormat.integer(preview?.days ?? 0)) ngày vào thư mục ngày ở mọi đích. Thư mục ngày đã có giữ nguyên.",
-                en: "PhotoVault will move \(fileCount(preview?.files ?? 0)) (originals, edited versions, sidecars) from \(dayCount(preview?.days ?? 0)) into day folders on every destination. Existing day folders are left as they are."))
-        }
-
         SettingsSection(tr(vi: "Phân loại", en: "Classification")) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(tr(vi: "Album app chat → “Saved”", en: "Chat app albums → “Saved”"))
@@ -105,32 +79,6 @@ struct OrganizationTab: View {
         }
 
         DeviceGroupsSection()
-    }
-
-    private var resortTitle: String {
-        let threshold = model.persistedSettings.dayFolderThreshold
-        return tr(
-            vi: "Sắp xếp lại theo ngưỡng \(threshold) ảnh?",
-            en: "Re-sort with a threshold of \(L10n.plural(threshold, one: "1 photo", other: "\(threshold) photos"))?")
-    }
-
-    private func fileCount(_ n: Int) -> String {
-        L10n.plural(n, one: "1 file", other: "\(VietnameseFormat.integer(n)) files")
-    }
-
-    private func dayCount(_ n: Int) -> String {
-        L10n.plural(n, one: "1 day", other: "\(VietnameseFormat.integer(n)) days")
-    }
-
-    private var resortCaption: String {
-        guard let preview else { return tr(vi: "Đang tính…", en: "Calculating…") }
-        return preview.files > 0
-            ? tr(
-                vi: "Sắp xếp lại sẽ chuyển \(VietnameseFormat.integer(preview.files)) file của \(VietnameseFormat.integer(preview.days)) ngày vào thư mục ngày.",
-                en: "Re-sorting will move \(fileCount(preview.files)) from \(dayCount(preview.days)) into day folders.")
-            : tr(
-                vi: "Không có file nào cần chuyển. Thư mục ngày đã có không bị gộp ngược.",
-                en: "No files need to move. Existing day folders are not merged back.")
     }
 
     private var estimatedItems: Int {

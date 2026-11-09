@@ -46,7 +46,7 @@ struct OnboardingFlowTests {
         _ = progress.advance(facts)
         facts.rootName = "   "
         do { let accepted = progress.advance(facts); #expect(!accepted) }
-        facts.rootName = "Camera Uploads"
+        facts.rootName = "PhotoVault"
         facts.rootChoicePending = true
         do { let accepted = progress.advance(facts); #expect(!accepted) }
         facts.rootChoicePending = false
@@ -107,7 +107,7 @@ struct OnboardingFlowTests {
         #expect(!jumped(&progress, .start, facts))
         #expect(jumped(&progress, .driveRoot, facts))   // steps before the broken one stay reachable
         #expect(!progress.canJump(to: .archiveTimeZone, facts))
-        facts.rootName = "Camera Uploads"
+        facts.rootName = "PhotoVault"
 
         facts.nasFolderChosen = true               // another NAS folder picked, not tested yet
         #expect(!progress.canJump(to: .start, facts))
@@ -153,7 +153,7 @@ struct OnboardingFlowTests {
     }
 
     @Test func rootNameValidation() {
-        #expect(RootNameValidator.validate("Camera Uploads") == nil)
+        #expect(RootNameValidator.validate("PhotoVault") == nil)
         #expect(RootNameValidator.validate("") == .empty)
         #expect(RootNameValidator.validate(" \n ") == .empty)
         #expect(RootNameValidator.validate("a/b") == .forbiddenCharacter)

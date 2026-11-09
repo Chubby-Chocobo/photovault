@@ -24,7 +24,7 @@ public enum OnboardingStep: Int, CaseIterable, Sendable {
 public struct OnboardingFacts: Equatable, Sendable {
     public var googleSignedIn = false
     public var photosAuthorization: PhotosAuthorization = .notDetermined
-    public var rootName = "Camera Uploads"
+    public var rootName = "PhotoVault"
     /// An earlier PhotoVault root exists and the owner still has to choose reuse or new.
     public var rootChoicePending = false
     public var nasFolderChosen = false

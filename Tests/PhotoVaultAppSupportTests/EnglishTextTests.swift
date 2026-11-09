@@ -170,7 +170,7 @@ struct EnglishTextTests {
     @Test func destinationNamesStayLiteral() {
         let vi = L10n.$override.withValue(.vi) { OnboardingFacts().rootName }
         let en = L10n.$override.withValue(.en) { OnboardingFacts().rootName }
-        #expect(vi == "Camera Uploads")
+        #expect(vi == "PhotoVault")
         #expect(en == vi)
     }
 

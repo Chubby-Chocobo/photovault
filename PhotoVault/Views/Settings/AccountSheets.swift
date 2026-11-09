@@ -13,7 +13,7 @@ struct AccountChangeSheet: View {
     @State private var change: AccountChange?
     @State private var roots: [RootChooser.RemoteItemSummary] = []
     @State private var reuseRootId: String?
-    @State private var newName = "Camera Uploads"
+    @State private var newName = "PhotoVault"
     @State private var working = false
     @State private var signInTask: Task<Void, Never>?
 
@@ -70,7 +70,7 @@ struct AccountChangeSheet: View {
             let found = try await model.driveRoots(for: result)
             roots = found.map { .init(id: $0.remoteId, name: $0.name) }
             reuseRootId = canReuseFirst(found)
-            newName = model.driveRecord?.config.driveRootName ?? "Camera Uploads"
+            newName = model.driveRecord?.config.driveRootName ?? "PhotoVault"
             stage = .chooseRoot
         } catch {
             if !(error is CancellationError), !Task.isCancelled { model.showError(error) }
@@ -124,7 +124,7 @@ struct RootChangeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var roots: [RootChooser.RemoteItemSummary] = []
     @State private var reuseRootId: String?
-    @State private var newName = "Camera Uploads"
+    @State private var newName = "PhotoVault"
     @State private var loaded = false
     @State private var working = false
 

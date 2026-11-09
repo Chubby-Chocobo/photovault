@@ -18,7 +18,7 @@ struct RootChooser: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             LabeledContent(tr(vi: "Tên thư mục", en: "Folder name")) {
-                TextField("Camera Uploads", text: $newName)
+                TextField("PhotoVault", text: $newName)
                     .textFieldStyle(.roundedBorder).frame(width: 260)
                     .disabled(reuseRootId != nil)
             }
