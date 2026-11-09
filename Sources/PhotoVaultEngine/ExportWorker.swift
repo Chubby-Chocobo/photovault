@@ -42,7 +42,7 @@ actor ExportWorker {
         var id: String { "\(row.key.rawValue)|\(row.type.rawValue)" }
     }
 
-    private struct Started: Sendable {
+    struct Started: Sendable {
         var id: String
         var permit: ExportPermit
         var asset: AssetRecord
@@ -194,7 +194,7 @@ actor ExportWorker {
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? FileManager.default.removeItem(at: url)
-            let file = try await env.photos.exportResource(localId: started.asset.localId, type: type, to: url, control: permit.control)
+            let file = try await readResource(started, to: url)
             try env.reach(.afterExportBeforeCommit)
             let metadata = started.isPrimary
                 ? env.metadataReader.metadata(of: url, uti: started.resource.uti, mediaType: started.asset.mediaType) : nil
@@ -230,7 +230,8 @@ actor ExportWorker {
         let now = env.clock.now
         let permit = started.permit
         let source = error as? PhotosSourceError
-        if source == .cancelled || permit.reason != nil {
+        let folder = error as? SourceError
+        if source == .cancelled || folder == .cancelled || permit.reason != nil {
             switch permit.reason {
             case .sizeRule:
                 try await env.store.write { db in try EngineQueries.resetExportToNone(db, key: key, type: type) }
@@ -252,14 +253,18 @@ actor ExportWorker {
                 // Cancelled without a reason of ours: the library went away underneath the export.
                 // A cancelled task (shutdown, owner command) is not a lost library and needs no delay.
                 let shuttingDown = Task.isCancelled
-                if !shuttingDown { photosLost = true }
+                if !shuttingDown, started.asset.sourceId == .photos { photosLost = true }
                 let retryAt = shuttingDown ? nil : now.addingTimeInterval(Self.transientRetryDelay)
                 try await env.store.write { db in try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: retryAt) }
                 return .failed(started.id)
             }
         }
-        let classification = source.map(ErrorClassifier.classify) ?? .itemLevel
-        let message = source.map { "photos: \($0)" } ?? "export failed"
+        let classification: ErrorClass
+        var retryDelay = Self.transientRetryDelay
+        if let source { classification = ErrorClassifier.classify(source) } else if let folder {
+            (classification, retryDelay) = try await classifyFolderFailure(folder, asset: started.asset)
+        } else { classification = .itemLevel }
+        let message = source.map { "photos: \($0)" } ?? folder.map { "source: \($0)" } ?? "export failed"
         switch classification {
         case .permanent(let reason):
             try await env.store.write { db in
@@ -267,10 +272,15 @@ actor ExportWorker {
                 try EngineQueries.apply(db, .permanentFailure(reason, message: message), key: key, type: type, states: [.pending], now: now)
             }
         case .destinationLevel, .transient, .verify:
-            if case .destinationLevel = classification { photosLost = true }
+            if case .destinationLevel = classification {
+                if folder != nil { try await holdSource(of: started.asset, at: now) } else { photosLost = true }
+            }
+            let delay = retryDelay
+            // A folder that is away is waiting, not failing: no error is recorded against the file.
+            let held = folder != nil && { if case .destinationLevel = classification { true } else { false } }()
             try await env.store.write { db in
-                try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(Self.transientRetryDelay))
-                try ResourceRepository.noteExportError(db, key: key, type: type, message: message)
+                try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(delay))
+                if !held { try ResourceRepository.noteExportError(db, key: key, type: type, message: message) }
             }
         case .itemLevel:
             let delay = Backoff().delay(forAttempt: started.resource.exportAttempts)

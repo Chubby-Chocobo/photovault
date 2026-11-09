@@ -25,6 +25,8 @@ public actor SyncCoordinator {
     let exporter: ExportWorker
     let uploader: UploadRunner
     let recovery: StartupRecovery
+    /// Job kinds created beside the originals (sidecars); used by in-transaction steps of owner commands.
+    let planningExtensions: [any JobPlanningExtension]
 
     /// Cycle and owner commands take turns on this lane (NFR-01).
     let lane = ExclusiveLane()
@@ -37,6 +39,8 @@ public actor SyncCoordinator {
     var needsReconciliation: ReconciliationReason?
     var lastCheckBlock: CycleBlock?
     var lastNetworkOK = true
+    /// Answer of `LegacyLayout.isBlocked`, read once per process.
+    private var legacyLayoutBlocked: Bool?
     private var lastPublished: EngineSnapshot?
     private var subscribers: [UUID: AsyncStream<EngineSnapshot>.Continuation] = [:]
     private var backfillObservation: (at: Date, done: Int)?
@@ -68,7 +72,8 @@ public actor SyncCoordinator {
         organization = services
         self.hardening = hardening
         self.reconciler = reconciler ?? hardening.reconciler
-        self.stages = stages + services.stages + hardening.stages
+        self.stages = stages + services.stages + hardening.stages + [ImportStage(env: env, extensions: extensions)]
+        self.planningExtensions = extensions
         self.staging = staging
         resourceGuard = guardActor
         baseline = Baseline(env: env)
@@ -86,7 +91,25 @@ public actor SyncCoordinator {
 
     /// Startup recovery (spec 8.3); call once before the first cycle.
     @discardableResult
-    public func start() async throws -> RecoverySummary { try await exclusive { try await recovery.run() } }
+    public func start() async throws -> RecoverySummary {
+        try await exclusive {
+            if try await isLegacyLayoutBlocked() { return RecoverySummary() }
+            return try await recovery.run()
+        }
+    }
+
+    /// True while the database holds a backup in the old folder layout (see `LegacyLayout`).
+    func isLegacyLayoutBlocked() async throws -> Bool {
+        if let legacyLayoutBlocked { return legacyLayoutBlocked }
+        let blocked = try await LegacyLayout.isBlocked(env.store)
+        legacyLayoutBlocked = blocked
+        return blocked
+    }
+
+    /// Owner commands that would write jobs or move files stop here for an old-layout database.
+    func refuseLegacyLayout() async throws {
+        if try await isLegacyLayoutBlocked() { throw EngineError.legacyLayout }
+    }
 
     /// FR-15: takes the baseline for the given destinations (once). The next cycle scans.
     public func beginBaseline(destinations: [DestinationID]) async throws {
@@ -126,6 +149,7 @@ public actor SyncCoordinator {
     /// Call after global settings changed: recomputes the destination set for every asset (FR-19).
     public func settingsChanged() async throws {
         try await exclusive {
+            try await refuseLegacyLayout()
             try await eligibility.recomputeAll()
             try await organization.settingsChanged()
         }
@@ -136,6 +160,7 @@ public actor SyncCoordinator {
     /// database, never by rescanning (FR-71).
     public func destinationAdded(_ id: DestinationID) async throws {
         try await exclusive {
+            try await refuseLegacyLayout()
             try await eligibility.recomputeAll(destination: id, backfillOrigin: .destinationBackfill)
             try await organization.settingsChanged()
         }
@@ -144,7 +169,10 @@ public actor SyncCoordinator {
 
     /// Call after a destination's scope or rules changed.
     public func destinationRulesChanged(_ id: DestinationID) async throws {
-        try await exclusive { try await eligibility.recomputeAll(destination: id, backfillOrigin: .backfill) }
+        try await exclusive {
+            try await refuseLegacyLayout()
+            try await eligibility.recomputeAll(destination: id, backfillOrigin: .backfill)
+        }
         await publish()
     }
 
@@ -183,6 +211,7 @@ public actor SyncCoordinator {
     }
 
     private func buildSnapshot() async throws -> EngineSnapshot {
+        _ = try await isLegacyLayoutBlocked()
         let raw = try await SnapshotBuilder(env: env).read()
         let now = env.clock.now
         var eta: TimeInterval?
@@ -197,7 +226,9 @@ public actor SyncCoordinator {
             }
         }
         let overall: EngineSnapshot.Overall
-        if globallyPaused {
+        if legacyLayoutBlocked == true {
+            overall = .legacyLayout
+        } else if globallyPaused {
             overall = .paused
         } else if lastCheckBlock == .photosUnauthorized {
             overall = .photosUnauthorized
@@ -216,7 +247,7 @@ public actor SyncCoordinator {
             overall: overall, scanState: raw.scan, destinations: raw.destinations, backfillDoneAssets: raw.backfill.done,
             backfillTotalAssets: raw.backfill.total, bytesUploaded: raw.bytes, etaSeconds: eta,
             pending: raw.totals.pending + raw.totals.uploading, deferred: raw.totals.deferred, skipped: raw.totals.skipped,
-            missingRemote: raw.totals.missingRemote, updatedAt: now)
+            missingRemote: raw.totals.missingRemote, updatedAt: now, imports: raw.imports)
     }
 }
 

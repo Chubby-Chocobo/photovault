@@ -41,6 +41,8 @@ public enum KeyValueRepository {
         public static let schemaVersion = "schema_version"
         public static let macDiskFullSince = "mac_disk_full_since"
         public static let lastSuccessfulSyncAt = "last_successful_sync_at"
+        /// "1" when the database holds a backup in the old `YYYY/MM` folder layout, "0" when it does not.
+        public static let legacyLayout = "legacy_layout"
     }
 
     public static func string(_ db: Database, _ key: String) throws -> String? {

@@ -27,7 +27,7 @@ The code chooses:
 | Place outside the home country (`homeCountryCode`, default `VN`) | `<name>, <country>`, where the country comes from the display geocode, else the English one |
 | Display locale differs from `en` and a display geocode is missing | `waitingGeocode`, with the missing cells listed |
 
-Name lookup uses the English key to decide identity and the display locale (`placeNameLanguage`, default `vi`) for the shown text. Missing display geocodes fall back to the English one.
+Name lookup uses the English key to decide identity; the shown text follows `PlaceNameRule` (decision [0023](0023-day-folders-and-place-name-rule.md): English country, Vietnamese names in Vietnam, English plus native name abroad). A missing second-locale answer falls back to the English one.
 
 ## Geocoder requests and the country-only fallback
 

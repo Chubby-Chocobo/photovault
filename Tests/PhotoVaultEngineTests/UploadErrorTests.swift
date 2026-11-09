@@ -61,8 +61,11 @@ import Testing
         #expect(try h.read { db in try DestinationRepository.fetch(db, id: .googleDrive)?.status } == .active)
     }
 
-    @Test func t18FlakyDestinationNeverDefersOrSkipsAnyJob() async throws {
-        let h = try await Harness()
+    /// One upload at a time is the order where folders are still missing when the folder and
+    /// reserve errors arrive; two at a time is the default.
+    @Test(arguments: [1, 2])
+    func t18FlakyDestinationNeverDefersOrSkipsAnyJob(concurrency: Int) async throws {
+        let h = try await Harness { $0.maxConcurrentUploadsPerDestination = concurrency }
         try h.addDrive(scope: .full)
         for i in 0..<6 { await h.add(h.snapshot("f\(i)", daysAgo: Double(i + 1)), recordChange: false) }
         try await h.baseline(.googleDrive)
@@ -80,7 +83,8 @@ import Testing
             #expect(bad.isEmpty, "round \(round): \(bad.map(\.state))")
             #expect(try h.jobs().allSatisfy { $0.attempts == 0 }, "round \(round): destination errors never count")
         }
-        for _ in 0..<3 {
+        // Once the destination behaves, everything finishes (one at a time takes more cycles).
+        for _ in 0..<8 where await h.drive.files.count < 6 {
             await h.run()
             h.clock.advance(by: 3600)
         }
@@ -97,6 +101,16 @@ import Testing
         #expect(await h.drive.files.count == 1)
         #expect(try h.jobs().first?.attempts == 0)
         #expect(await h.drive.operationLog.filter { $0 == .upload }.count == 4)
+    }
+
+    @Test(arguments: [FakeDestination.Operation.ensureFolder, .reserve])
+    func transientErrorsBeforeTheUploadAlsoRetryWithoutCostingAnAttempt(_ operation: FakeDestination.Operation) async throws {
+        let h = try await Harness()
+        try await oneJob(h)
+        await h.drive.failNext(operation, with: .transient(reason: "reset"), times: 2)
+        await h.run()
+        #expect(await h.drive.files.count == 1)
+        #expect(try h.jobs().first?.attempts == 0)
     }
 
     @Test func repeatedServerErrorsBackTheWholeDestinationOff() async throws {
@@ -205,10 +219,10 @@ import Testing
         try await oneJob(h)
         await h.run()
         await h.add(h.snapshot("b", daysAgo: 1), camera: true)
-        // The month folder disappears behind the app's back.
-        let month = await h.drive.folders.first { $0.name == "11" || $0.name == "10" || $0.name == "09" }
-        let monthId = try #require(month?.id)
-        await h.drive.externallyDelete(monthId)
+        // The day folder disappears behind the app's back.
+        let dayPath = h.cameraDayPath(daysAgo: 1)
+        let day = await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == dayPath }
+        await h.drive.externallyDelete(try #require(day?.id))
         await h.run()
         h.clock.advance(by: 3600)
         await h.run()
@@ -243,6 +257,6 @@ import Testing
         let folders = await h.drive.folders.filter { $0.id != "root" }
         let keys = folders.map { "\($0.parentId)/\($0.name)" }
         #expect(Set(keys).count == keys.count)
-        #expect(folders.count == 2, "year and month, once each: \(keys)")
+        #expect(folders.count == 2, "Camera Uploads and the day, once each: \(keys)")
     }
 }

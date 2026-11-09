@@ -35,6 +35,8 @@ public struct RecoveryStats: Sendable, Equatable {
 
 public enum RecoveryBlocker: String, Sendable, Equatable {
     case scanIncomplete, cloudIdsPending, destinationUnavailable, unknownDestination, alreadyRunning
+    /// The root holds a backup in the old `YYYY/MM` layout; it cannot be reused.
+    case legacyLayout
 }
 
 public enum RecoveryOutcome: Sendable, Equatable {

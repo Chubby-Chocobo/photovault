@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import PhotoVaultDrive
 import PhotoVaultLocal
+import PhotoVaultCore
 
 /// NSOpenPanel for NAS and external folders (FR-70) and the security-scoped bookmark of the pick.
 @MainActor
@@ -12,7 +13,7 @@ enum FolderPicker {
         var volumeName: String?
     }
 
-    static func chooseFolder(message: String, prompt: String = "Chọn thư mục") -> Pick? {
+    static func chooseFolder(message: String, prompt: String = tr(vi: "Chọn thư mục", en: "Choose")) -> Pick? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -25,6 +26,25 @@ enum FolderPicker {
         guard let bookmark = try? SecurityScopedBookmarkRoot.makeBookmark(for: url) else { return nil }
         let volume = try? url.resourceValues(forKeys: [.volumeNameKey]).volumeName
         return Pick(url: url, bookmark: bookmark, volumeName: volume)
+    }
+
+    /// The folder was chosen but macOS would not give a bookmark for it, so it cannot be read later.
+    struct BookmarkFailed: Error {}
+
+    /// A folder to import from. It is only read: no "new folder" button, and the bookmark allows reading only.
+    /// nil when the owner cancels; throws `BookmarkFailed` when the pick cannot be kept.
+    static func chooseImportFolder() throws -> Pick? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = tr(vi: "Chọn thư mục ảnh để nhập một lần. PhotoVault chỉ đọc, không sửa hay xoá gì trong thư mục.", en: "Choose a folder of photos to import once. PhotoVault only reads it and never changes or deletes anything in it.")
+        panel.prompt = tr(vi: "Nhập", en: "Import")
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard let bookmark = try? SecurityScopedBookmarkRoot.makeBookmark(for: url, readOnly: true) else { throw BookmarkFailed() }
+        return Pick(url: url, bookmark: bookmark, volumeName: nil)
     }
 
     /// The folder a stored bookmark points to now (it may have been renamed since).

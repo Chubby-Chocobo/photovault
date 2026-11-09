@@ -1,7 +1,7 @@
 ---
 phase: 04
 title: "Store: GRDB schema, repositories, backups"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 4-6h
@@ -32,8 +32,8 @@ SQLite through GRDB: every table and index in spec 8.2, migrations, typed record
 2. Implement schema, records, repositories.
 
 ## Success Criteria
-- [ ] `swift test --filter PhotoVaultStoreTests` green.
-- [ ] Upsert of a `done` job with unchanged content does not change state; changed content increments `target_gen` only.
+- [x] `swift test --filter PhotoVaultStoreTests` green.
+- [x] Upsert of a `done` job with unchanged content does not change state; changed content increments `target_gen` only.
 
 ## Risk Assessment
 - Schema mistakes are costly after release: `v1` migration is final once shipped; later changes are new migrations.

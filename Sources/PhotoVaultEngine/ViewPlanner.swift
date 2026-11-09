@@ -37,10 +37,13 @@ enum ViewPlanner {
             names[row["group_id"]] = row["display_name"]
         }
         let cells = Set(assets.compactMap { $0.geoCell ?? $0.location.map(GeoCell.init) })
-        let geocodes = try OrganizationLookups.geocodes(db, cells: cells, language: settings.placeNameLanguage)
+        let geocodes = try OrganizationLookups.geocodes(db, cells: cells)
+        // A cell joins By place once both answers are in, so an area folder is not renamed later.
+        let complete = geocodes.english.filter { geocodes.local[$0.key] != nil }
+        let display = OrganizationLookups.displayPlaces(english: complete, local: geocodes.local)
         return ViewContext(
-            deviceGroupByModelKey: byModel, deviceGroupNames: names, englishGeocodes: geocodes.english,
-            displayGeocodes: settings.placeNamesEnabled ? geocodes.display : [:], includeHidden: settings.includeHidden)
+            deviceGroupByModelKey: byModel, deviceGroupNames: names, englishGeocodes: complete,
+            displayGeocodes: settings.placeNamesEnabled ? display : [:], includeHidden: settings.includeHidden)
     }
 
     static func plan(
@@ -99,7 +102,8 @@ enum ViewHold {
         guard try KeyValueRepository.int(db, key(destinationId, view, asset.assetKey)) == 1 else { return false }
         if asset.categoryProvisional { return true }
         if view == .byPlace, let cell = asset.geoCell ?? asset.location.map(GeoCell.init),
-           try GeoCacheRepository.fetch(db, cell: cell, locale: "en") == nil { return true }
+           try GeoCacheRepository.fetch(db, cell: cell, locale: "en") == nil
+            || GeoCacheRepository.fetch(db, cell: cell, locale: OrganizationLookups.localLocaleKey) == nil { return true }
         return false
     }
 }

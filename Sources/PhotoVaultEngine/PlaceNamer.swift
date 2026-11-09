@@ -5,8 +5,8 @@ import PhotoVaultStore
 
 /// Step 9 of the cycle (FR-80..85, spec 8.11): names promoted day folders from cached geocodes.
 /// Everything here is database work; the network part is `GeocodeScheduler`. A day is evaluated when
-/// it was promoted, its asset set changed, the display language changed, or while it is still
-/// `pending` / `waitingGeocode` (the six-hour wait after the day ended is time-based).
+/// it was promoted, its asset set changed, a geocode for one of its cells arrived, or while it is
+/// still `pending` (the six-hour wait after the day ended is time-based).
 struct PlaceNamer: Sendable {
     let env: EngineEnvironment
 
@@ -14,7 +14,6 @@ struct PlaceNamer: Sendable {
     func runPass() async throws -> Int {
         let snapshot = await env.settingsSnapshot()
         guard snapshot.settings.placeNamesEnabled else { return 0 }
-        try await noteLanguage(snapshot.settings.placeNameLanguage)
         var changed = 0
         var seen = Set<String>()
         while true {
@@ -23,34 +22,26 @@ struct PlaceNamer: Sendable {
             let already = seen
             let (days, count): ([String], Int) = try await env.store.write { db in
                 let dirty = try DirtyQueue.pending(db, .place, limit: 100)
+                // Days waiting for a geocode come back through the dirty queue when an answer for one
+                // of their cells arrives; only the time-based wait is polled here.
                 let waiting = try String.fetchAll(db, sql: """
-                    SELECT day FROM day_stat WHERE promoted = 1 AND place_state IN ('pending', 'waitingGeocode') ORDER BY day
+                    SELECT day FROM day_stat WHERE promoted = 1 AND place_state = 'pending' ORDER BY day
                     """)
-                let todo = (dirty + waiting).filter { !already.contains($0) }
+                // At most 100 days per transaction: every camera day is promoted, so a first sync has thousands.
+                let todo = Array(Array(Set(dirty + waiting).subtracting(already)).sorted().prefix(100))
                 let context = try env.context(db, snapshot)
                 var count = 0
                 for text in todo {
                     guard let day = ArchiveDay(string: text) else { continue }
                     if try Self.evaluate(db, day: day, context: context) { count += 1 }
                 }
-                try DirtyQueue.clear(db, .place, ids: dirty)
+                // A dirty day not evaluated now (already seen in this pass, or past the batch) keeps its mark.
+                try DirtyQueue.clear(db, .place, ids: dirty.filter(todo.contains))
                 return (todo, count)
             }
             if days.isEmpty { return changed }
             seen.formUnion(days)
             changed += count
-        }
-    }
-
-    /// A different display language renames every named folder and refreshes names elsewhere.
-    private func noteLanguage(_ language: String) async throws {
-        try await env.store.write { db in
-            let stored = try KeyValueRepository.string(db, "place_language")
-            guard stored != language else { return }
-            try KeyValueRepository.set(db, "place_language", language)
-            guard stored != nil else { return }
-            for day in try OrganizationQueries.promotedDays(db) { try DirtyQueue.mark(db, [.place], id: day.description) }
-            try DirtyQueue.requestSweep(db, [.sidecar, .view, .description])
         }
     }
 
@@ -65,12 +56,10 @@ struct PlaceNamer: Sendable {
             assets.append(PlaceAsset(location: asset.location, isHidden: asset.isHidden, isDeleted: asset.deletedAt != nil))
             if let point = asset.location { cells.insert(GeoCell(point)) }
         }
-        let language = settings.placeNameLanguage
-        let geocodes = try OrganizationLookups.geocodes(db, cells: cells, language: language)
+        let geocodes = try OrganizationLookups.geocodes(db, cells: cells)
         let result = PlaceNamingPolicy.evaluate(PlaceNamingInput(
             assets: assets, includeHidden: settings.includeHidden, englishGeocodes: geocodes.english,
-            displayGeocodes: language == "en" ? geocodes.english : geocodes.display, displayLocale: language,
-            homeCountryCode: settings.homeCountryCode, day: day, archiveTimeZone: context.timeZone, now: context.now))
+            localGeocodes: geocodes.local, homeCountryCode: settings.homeCountryCode, day: day, archiveTimeZone: context.timeZone, now: context.now))
         switch result.state {
         case .pending:
             return false
@@ -91,7 +80,7 @@ struct PlaceNamer: Sendable {
     /// The folder name changed: rename it at every destination, refresh what mentions the place.
     private static func applyRename(_ db: Database, day: ArchiveDay, name: String?, context: PipelineContext) throws {
         let placement = Placement(category: .camera, day: .day(day), nameStem: "")
-        guard let level = context.layout.folderChain(for: placement, dayPromoted: true, placeName: name).last else { return }
+        guard let level = context.layout.folderChain(for: placement, placeName: name).last else { return }
         for destination in context.destinations {
             try MoveJobPlanner.enqueueRename(
                 db, destinationId: destination.id, logicalPath: level.logicalPath, to: level.displayName, now: context.now)

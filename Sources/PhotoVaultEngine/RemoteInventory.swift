@@ -44,6 +44,8 @@ struct RemoteInventory: Sendable {
     var shortcuts: [RemoteShortcutEntry] = []
     /// Items that are not ours or not understood; they are never touched.
     var ignored = 0
+    /// Folders of the old `YYYY/MM` layout. A root that has any is not recovered from.
+    var legacyFolders = 0
     /// Archive timezone the destination remembers (`pvArchiveTZ`, `destination.json`).
     var archiveTimezone: String?
 }
@@ -101,6 +103,7 @@ struct RemoteInventoryLoader: Sendable {
                 continue
             }
             logicalById[item.remoteId] = value
+            if LegacyRootProbe.isLegacyLogicalPath(value) { inventory.legacyFolders += 1 }
             let (day, place) = Self.dayFolder(logical: value, name: item.name)
             inventory.folders.append(RemoteFolderEntry(
                 logicalPath: value, remoteId: item.remoteId, displayName: item.name, day: day, placeName: place))
@@ -143,10 +146,11 @@ struct RemoteInventoryLoader: Sendable {
         return value
     }
 
-    /// `camera/2026/11/2026-11-08` named `2026-11-08 Đà Lạt`.
+    /// `camera/2026-11-08` named `2026-11-08 Đà Lạt`.
     static func dayFolder(logical: String, name: String) -> (ArchiveDay?, String?) {
         let parts = logical.split(separator: "/").map(String.init)
-        guard parts.count == 4, parts[0] == "camera", let day = ArchiveDay(string: parts[3]), name.hasPrefix(parts[3]) else { return (nil, nil) }
+        guard parts.count == 2, parts[0] == "camera", let day = ArchiveDay(string: parts[1]), name.hasPrefix(parts[1]) else { return (nil, nil) }
+        guard name.count == 10 || name.dropFirst(10).hasPrefix(" ") else { return (day, nil) }
         let place = name.dropFirst(10).trimmingCharacters(in: .whitespaces)
         return (day, place.isEmpty ? nil : place)
     }
@@ -159,6 +163,7 @@ struct RemoteInventoryLoader: Sendable {
         for item in items where item.kind == .folder {
             let path = item.relativePath ?? item.remoteId
             guard let info = LocalTreeInterpreter.folder(displayPath: path) else {
+                if LegacyRootProbe.isLegacyFolder(displayPath: path) { inventory.legacyFolders += 1 }
                 inventory.ignored += 1
                 continue
             }

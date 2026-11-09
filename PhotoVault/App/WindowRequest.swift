@@ -1,18 +1,20 @@
 import Foundation
+import PhotoVaultCore
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, content, organization, places, destinations, advanced
+    case general, content, organization, places, sources, destinations, advanced
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .general: "Chung"
-        case .content: "Nội dung"
-        case .organization: "Sắp xếp"
-        case .places: "Địa danh & riêng tư"
-        case .destinations: "Đích"
-        case .advanced: "Nâng cao"
+        case .general: tr(vi: "Chung", en: "General")
+        case .content: tr(vi: "Nội dung", en: "Content")
+        case .organization: tr(vi: "Sắp xếp", en: "Organization")
+        case .places: tr(vi: "Địa danh & riêng tư", en: "Places & privacy")
+        case .sources: tr(vi: "Nguồn", en: "Sources")
+        case .destinations: tr(vi: "Đích", en: "Destinations")
+        case .advanced: tr(vi: "Nâng cao", en: "Advanced")
         }
     }
 
@@ -22,6 +24,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .content: "photo.on.rectangle"
         case .organization: "folder.badge.gearshape"
         case .places: "mappin.and.ellipse"
+        case .sources: "tray.and.arrow.down"
         case .destinations: "externaldrive.connected.to.line.below"
         case .advanced: "slider.horizontal.3"
         }
@@ -33,5 +36,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 enum WindowRequest: Equatable {
     case onboarding
     case activity
+    case log
     case settings(SettingsTab)
 }

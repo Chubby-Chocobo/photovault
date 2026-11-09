@@ -10,7 +10,7 @@ struct DestinationsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Đích").font(.subheadline.weight(.semibold))
+                Text(tr(vi: "Đích", en: "Destinations")).font(.subheadline.weight(.semibold))
                 Spacer()
                 Text("8.9.2").font(.caption2).foregroundStyle(.tertiary)
             }
@@ -38,7 +38,9 @@ private struct DestinationRow: View {
                     Text(status.label).font(.caption)
                     Text(status.code).font(.caption2).foregroundStyle(.tertiary)
                 }
-                Text("Chờ \(VietnameseFormat.integer(destination.pending)) · Lần thành công cuối: \(RelativeTimeText.ago(destination.lastSuccessAt, now: Date()))")
+                Text(tr(
+                    vi: "Chờ \(VietnameseFormat.integer(destination.pending)) · Lần thành công cuối: \(RelativeTimeText.ago(destination.lastSuccessAt, now: Date()))",
+                    en: "Pending \(VietnameseFormat.integer(destination.pending)) · Last success: \(RelativeTimeText.ago(destination.lastSuccessAt, now: Date()))"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -46,15 +48,18 @@ private struct DestinationRow: View {
                 Button { model.revealInFinder(record) } label: { Image(systemName: "folder") }
                     .buttonStyle(.borderless)
                     .disabled(destination.status.reason == .offline)
-                    .help("Mở trong Finder")
-                    .accessibilityLabel("Mở \(destination.displayName) trong Finder")
+                    .help(tr(vi: "Mở trong Finder", en: "Show in Finder"))
+                    .accessibilityLabel(tr(vi: "Mở \(destination.displayName) trong Finder", en: "Show \(destination.displayName) in Finder"))
             }
             if let record {
                 let paused = model.isOwnerPaused(record)
                 Button { model.togglePause(record) } label: { Image(systemName: paused ? "play.fill" : "pause.fill") }
                     .buttonStyle(.borderless)
-                    .help(paused ? "Tiếp tục" : "Tạm dừng")
-                    .accessibilityLabel((paused ? "Tiếp tục " : "Tạm dừng ") + destination.displayName)
+                    .help(paused ? tr(vi: "Tiếp tục", en: "Resume") : tr(vi: "Tạm dừng", en: "Pause"))
+                    .accessibilityLabel(
+                        paused
+                            ? tr(vi: "Tiếp tục \(destination.displayName)", en: "Resume \(destination.displayName)")
+                            : tr(vi: "Tạm dừng \(destination.displayName)", en: "Pause \(destination.displayName)"))
             }
         }
         .accessibilityElement(children: .contain)

@@ -93,6 +93,8 @@ struct MoveRecovery: RecoveryParticipant {
             return
         }
         try await env.store.write { db in try OrganizationQueries.failMove(db, id: moveId, message: "folder missing under both names") }
-        await ActivityLog(env: env).record(.notice, destination: record.id, "Thư mục đổi tên dở dang không còn dưới tên cũ hay mới; cần kiểm tra toàn vẹn")
+        await ActivityLog(env: env).record(.notice, destination: record.id, tr(
+            vi: "Thư mục đổi tên dở dang không còn dưới tên cũ hay mới; cần kiểm tra toàn vẹn",
+            en: "A half-renamed folder is missing under both the old and the new name; an integrity check is needed"))
     }
 }

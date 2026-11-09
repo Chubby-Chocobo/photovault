@@ -145,6 +145,12 @@ public actor LocalFolderDestination: Destination {
         return try await locks.withLock(folder.remoteId, write: true, on: queue) { try ops.renameFolder(folder, newName: newName) }
     }
 
+    /// Names of the folders directly inside `path` (empty = the root), without descending.
+    public func childFolderNames(under path: String) async throws -> [String] {
+        let ops = self.ops
+        return try await metadataQueue.run { try ops.childFolderNames(under: path) }
+    }
+
     /// The walk runs on the metadata queue, never on the Swift concurrency pool; ending the stream stops it.
     public nonisolated func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> {
         let ops = self.ops

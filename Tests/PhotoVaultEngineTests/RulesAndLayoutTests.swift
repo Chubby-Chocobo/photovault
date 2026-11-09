@@ -54,7 +54,7 @@ import Testing
         for file in files { paths.append(await h.drive.path(of: file.id)) }
         #expect(paths.contains { $0.hasPrefix("Screenshots/") && $0.hasSuffix("_IMG_shot.HEIC") })
         #expect(paths.contains { $0.hasPrefix("Saved/") && $0.hasSuffix("_IMG_web.HEIC") })
-        #expect(paths.contains { $0.hasPrefix("20") && $0.hasSuffix("_IMG_cam.HEIC") })
+        #expect(paths.contains { $0.hasPrefix("Camera Uploads/20") && $0.hasSuffix("_IMG_cam.HEIC") })
         #expect(await h.drive.contractViolations.isEmpty)
     }
 

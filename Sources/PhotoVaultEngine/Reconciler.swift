@@ -113,7 +113,7 @@ actor Reconciler: ReconciliationRunning {
     /// Live assets the library no longer lists get `deleted_at`.
     private func markGone(seen: Set<AssetKey>) async throws -> Int {
         let live: [AssetKey] = try await env.store.read { db in
-            try String.fetchAll(db, sql: "SELECT asset_key FROM asset WHERE deleted_at IS NULL").compactMap(AssetKey.init(rawValue:))
+            try String.fetchAll(db, sql: "SELECT asset_key FROM asset WHERE deleted_at IS NULL AND source_id = 'photos'").compactMap(AssetKey.init(rawValue:))
         }
         let gone = live.filter { !seen.contains($0) }
         let settings = await env.settingsSnapshot()

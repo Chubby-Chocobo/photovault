@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — PhotoVault</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header><a href="/"><img src="/logo.png" alt="">PhotoVault</a></header>
+<main>
+<article>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Effective 9 November 2026</p>
+
+  <p>PhotoVault is a macOS app that backs up the Photos library on your Mac to storage you choose: a folder in your own Google Drive, and local or network (NAS) folders. This policy explains what data the app handles and where it goes.</p>
+
+  <p class="note">In short: PhotoVault has no server. The developer does not receive, store or see your photos, your Google data or anything else about you.</p>
+
+  <h2>Data the app handles</h2>
+  <ul>
+    <li><strong>Your Photos library.</strong> With your permission, the app reads photos, videos and their metadata (date, camera, location, albums) from the Photos library on your Mac. It never changes or deletes anything in the library.</li>
+    <li><strong>Backup copies.</strong> The app copies those files, plus small metadata files ("sidecars" with dates, camera, location and album names), to the destinations you set up. Nothing is sent anywhere else.</li>
+    <li><strong>Imported folders.</strong> If you choose a folder on this Mac to import, the app reads the photos and videos in it on this Mac only, and never changes or deletes anything in the folder. Each imported file is backed up like a photo from the Photos library, and its sidecar at your destination records the name of the folder you picked and the file's path inside it. Nothing else about the folder leaves your Mac.</li>
+    <li><strong>Local app data.</strong> A database of what has been backed up, settings and logs stay on your Mac, in the app's own folders. Logs do not contain file names or locations.</li>
+  </ul>
+
+  <h2>Google user data</h2>
+  <p>If you connect Google Drive, PhotoVault requests these permissions:</p>
+  <ul>
+    <li><code>https://www.googleapis.com/auth/drive.file</code>: to create a backup folder in your Drive, upload your photos into it, and read back the files it created to verify and resume backups. This permission gives no access to any file in your Drive that PhotoVault did not create.</li>
+    <li><code>openid</code> and <code>email</code>: to show which Google account is connected.</li>
+  </ul>
+  <p>Your Google data is used only to provide the backup feature you asked for. It is transferred only between your Mac and Google. It is not sent to the developer or to any third party, not used for advertising, not sold, and not used to train AI or machine learning models. No person reads it.</p>
+  <p>The sign-in tokens are stored only in the macOS Keychain on your Mac. Signing out in the app revokes them with Google. You can also remove PhotoVault's access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. Files already in your Drive remain yours; you can keep or delete them.</p>
+  <p>PhotoVault's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+  <h2>Place names</h2>
+  <p>To name folders after places, the app can ask Apple's geocoding service (built into macOS) for the name of an area. It sends only an approximate point, rounded to about 1 km, not your photo's exact location. You can turn place names off in Settings. Apple's handling of these requests is covered by Apple's privacy policy.</p>
+
+  <h2>What the app does not do</h2>
+  <ul>
+    <li>No analytics, tracking, advertising or crash-reporting services.</li>
+    <li>No accounts with the developer, and no developer server.</li>
+    <li>No access to files outside the Photos library and the folders you pick.</li>
+  </ul>
+
+  <h2>Security</h2>
+  <p>Connections to Google use HTTPS. Backup files are stored as normal files: Google encrypts data at rest in Drive, and the security of local and NAS folders is up to you. PhotoVault does not add its own encryption.</p>
+
+  <h2>Deleting your data</h2>
+  <ul>
+    <li>Sign out of Google in the app, or revoke access in your Google account, to stop all access.</li>
+    <li>Delete the backup folder in Google Drive or on your disks to remove the copies.</li>
+    <li>Uninstalling the app and removing its folders in <code>~/Library</code> removes the local data.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>PhotoVault is not directed to children under 13.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the new version will be posted on this page with a new effective date.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a href="mailto:photovault@annh.dev">photovault@annh.dev</a></p>
+</article>
+</main>
+<footer>
+  <a href="/">Home</a>
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Service</a>
+</footer>
+</body>
+</html>

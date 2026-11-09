@@ -27,6 +27,8 @@ public enum CrashPoint: String, CaseIterable, Sendable {
     case afterUploadBeforeCommit
     case afterCommitBeforeRelease
     case afterExportBeforeCommit
+    case afterImportInspectBeforeCommit
+    case afterImportGroupCommit
 }
 
 /// Test seam: `reach` may throw an `EngineAbort` error to emulate the process dying at `point`.
@@ -49,6 +51,12 @@ public struct EngineTuning: Sendable {
     public var stagingIdleExpiry: TimeInterval = 2 * 3600
     public var transientRetries = ErrorClassifier.transientRetries
     public var maxCycleIterations = 100_000
+    /// Files of a folder import recorded per transaction while listing.
+    public var importListBatch = 500
+    /// Whole file groups of a folder import read and ingested per stage run.
+    public var importBatchGroups = 100
+    /// A stage run stops reading after this many bytes (it always finishes the group it is in).
+    public var importBatchBytes: Int64 = 2 * GlobalSettings.GiB
     /// Pause between the exports recovery makes to tell look-alike files apart (FR-51).
     public var recoveryExportInterval: TimeInterval = 2
     /// At most this many look-alike candidates are exported per recovery run.
@@ -67,6 +75,8 @@ public struct EngineTuning: Sendable {
 public struct EngineEnvironment: Sendable {
     public var store: Store
     public var photos: any PhotosSource
+    /// Where resource bytes are read from, by `asset.source_id`. Photos is always registered.
+    public var sources: SourceRegistry
     public var destinations: DestinationRegistry
     public var metadataReader: any MetadataReading
     public var utiResolver: any UTIResolver
@@ -92,10 +102,12 @@ public struct EngineEnvironment: Sendable {
         system: any SystemConditions, log: any LogSink = NullLogSink(), layout: any LayoutPolicy = DynamicLayout(),
         transform: any Transform = IdentityTransform(), stagingDirectory: URL, containerDirectory: URL,
         settings: SettingsStore, tuning: EngineTuning = EngineTuning(), faults: (any FaultInjecting)? = nil,
-        geocoder: (any ReverseGeocoding)? = nil, localContent: (any LocalContentReading)? = nil
+        geocoder: (any ReverseGeocoding)? = nil, localContent: (any LocalContentReading)? = nil,
+        sources: SourceRegistry? = nil
     ) {
         self.store = store
         self.photos = photos
+        self.sources = sources ?? SourceRegistry(photos: photos)
         self.destinations = destinations
         self.metadataReader = metadataReader
         self.utiResolver = utiResolver
@@ -127,4 +139,6 @@ public enum EngineError: Error, Equatable, Sendable {
     case alreadyRunning
     case unsandboxedBuild
     case invalidState(String)
+    /// The database holds a backup in the old folder layout; the app must start over first.
+    case legacyLayout
 }

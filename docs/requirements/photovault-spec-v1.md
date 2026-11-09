@@ -22,24 +22,27 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 **Mục tiêu:**
 1. Backup bản gốc + bản chỉnh sửa lên Google Drive và 0..n thư mục local/NAS, với rule nội dung riêng cho từng đích.
-2. Layout: `Năm/Tháng`; tách thư mục ngày khi chụp nhiều, đặt tên địa danh khi đủ điều kiện; screenshot và ảnh lưu từ app ở nhánh riêng.
+2. Layout: mỗi ngày một thư mục `YYYY-MM-DD` trong từng nhánh (`Camera Uploads`, `Screenshots`, `Saved`); thư mục ngày của ảnh chụp có tên địa danh khi đủ điều kiện (sửa đổi 2026-11-09, issue #12, quyết định 0023).
 3. Sidecar JSON + XMP; trên Drive có view bằng shortcut: `By device`, `By place`, `Favorites`.
 4. Lần chạy đầu chọn: toàn bộ / từ một ngày / chỉ ảnh mới.
 5. Không upload trùng, kể cả khi mất DB hoặc library bị rebuild. Chịu được crash, sleep, mất mạng, NAS bị ngắt.
 6. Không làm đầy ổ Mac.
 7. Phát hiện backup bị mất; không im lặng.
 8. Quyền tối thiểu: Photos (không Full Disk Access), `drive.file`, chỉ thư mục do owner chọn.
+9. Nhiều nguồn, cùng một cách tổ chức: Photos là nguồn chính, liên tục; có thể nhập một lần từ một thư mục trên Mac, và các nguồn khác sẽ thêm sau (sửa đổi 2026-11-09, issue #17, quyết định 0024).
 **Phi mục tiêu:**
 - **Không bao giờ xoá dữ liệu backup** ở bất kỳ đích nào. Không sync hai chiều. Không sửa Photos library.
-- Không làm: Google Photos, S3, OneDrive, Dropbox, mã hoá phía client, backend, telemetry, phân phối.
-- Không hỗ trợ nhiều library hoặc nhiều tài khoản Google.
+- Không làm: Google Photos, S3, OneDrive, mã hoá phía client, backend, telemetry, phân phối. (Dropbox và nhiều tài khoản Google: chuyển sang "để sau", §15; sửa đổi 2026-11-09, issue #17, quyết định 0024.)
+- Không hỗ trợ nhiều library Photos.
 ## 3. Thuật ngữ
  
 | Thuật ngữ | Nghĩa |
 |---|---|
 | Asset / Resource | Một `PHAsset` / một `PHAssetResource` |
 | Primary resource | RAW nếu là cặp RAW+JPEG; ngược lại `.photo` hoặc `.video` |
-| Asset key | `c:<cloudId>` hoặc `l:<localId>` — khoá ổn định (8.1) |
+| Asset key | `c:<cloudId>` hoặc `l:<localId>` — khoá ổn định (8.1); `x:<sha256>` cho file nhập từ thư mục (quyết định 0024) |
+| Nguồn | Nơi asset đến: `photos` (liên tục, chính) hoặc một lần nhập `folder-<uuid>` (`asset.source_id`) |
+| Import job | Một lần nhập một thư mục: `scanning` → `importing` → `completed`, hoặc `offline` / `cancelled` |
 | Kind | `original` · `edited` · `sidecarJson` · `sidecarXmp` |
 | Đích | `googleDrive` (đúng 1) · `localFolder` (0..n) |
 | Category | `camera` · `screenshot` · `saved` (lưu từ app chat/web) |
@@ -73,7 +76,6 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 |---|---|
 | Video, bản chỉnh sửa, mọi khung burst | Bật (trần toàn cục) |
 | Album Hidden | **Tắt** (vẫn scan) |
-| N (`dayFolderThreshold`) | 10 |
 | Rate export backfill | 20 GB/giờ |
 | Backfill chỉ khi cắm sạc | Bật |
 | Mọi upload chỉ khi cắm sạc | Tắt |
@@ -98,6 +100,8 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 - Đổi tên root = `files.update name`.
 - Đổi root hoặc đổi tài khoản → xác nhận → reset trạng thái đích Drive → FR-51 nếu đích mới có dữ liệu → chạy lại.
 - Đăng xuất → revoke + xoá Keychain; DB giữ nguyên. Đăng nhập lại bằng user ID khác = đổi tài khoản.
+
+**FR-117 Bắt đầu lại (factory reset, quyết định 0025):** Settings › Nâng cao › "Đặt lại từ đầu…" (xác nhận). App đăng xuất Google (xoá Keychain, revoke nếu có mạng), ghi dấu `factory-reset-requested` rồi tự mở lại. Tiến trình mới giữ khoá instance (đợi tối đa 15 giây khoá của tiến trình cũ), trước khi mở DB xoá hết dữ liệu trong thư mục dữ liệu (DB, staging, bản sao DB, log, lịch sử thông báo) và xoá dấu sau cùng; giữ ngôn ngữ giao diện và `drive-daily-cap.json` (Google tính hạn mức ngày theo tài khoản). Crash giữa chừng: lần mở sau làm tiếp. Không đụng gì ở Drive/NAS; owner tự chuyển thư mục backup cũ vào Thùng rác nếu không muốn dùng lại. Nếu không tự mở lại được, app báo việc đặt lại sẽ hoàn tất ở lần mở tiếp theo.
 ### 4.2 Phát hiện thay đổi
  
 **FR-10 Scan metadata** (không export):
@@ -180,8 +184,9 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 ### 4.5 Layout & tên (mọi đích)
  
 **FR-40 Cấu trúc:**
-- `camera`: `<Root>/YYYY/MM/`. Ngày có **> N asset `camera`** → `<Root>/YYYY/MM/YYYY-MM-DD[ <Địa danh>]/`.
-- `<Root>/Screenshots/YYYY/MM/` và `<Root>/Saved/YYYY/MM/`: không thư mục ngày, không địa danh, không được đếm vào N.
+- `camera`: `<Root>/Camera Uploads/YYYY-MM-DD[ <Địa danh>]/` — mọi ngày có ảnh đều có thư mục riêng.
+- `<Root>/Screenshots/YYYY-MM-DD/` và `<Root>/Saved/YYYY-MM-DD/`: không địa danh.
+- Tên root mặc định: `PhotoVault`.
 - Không có ngày → `Unknown date/` trong từng nhánh.
 - `By device/`, `By place/`, `Favorites/` (chỉ Drive) là view, không chứa file thật.
 - Mọi file của một asset nằm cùng một thư mục (vì dùng placement đã chốt).
@@ -236,6 +241,9 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 - **FR-50** Asset key (8.1).
 - **FR-51 Khôi phục từ đích** — bắt buộc khi DB rỗng mà đích có dữ liệu, khi dùng lại root, khi thêm lại NAS cũ (có `.photovault/destination.json`), hoặc owner bấm. **Chỉ chạy khi scan `complete`.** Thuật toán 8.15; trong lúc đó đích không nhận upload.
+- **FR-118 Bố cục cũ (0.1.0), quyết định 0025:** không migration và không bao giờ di chuyển hay xoá dữ liệu ở đích ("sync lại, không migrate").
+  - *DB cũ:* khi mở, nếu bất kỳ `upload_job.remote_logical_parent` hoặc `remote_folder.logical_path` khớp `(camera|screenshot|saved)/<YYYY>[/…]`, kết quả `kv.legacy_layout = 1` được lưu một lần. Khi đó chu kỳ sync, khôi phục khởi động và các lệnh ghi job/move không làm gì; trạng thái tổng là "cần bắt đầu lại" (thẻ đỏ ở menu bar, nút mở Settings › Nâng cao, Sync now bị khoá, không thông báo). DB mới sau FR-117 không bị chặn.
+  - *Thư mục gốc cũ:* khi onboarding, thêm đích hoặc đổi root/tài khoản gặp một root có thư mục năm `YYYY` ở cấp gốc hoặc dưới `Screenshots`/`Saved`, app không đề nghị dùng lại; báo đó là bản sao lưu 0.1.0, cách xử lý là chuyển vào Thùng rác hoặc chọn thư mục khác/tạo root mới. FR-51 từ chối một root như vậy (`notReady(.legacyLayout)`) trước khi ghi gì.
 - **FR-52** `VACUUM INTO` mỗi 24 giờ và trước migration (giữ 7 bản). DB hỏng → bản sao gần nhất + FR-51.
 - **FR-53** Mỗi chu kỳ, theo batch ≤ 500: `cloudIdentifierMappings` cho asset `l:` có `cloud_id IS NULL`. Bắt buộc chạy hết trước reconciliation.
 - **FR-54 Một instance:** `flock` độc quyền trên `<container>/photovault.lock`. Instance thứ hai báo "đang chạy" rồi thoát.
@@ -250,7 +258,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 **FR-62** `SMAppService.mainApp`.
  
-**FR-63** Hoạt động gần đây: 500 sự kiện (đổi tên, di chuyển, file thiếu, đổi trạng thái, khôi phục).
+**FR-63** Hoạt động gần đây: 500 sự kiện (đổi tên, di chuyển, file thiếu, đổi trạng thái, khôi phục, tiến độ). Sự kiện thường lệ không đẩy mất sự kiện hiếm: đổi tên và di chuyển của một đích gộp vào một dòng trong mỗi giờ, số file upload gộp một dòng mỗi ngày, trạng thái đổi rồi quay lại trong 2 giờ thì bỏ dòng. Tiến độ: số file upload trong ngày, và một lần khi backfill của một đích xong. Dòng sự kiện có thể ghi tên thư mục, không bao giờ ghi tên file hay toạ độ.
  
 ### 4.9 Local/NAS
  
@@ -279,14 +287,17 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 - **FR-80** Chỉ áp dụng cho thư mục ngày của nhánh `camera`.
 - **FR-81** Xét asset `camera` có GPS; bỏ qua asset không có GPS; không có asset nào có GPS → không đặt tên. Mọi asset có GPS phải cùng `isoCountryCode` + `administrativeArea`, so bằng **khoá locale `en`**.
-- **FR-82** Cùng `locality` → hiển thị locality, ngược lại hiển thị tỉnh; khác quốc gia nhà thì thêm tên nước; ngôn ngữ theo setting. Tên thư mục: `YYYY-MM-DD <Địa danh>`. Đổi ngôn ngữ → đổi tên lại.
+- **FR-82** Cùng `locality` → hiển thị locality, ngược lại hiển thị tỉnh; khác quốc gia nhà thì thêm tên nước. Tên thư mục: `YYYY-MM-DD <Địa danh>`. Ngôn ngữ cố định (`PlaceNameRule`, quyết định 0023):
+  - Tên nước: tiếng Anh chuẩn ("Vietnam", "Japan").
+  - Nơi ở Việt Nam: tiếng Việt, bỏ tiền tố cấp tỉnh/thành ("Thành phố", "TP.", "Tỉnh", "Thủ đô") → "Hà Nội", "Lâm Đồng"; tiền tố phường/xã giữ nguyên ("P. Cửa Nam").
+  - Nơi ở nước ngoài: tên tiếng Anh, kèm tên bản địa trong ngoặc khi khác ("Kyoto (京都市)").
 - **FR-83** Chỉ đặt tên khi ngày đã kết thúc ≥ 6 giờ. Tập asset đổi → tính lại → đổi tên (thêm, đổi hoặc bỏ địa danh).
 - **FR-84 Geocoding:**
   - Dùng `CLGeocoder.reverseGeocodeLocation(_:preferredLocale:)` (hoặc `MKMapItem.placemark`) sau protocol `ReverseGeocoding`; chấp nhận cảnh báo deprecated. `MKAddressRepresentations` **không** có `administrativeArea` nên không dùng được.
   - [VERIFY M0-6] Nếu mất các trường có cấu trúc → giảm cấp xuống chỉ quốc gia, báo owner.
   - Ô lưới ~0,01°; cache `(geo_cell, locale)` vĩnh viễn; tối đa **20 request/phút**, backoff khi throttle (Apple ~50/phút, không dành cho batch).
   - Bounding box > 300 km → không cùng tỉnh, không cần geocode. > 30 ô → chọn 30 ô đại diện.
-  - Phạm vi: mọi ô của asset `camera` có GPS. Ưu tiên ô cho thư mục ngày, sau đó ô mới nhất trước. Mỗi ô 2 request (`en` + ngôn ngữ hiển thị) → 10.000 ô ≈ 17 giờ, rải nhiều ngày. Không chặn upload.
+  - Phạm vi: mọi ô của asset `camera` có GPS. Ưu tiên ô cho thư mục ngày, sau đó ô mới nhất trước. Mỗi ô tối đa 2 request (`en` + ngôn ngữ thứ hai: `vi` ở Việt Nam, ngôn ngữ chính của nước sở tại ở nơi khác, bỏ qua khi đó là tiếng Anh; lưu dưới khoá `local`) → 10.000 ô ≈ 17 giờ, rải nhiều ngày. Không chặn upload.
 - **FR-85** Toạ độ làm tròn ~1 km được gửi tới Apple; ghi rõ trong Settings và README; tắt được.
 ### 4.11 Sidecar
  
@@ -308,7 +319,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 - Phải đọc được bằng `exiftool`. Lightroom chỉ đọc `.xmp` ngoài cho RAW độc quyền. digiKam mặc định tìm `file.ext.xmp` [VERIFY] — ghi README.
 **FR-93 Cập nhật:**
 - Sinh lần đầu khi **mọi** job bản gốc của asset ở đích đó đã kết thúc (`done`/`skipped`).
-- Sinh lại khi: một job resource chuyển `done`; asset updated; album đổi ([VERIFY], nếu không thì 7 ngày một lần); geocode xong; tên thiết bị/ngôn ngữ đổi; reconciliation.
+- Sinh lại khi: một job resource chuyển `done`; asset updated; album đổi ([VERIFY], nếu không thì 7 ngày một lần); geocode xong; tên thiết bị đổi; reconciliation.
 - Chỉ upload khi hash đổi.
 - **Không ghi** khi ở đích đã có file mà DB chưa có hash của app, hoặc hash khác lần ghi trước → `skipped(foreignFile|foreignModified)`.
 **FR-94** README ghi: không có People/Memories; caption/keywords chỉ từ macOS 27; Lightroom có thể ghi vào `.xmp`.
@@ -336,17 +347,27 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Shortcut trỏ theo ID nên không hỏng khi file di chuyển hoặc đổi tên.
 - Số item tăng theo mỗi view [VERIFY giới hạn My Drive] → Settings ước tính và cảnh báo.
 - Bật view → backfill từ DB. Tắt view → giữ nguyên cây. "Dựng lại view" = đưa cây về đúng trạng thái mong muốn.
-**FR-104 `By device/<Thiết bị>/YYYY/MM/`:**
+**FR-104 `By device/<Thiết bị>/YYYY-MM-DD/`:**
 - Thành viên: asset `camera` có `camera_model`; không có nhóm Unknown.
 - Khoá `make|model` chuẩn hoá. Tên mặc định `<Make> <Model>` (bỏ lặp hãng), cộng bảng `Resources/device-names.json` (ví dụ `ILCE-7M4` → `Sony A7 IV`; [VERIFY] từng mã).
 - **Đổi tên** nhóm = đổi tên thư mục; trùng tên nhóm khác → báo lỗi, gợi ý gộp. **Gộp** = gán model sang nhóm khác → move shortcut.
 - `group_id` deterministic = hash của `make|model` đầu tiên.
-**FR-105 `Favorites/YYYY/`:** mọi category có `isFavorite`. Bật → tạo; tắt → trash.
+**FR-105 `Favorites/YYYY-MM-DD/`:** mọi category có `isFavorite`. Bật → tạo; tắt → trash.
  
-**FR-106 `By place/<Quốc gia>/<Tỉnh>/YYYY/`:**
+**FR-106 `By place/<Quốc gia>/<Tỉnh>/YYYY-MM-DD/`:**
 - Thành viên: asset `camera` có GPS và ô đã geocode ra quốc gia + tỉnh.
-- Khoá = `isoCountryCode` + `administrativeArea` ở locale **`en`**; tên hiển thị theo ngôn ngữ của owner. Đổi ngôn ngữ = chỉ đổi tên thư mục.
+- Khoá = `isoCountryCode` + `administrativeArea` ở locale **`en`**; tên hiển thị theo FR-82 (tên nước tiếng Anh).
 - Kết quả geocode cố định; nút "Làm mới địa danh" xoá cache rồi geocode lại.
+### 4.13 Nguồn & nhập một lần (sửa đổi 2026-11-09, issue #17, quyết định 0024)
+
+**FR-110 Danh sách nguồn:** Settings › Nguồn có "Nguồn liên tục" (Photos, luôn đứng đầu) và "Nhập một lần" (các import job: đang chạy trước, đã xong sau). Photos vẫn cần quyền và baseline trước khi một import chạy.
+**FR-111 Nhập từ thư mục:** owner chọn thư mục bằng `NSOpenPanel`; app giữ security-scoped bookmark chỉ-đọc, duyệt đệ quy, bỏ file ẩn, package (kể cả `.photoslibrary`) và symlink, không bao giờ ghi vào thư mục. Chỉ nhận ảnh và video (RAW gồm trong đó).
+**FR-112 Gom nhóm:** trong cùng một thư mục, file cùng tên (không phân biệt hoa thường, không kể đuôi) là một asset: RAW + một ảnh → `.photo` + `.alternatePhoto` (primary là RAW); ảnh + video chỉ khi content identifier của Apple khớp → Live Photo. Còn lại mỗi file một asset. `.AAE`, `.XMP`, `.THM`, `.json` bị bỏ qua và đếm là "bỏ qua".
+**FR-113 Metadata và ngày:** ngày = EXIF `DateTimeOriginal` (+ `OffsetTimeOriginal`, không có thì múi giờ lưu trữ) → ngày tạo của video → ngày sớm hơn của (ngày tạo, ngày sửa) file; vị trí từ EXIF GPS hoặc ISO 6709; hãng/máy/lens từ TIFF/EXIF. Category theo FR-20 với metadata đã đọc, không bao giờ tạm thời; screenshot = EXIF `UserComment` "Screenshot"; thư mục cha trùng tên app chat tính là album (quy tắc 2).
+**FR-114 Không trùng:** file là trùng khi khoá `x:` đã có hoặc khi một asset đang sống có resource cùng SHA-256. Khi chưa có hash, chỉ với asset Photos chưa export và chỉ khi ngày của file lấy từ EXIF/metadata video (không phải ngày file): cùng giây chụp, cùng tên gốc (không phân biệt hoa thường) và cùng kích thước ảnh (hai chiều theo thứ tự nào cũng được) hoặc thời lượng (±0,5 giây). Không bao giờ bỏ một file khác nội dung vì đoán. File trùng chỉ được đếm. Asset nhập là "mới đến" (`inserted_at` = lúc nhập, job `incremental`).
+**FR-115 Huỷ:** ngừng nhập; file chưa quyết định → `cancelled`; asset của job có job chưa xong bị coi như đã xoá (job pending/deferred bị huỷ, file đã upload giữ nguyên). Nhập lại cùng thư mục sẽ nhặt lại phần thiếu.
+**FR-116 Tiến độ và tóm tắt:** Settings và menu bar hiện: đọc (đã xử lý / tìm thấy) và upload (job xong / job của import, mọi đích), số trùng, bỏ qua, lỗi. Khi xong có đúng một dòng trong Hoạt động gần đây (chỉ số, không tên) và một thông báo macOS (có thể nêu tên thư mục). Thư mục không truy cập được (ổ rút ra) giữ riêng job đó ở `offline` và tự tiếp tục; Photos không bị ảnh hưởng.
+
 ## 5. NFR
  
 - **NFR-01** Crash ở bất kỳ thời điểm nào không làm mất dữ liệu hay sinh file trùng.
@@ -355,7 +376,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - **NFR-04** Backoff có jitter 1 giây → 30 phút; phân loại lỗi theo 8.14.
 - **NFR-05** `NWPathMonitor`; tôn trọng mạng expensive/constrained.
 - **NFR-06** Token chỉ ở Keychain, không log; chỉ gọi Google và geocoder của Apple.
-- **NFR-07** `os.Logger` + file log xoay vòng 5 × 5 MB; mỗi job có ID để trace.
+- **NFR-07** `os.Logger` + file log xoay vòng 5 × 5 MB (tối đa 25 MB, file cũ nhất tự xoá), timestamp UTC đến mili-giây; mỗi job có ID để trace. "Xem log" mở cửa sổ đọc log trong app (lọc mức, tìm, sao chép, mở thư mục).
 - **NFR-08** Scan hàng chục nghìn asset không treo UI.
 - **NFR-09** Mỗi resource export một lần cho mọi đích đang khả dụng.
 ## 6. Môi trường
@@ -387,6 +408,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 3. Gặp `localIdentifier` lạ (library rebuild, đăng xuất iCloud) → tra cloud ID → **gắn lại** vào asset cũ; không có thì là asset mới.
 4. FR-53 bổ sung cloud ID cho asset `l:`.
 5. [VERIFY M0-2] cloud ID có ổn định qua rebuild/đăng xuất iCloud không; độ dài.
+6. File nhập từ thư mục (FR-111) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Nguồn liên tục khác (để sau) sẽ dùng `s:<sourceId>/<itemId>`.
 **Placement** (`placement_category`, `placement_day` hoặc `unknown`, `name_stem`):
 - Chốt ngay khi có category chính thức, trước khi export bất kỳ resource nào để upload.
 - Dùng cho mọi file của asset ở mọi đích.
@@ -402,6 +424,10 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
   - Chỉnh sửa: `has_adjustments`, `adjustment_hash`, `edit_check_pending`.
   - Vòng đời: **`inserted_at`** (NULL = có sẵn tại baseline Drive), `first/last_seen_at`, `deleted_at`.
   - Index theo `cloud_id`, `(placement_day, category)`, và hash của asset key (cho `h:`).
+  - Nguồn (sửa đổi 2026-11-09, quyết định 0024): `source_id` (mặc định `photos`), index `(source_id, deleted_at)`; `resource(sha256)` có index để tra trùng.
+  - Nguồn: `source_id` (mặc định `photos`; migration `v5-sources`), index `(source_id, deleted_at)`.
+- **`source`** (quyết định 0024): `id` ('photos' | 'folder-<uuid>'), `kind`, `mode` (continuous | oneTime), `display_name`, `config_json` (bookmark chỉ-đọc), `status` (scanning | importing | offline | completed | cancelled), `status_reason`, `created_at`, `listed_at`, `finished_at`.
+- **`import_item`** (PK `source_id, rel_path`): `group_key`, `uti`, `size_bytes`, ngày tạo/sửa của file, `state` (pending | imported | duplicate | unsupported | failed | cancelled), `asset_key`, `is_primary`, `date_source`, `reason`.
 - **`asset_alias`**: `alias` → `asset_key`.
 - **`name_alloc`**: PK `(placement_category, placement_day, norm_stem)`.
 - **`album_member`**: `(album_local_id, album_title, asset_key)`.
@@ -412,7 +438,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
   - Tiến độ: `uploaded_hash`, **`target_gen`**, **`done_gen`**, `mismatch_count`, `attempts` (chỉ lỗi upload mức item), `next_attempt_at`, `deferred_since`, `last_error`.
 - **`day_stat`** (chỉ `camera`): `day`, `count`, `promoted`, `place_key`, `place_name`, `place_state` (pending/waitingGeocode/named/unnamed).
 - **`geo_cache`**: PK `(geo_cell, locale)` → `iso_country`, `country`, `administrative_area`, `locality`.
-- **`remote_folder`**: PK `(destination_id, logical_path)` → `remote_id`, `display_name`, `verified_session`. Đường dẫn logic **không chứa tên hiển thị**: `camera/2026/11/2026-11-08`, `view/byDevice/<group>/2026/11`, `view/byPlace/VN/<area>/2026`, `view/favorites/2026`. Ở local, đường dẫn thật luôn tính lúc chạy từ `display_name`.
+- **`remote_folder`**: PK `(destination_id, logical_path)` → `remote_id`, `display_name`, `verified_session`. Đường dẫn logic **không chứa tên hiển thị**: `camera`, `camera/2026-11-08`, `screenshot/2026-11-08`, `view/byDevice/<group>/2026-11-08`, `view/byPlace/VN/<area>/2026-11-08`, `view/favorites/2026-11-08`. Ở local, đường dẫn thật luôn tính lúc chạy từ `display_name`.
 - **`move_job`**: `op` (moveFile | renameFolder), `subject`, `from_value`, `to_value`, `state` (pending/inProgress/done/failed).
 - **`device_group`** (`group_id` deterministic, `display_name`) + **`device_model`** (`make_model_key` → `group_id`); **`view_folder_group`** (view, `group_key`, `display_name`).
 - **`shortcut`** (PK `destination_id, view, asset_key`): `target_id`, `shortcut_id`, `parent_logical`, `state` (pending/done/movePending/trashPending/trashed/failed/userRemoved).
@@ -449,10 +475,10 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
  
 1. Kiểm tra điều kiện chung (quyền Photos, mạng, nguồn điện, nhiệt) và điều kiện từng đích (credential, khả dụng, chưa đầy, root ổn).
 2. **ChangeTracker:** scan chưa xong → tiếp tục scan. Ngược lại → mỗi change một transaction thuần DB: upsert asset (gắn lại `local_id` lạ, ghi `inserted_at`), cập nhật cờ, `album_member`, phân loại, `day_stat`, upsert job theo eligibility, `edit_check_pending`, tăng `target_gen` sidecar, kích hoạt view, lưu token.
-3. **Classify** → chốt placement.
+3. **Classify** → chốt placement. Sau đó **ImportStage** (sửa đổi 2026-11-09, quyết định 0024): với mỗi import job `scanning` — liệt kê thư mục, đọc từng nhóm file ngoài transaction, một transaction cho mỗi nhóm (loại trùng, tạo asset với category cuối cùng, placement, job), rồi `importing` → `completed` khi không còn file chờ và không còn job `pending`/`uploading`.
 4. **ExportWorker** — chỉ asset đã chốt placement, primary trước. Ưu tiên: incremental > refresh > reupload > backfill (mới nhất trước). Chỉ export khi có đích khả dụng cần. Rate limiter áp cho backfill **và** mọi lần export lại (`export_count ≥ 1`). Có disk guard. Sau khi export: hash + EXIF.
 5. Worker cổng chỉnh sửa.
-6. **Fan-out:** layout từ placement + `day_stat` (trong transaction), đảm bảo thư mục (actor; khoá thư mục ở local), upload, verify. Ngày vừa được promote → `move_job`.
+6. **Fan-out:** layout từ placement + `day_stat` (trong transaction), đảm bảo thư mục (actor; khoá thư mục ở local), upload, verify. Layout không phụ thuộc việc promote nên không có `move_job` vì tách ngày.
 7. Mọi job gốc của asset ở một đích đã kết thúc → job sidecar; mỗi lần có thêm resource `done` → tăng `target_gen` sidecar. Drive: tạo shortcut khi target `done`.
 8. MoveWorker.
 9. PlaceNamer → `renameFolder` + làm mới sidecar/description + view `By place`.
@@ -472,16 +498,13 @@ Export bản gốc ở chế độ Optimize có thể khiến Photos giữ bản
  
 Luôn dùng archive timezone, không dùng `TimeZone.current`. `creationDate` sai do đồng hồ máy ảnh → giữ nguyên.
  
-### 8.7 Thư mục ngày (nhánh `camera`, mọi đích)
- 
-1. Count = số asset `camera` trong phạm vi FR-19 (cả ảnh chưa upload) của ngày đó. Asset đã đặt tính theo placement; tính lại từ DB, không cộng dồn.
-2. Category đổi → tính lại; không demote nên chấp nhận sai lệch nhỏ.
-3. Backfill chỉ chạy sau khi scan xong → ngày cũ có đích đúng ngay từ đầu.
-4. Count > N lần đầu → `promoted`, tạo thư mục ngày ở mỗi đích, `move_job` cho mọi file có `placement_day` đó (gốc, edited, sidecar), `place_state = pending`.
-5. Không demote.
-6. Đổi N → áp dụng từ đó về sau; nút "Sắp xếp lại" (báo trước số file), không demote.
-7. Không bao giờ xoá thư mục ngày; đổi tên không đổi đường dẫn logic.
-8. Đích tính ngay trước khi upload, trong transaction; ngày được promote trong lúc upload → `move_job`. Bất biến: mọi file của ngày đã promote nằm trong thư mục ngày.
+### 8.7 Thư mục ngày (mọi nhánh, mọi đích)
+
+1. Mọi file nằm trong thư mục ngày của `placement_day` ngay từ lần upload đầu; layout không phụ thuộc số lượng ảnh, nên không có `move_job` vì tách ngày.
+2. `day_stat.promoted` chỉ còn nghĩa "ngày này được đặt tên địa danh": bật ở asset `camera` đầu tiên của ngày, `place_state = pending`. Không demote.
+3. Count vẫn tính lại từ DB (cho tiến độ và địa danh), không cộng dồn.
+4. Không bao giờ xoá thư mục ngày; đổi tên (địa danh) không đổi đường dẫn logic.
+5. Đổi từ layout `Năm/Tháng` cũ không có migration: app chặn DB cũ và owner dùng "Đặt lại từ đầu" rồi sync lại vào root mới (quyết định 0023, 0025; FR-117, FR-118).
 ### 8.8 Phạm vi & eligibility (tính thuần tuý, theo từng đích)
  
 ```
@@ -496,6 +519,7 @@ eligible = asset.deleted_at IS NULL AND passesGlobalSettings AND passesRules(des
 - Đích thêm sau với `newOnly` chỉ nhận asset vào library sau lúc thêm.
 - Bỏ ẩn hay đổi setting không đổi `inserted_at`.
 - Ảnh cũ import sau mốc → được upload ở cả `newOnly` và `since`.
+- Asset nhập từ thư mục (FR-111) có `inserted_at` = lúc nhập, nên đi vào cửa sổ của `newOnly`/`since`; job của chúng là `incremental` (không qua bucket backfill và cổng nguồn điện).
 - Đổi phạm vi/rule/setting → tính lại; hợp lệ → upsert job; không còn hợp lệ → `cancelled` (theo 8.3).
 ### 8.9 Đích
  
@@ -520,7 +544,7 @@ So tên album chính xác, không so chuỗi con. Ưu tiên screenshot hơn albu
  
 ### 8.11 Thuật toán địa danh
  
-1. Trigger: ngày được promote / ngày kết thúc ≥ 6 giờ / tập asset đổi / ngôn ngữ đổi.
+1. Trigger: ngày được promote / ngày kết thúc ≥ 6 giờ / tập asset đổi / geocode của một ô trong ngày về.
 2. Không có GPS → `unnamed`.
 3. Bounding box > 300 km → `unnamed`.
 4. > 30 ô → chọn 30 ô đại diện (gồm các ô cực bắc/nam/đông/tây).
@@ -530,7 +554,7 @@ So tên album chính xác, không so chuỗi con. Ưu tiên screenshot hơn albu
 8. Tên đổi → `renameFolder` ở mỗi đích + làm mới sidecar/description.
 ### 8.12 Sidecar
  
-Deterministic (khoá sắp xếp, số định dạng cố định, không có thời điểm sinh). Cặp RAW+JPEG dùng một `.xmp` + một `.json`.
+Deterministic (khoá sắp xếp, số định dạng cố định, không có thời điểm sinh). Cặp RAW+JPEG dùng một `.xmp` + một `.json`. Sidecar JSON của asset nhập từ thư mục có thêm khối `"source": {kind, name, path, dateSource}` (sửa đổi 2026-11-09, quyết định 0024); sidecar của asset Photos không đổi một byte.
  
 ### 8.13 Engine view
  
@@ -558,7 +582,7 @@ Tiền đề: scan `complete` + FR-53 xong.
  
 1. `paused(recovering)`.
 2. List item có `pvSchema=1` (Drive) [VERIFY thấy được sau khi cài lại app] hoặc duyệt cây + sidecar (local).
-3. Dựng `remote_folder` từ `pvLogical` (local: từ cấu trúc thư mục, tách phần địa danh). Thư mục ngày tồn tại → `promoted`, `place_name`.
+3. Dựng `remote_folder` từ `pvLogical` (local: từ cấu trúc thư mục `Camera Uploads/<ngày>[ <địa danh>]`, `Screenshots/<ngày>`, `Saved/<ngày>`, tách phần địa danh). Thư mục ngày của `camera` tồn tại → `promoted`, `place_name`.
 4. Ghép file theo thứ tự:
    1. `pvAssetId`/`assetKey` (kể cả dạng `h:`, tra theo index hash) hoặc alias;
    2. cloud/local ID trong sidecar;
@@ -593,7 +617,7 @@ Tiền đề: scan `complete` + FR-53 xong.
 - **M2** UI: onboarding, menu bar, Settings, notification, Hoạt động gần đây, login item, đổi mode/tài khoản/root.
 - **M3** Local/NAS: ghi atomic không ghi đè, khoá, đổi tên an toàn, bookmark, `destination.json`, rule và phạm vi theo đích, staging nhiều đích.
 - **M4** Tổ chức & metadata: thư mục ngày, classify, cổng chỉnh sửa, PlaceNamer, sidecar, engine view + 3 view, `description`.
-- **M5** Hardening: Recovery (FR-51/52/53), reconciliation, kiểm tra toàn vẹn, "Sắp xếp lại", "Dựng lại view", retry deferred/skipped, toàn bộ test, README.
+- **M5** Hardening: Recovery (FR-51/52/53), reconciliation, kiểm tra toàn vẹn, "Dựng lại view", retry deferred/skipped, toàn bộ test, README.
 ## 11. Test
  
 **Unit** (dùng fake): mọi chuyển trạng thái 8.3 (upsert, reset cột, `target_gen`); recovery sau crash; phân loại lỗi; asset key/gắn lại; placement; classify + tập đích hai chiều; tên (NFC, byte, ký tự cấm, hoa/thường, trùng); promote/move/race; eligibility 8.8; địa danh (thiếu GPS, khác tỉnh, cùng tỉnh khác thành phố, nước ngoài, vùng biển, > 300 km); sidecar deterministic; XMP; rule + trần toàn cục; staging (đích offline, hết hạn khi rảnh); rate limiter; disk guard (file lớn, hai export cùng lúc); timezone; tên thiết bị; recovery (3 cách ghép, `h:`).
@@ -612,8 +636,7 @@ Tiền đề: scan `complete` + FR-53 xong.
 | T6 | ≥ 1.000 asset đủ loại → đủ file, burst đủ khung, Hidden không lên |
 | T7 | RAW-only + video drone > 4 GB → lên cả hai đích, checksum và EXIF y hệt |
 | T8 | Upload > 2 giờ → không bị cắt |
-| T9 | 10 camera + 8 screenshot, thêm camera thứ 11 → tách ngày đúng ở Drive và NAS |
-| T10 | Đổi N + "Sắp xếp lại" → đúng số file đã báo |
+| T9 | Camera + screenshot cùng ngày → `Camera Uploads/<ngày>` và `Screenshots/<ngày>` đúng ở Drive và NAS, không move |
 | T11 | Đổi timezone hệ thống → vẫn theo archive timezone |
 | T12 | Sửa ngày rồi sửa ảnh → edited/sidecar cùng thư mục với bản gốc |
 | T13 | Sửa, sửa lại, Favorite, album, Revert → một file edited mỗi loại; Favorite chỉ cập nhật sidecar |
@@ -686,7 +709,8 @@ Tiền đề: scan `complete` + FR-53 xong.
 ## 15. Để sau bản 1.0
  
 - S3-compatible với layout stable `YYYY/MM` (không move), multipart + resume, key không có quyền xoá, Object Lock.
-- OneDrive, Dropbox, WebDAV, Immich.
+- OneDrive, WebDAV, Immich.
+- Nguồn liên tục ngoài Photos (Dropbox, Flickr, Drive của tài khoản Google khác) và nhập một lần từ Google Drive hoặc cloud khác; Google Takeout và Photos Picker cho tài khoản Google khác (quyết định 0024, issue #17).
 - Mã hoá phía client.
 - View `By lens`, `Albums`.
 - Layout gom sự kiện/chuyến đi.

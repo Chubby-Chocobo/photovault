@@ -94,6 +94,11 @@ extension SyncCoordinator {
 
     private func cycle(_ trigger: SyncTrigger) async throws -> CycleOutcome {
         var report = CycleReport()
+        // 0. An old-layout database stays untouched: no export, upload, move, sidecar or view.
+        guard try await !isLegacyLayoutBlocked() else {
+            lastCheckBlock = .legacyLayout
+            return .blocked(.legacyLayout)
+        }
         // 1. checks
         guard env.photos.authorizationStatus().allowsReading else {
             lastCheckBlock = .photosUnauthorized
@@ -170,6 +175,7 @@ extension SyncCoordinator {
             if uploadsAllowed {
                 let uploaded = try await uploader.runPass(gate: gate)
                 report.uploaded += uploaded.uploaded
+                report.uploadedByDestination.merge(uploaded.perDestination, uniquingKeysWith: +)
                 progress += uploaded.uploaded
             }
             for step in [CycleStep.fanOut, .sidecarsAndViews, .moves, .placeNamer] {
@@ -177,12 +183,17 @@ extension SyncCoordinator {
             }
             try await staging.releaseUnneeded()
             try await staging.expireIdle()
-            if progress == 0 || exported.photosUnavailable { break }
+            if exported.photosUnavailable { break }
+            if progress == 0 {
+                report.drained = true
+                break
+            }
         }
 
         // 10–11
         try await runStages(.cloudIds, trigger, &report)
         try await recordSuccess(report)
+        await SyncMilestones(env: env).record(report)
         await publish()
         return .completed(report)
     }
@@ -223,7 +234,9 @@ extension SyncCoordinator {
                     JOIN destination d ON d.id = j.destination_id
                     LEFT JOIN resource r ON r.asset_key = j.asset_key AND r.res_type = j.res_type
                     WHERE j.state IN ('pending', 'uploading') AND d.status = 'active'
-                      AND (j.last_error IS NOT NULL OR r.last_error IS NOT NULL)
+                      AND (j.last_error IS NOT NULL OR (r.last_error IS NOT NULL AND NOT EXISTS (
+                            SELECT 1 FROM asset a JOIN source s ON s.id = a.source_id
+                            WHERE a.asset_key = j.asset_key AND s.status = 'offline')))
                     """) ?? 0
                 guard failing == 0 else { return }
             }

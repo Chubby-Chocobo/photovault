@@ -1,7 +1,7 @@
 ---
 phase: 06
 title: "Google Drive: OAuth, Keychain, REST, resumable upload"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 5-8h
@@ -33,8 +33,8 @@ OAuth (FR-02/03/08), Drive v3 REST client, resumable uploads with pre-generated 
 2. Implement.
 
 ## Success Criteria
-- [ ] Drive tests green; no network in tests.
-- [ ] No token value in any log statement (grep check in review).
+- [x] Drive tests green; no network in tests.
+- [x] No token value in any log statement (grep check in review).
 
 ## Risk Assessment
 - [VERIFY M0-3] `drive.file` with shortcuts, generateIds per type, session lifetime, appProperties limit, list after reinstall: defaults per spec, decisions recorded; views auto-disable if shortcut creation returns 403 (FR-103).

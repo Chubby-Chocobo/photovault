@@ -49,7 +49,7 @@ import Testing
         #expect(twins.values.allSatisfy { $0.count == 1 }, "no folder was created twice")
     }
 
-    @Test(arguments: Target.allCases, CrashPoint.allCases.filter { $0 != .afterExportBeforeCommit })
+    @Test(arguments: Target.allCases, CrashPoint.allCases.filter { ![.afterExportBeforeCommit, .afterImportInspectBeforeCommit, .afterImportGroupCommit].contains($0) })
     func crashAtEveryUploadStep(_ target: Target, _ point: CrashPoint) async throws {
         let (h, destination) = try await prepare(target)
         h.injector.arm(point)
@@ -177,7 +177,7 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test func dayPromotedWhileUploadingCreatesAMoveJobInTheCompletionTransaction() async throws {
+    @Test func dayPromotedWhileUploadingNeedsNoMove() async throws {
         let h = try await Harness { $0.maxConcurrentUploadsPerDestination = 1 }
         try h.addDrive(scope: .full)
         await h.add(h.snapshot("d", daysAgo: 1), recordChange: false)
@@ -192,18 +192,16 @@ import Testing
             }
         }
         await h.run()
-        // The move worker runs later in the same cycle and finishes the move the completion queued.
-        let moves = try h.read { db in try MoveJobRepository.fetch(db, destinationId: .googleDrive, state: .done) }
-        #expect(moves.count == 1)
+        let moves = try h.read { db in
+            try MoveJobState.allCases.flatMap { try MoveJobRepository.fetch(db, destinationId: .googleDrive, state: $0) }
+        }
+        #expect(moves.isEmpty, "the file was uploaded into its day folder, so there is nothing to move")
         let file = try #require(await h.drive.files.first)
         #expect(await h.drive.path(of: file.id).contains("/\(day)/"))
-        #expect(moves[0].operation == .moveFile)
-        #expect(moves[0].fromValue == "camera/\(day.yearString)/\(day.monthString)")
-        #expect(moves[0].toValue == "camera/\(day.yearString)/\(day.monthString)/\(day)")
         #expect(try h.jobs(.done).count == 1)
     }
 
-    @Test func uploadsTargetThePromotedFolderWhenThePromotionHappenedBeforehand() async throws {
+    @Test func uploadsTargetTheDayFolderWhenThePromotionHappenedBeforehand() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)
         await h.add(h.snapshot("e", daysAgo: 1), recordChange: false)

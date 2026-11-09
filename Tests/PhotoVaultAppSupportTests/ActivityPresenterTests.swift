@@ -21,6 +21,7 @@ struct ActivityPresenterTests {
             ActivityEvent(id: 3, at: now.addingTimeInterval(-86400), kind: .moved, destinationId: drive, message: "14 files moved"),
             ActivityEvent(id: 2, at: now.addingTimeInterval(-2 * 86400), kind: .missingFile, destinationId: nas, message: "27 files missing"),
             ActivityEvent(id: 1, at: now.addingTimeInterval(-2 * 86400 - 60), kind: .recovered, destinationId: nil, message: "restored 18402 files"),
+            ActivityEvent(id: 0, at: now.addingTimeInterval(-2 * 86400 - 120), kind: .milestone, destinationId: drive, message: "this sync uploaded 3 files"),
         ]
     }
 
@@ -33,7 +34,7 @@ struct ActivityPresenterTests {
     @Test func groupsByDayKeepingOrder() {
         let result = groups()
         #expect(result.map(\.heading) == ["Hôm nay", "Hôm qua", "Thứ 7, 07/11/2026"])
-        #expect(result.map { $0.rows.count } == [2, 1, 2])
+        #expect(result.map { $0.rows.count } == [2, 1, 3])
         #expect(result[0].rows[0].id == 5)
         #expect(result[0].rows[0].destinationName == "Google Drive")
         #expect(result[2].rows[1].destinationName == nil)
@@ -54,7 +55,7 @@ struct ActivityPresenterTests {
         #expect(groups(.all, "SYNOLOGY").flatMap(\.rows).map(\.id) == [4, 2])
         #expect(groups(.all, "khôi phục").flatMap(\.rows).map(\.id) == [1])
         #expect(groups(.all, "zzz").isEmpty)
-        #expect(groups(.all, "   ").flatMap(\.rows).count == 5)
+        #expect(groups(.all, "   ").flatMap(\.rows).count == 6)
     }
 
     @Test func combinesFilterAndSearch() {

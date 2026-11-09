@@ -9,6 +9,12 @@ struct ActivityView: View {
     @State private var query = ""
 
     var body: some View {
+        content
+            .navigationTitle(tr(vi: "Hoạt động gần đây", en: "Recent activity"))
+            .id(model.language)
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
@@ -19,7 +25,9 @@ struct ActivityView: View {
                     let groups = ActivityPresenter.groups(
                         model.activity, filter: filter, query: query, destinationNames: model.destinationNames, now: Date())
                     if groups.isEmpty {
-                        Text(model.activity.isEmpty ? "Chưa có sự kiện nào." : "Không có sự kiện khớp bộ lọc.")
+                        Text(model.activity.isEmpty
+                            ? tr(vi: "Chưa có sự kiện nào.", en: "No events yet.")
+                            : tr(vi: "Không có sự kiện khớp bộ lọc.", en: "No events match the filter."))
                             .foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 40)
                     }
                     ForEach(groups) { group in
@@ -32,7 +40,9 @@ struct ActivityView: View {
                 .padding(16)
             }
             Divider()
-            Text("\(VietnameseFormat.integer(model.activity.count)) sự kiện · PhotoVault giữ 500 sự kiện gần nhất")
+            Text(tr(
+                vi: "\(VietnameseFormat.integer(model.activity.count)) sự kiện · PhotoVault giữ 500 sự kiện gần nhất",
+                en: "\(L10n.plural(model.activity.count, one: "1 event", other: "\(VietnameseFormat.integer(model.activity.count)) events")) · PhotoVault keeps the latest 500"))
                 .font(.caption).foregroundStyle(.secondary).padding(8)
         }
         .frame(minWidth: 620, idealWidth: 680, minHeight: 440, idealHeight: 520)
@@ -46,15 +56,15 @@ struct ActivityView: View {
 
     private var toolbar: some View {
         HStack(spacing: 12) {
-            Picker("Loại sự kiện", selection: $filter) {
+            Picker(tr(vi: "Loại sự kiện", en: "Event type"), selection: $filter) {
                 ForEach(ActivityFilter.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            TextField("Tìm", text: $query)
+            TextField(tr(vi: "Tìm", en: "Search"), text: $query)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 160)
-                .accessibilityLabel("Tìm sự kiện")
+                .accessibilityLabel(tr(vi: "Tìm sự kiện", en: "Search events"))
         }
         .padding(12)
     }
@@ -89,6 +99,7 @@ private struct ActivityRowView: View {
         case .statusChanged: .orange
         case .recovered: .green
         case .notice: .secondary
+        case .milestone: .green
         }
     }
 }

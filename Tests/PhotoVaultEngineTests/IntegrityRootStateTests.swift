@@ -56,7 +56,7 @@ import Testing
 
     @Test func filesUnderATrashedFolderAreNotCountedAsMissing() async throws {
         let h = try await driveLife()
-        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == "camera/2026/10" })
+        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == h.cameraDayPath(daysAgo: 1) })
         await h.drive.externallyTrash(month.id)
         let report = try await h.coordinator.runIntegrityCheck(.googleDrive)
         #expect(report.missing == 0)
@@ -86,7 +86,7 @@ import Testing
 
     @Test func untrashingTheAppItemsHealsMissingFiles() async throws {
         let h = try await driveLife()
-        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == "camera/2026/10" })
+        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == h.cameraDayPath(daysAgo: 1) })
         await h.drive.externallyTrash(month.id)
         try markAllMissing(h)
         try await h.coordinator.untrashAppItems(.googleDrive)
@@ -99,7 +99,7 @@ import Testing
         let schema = [AppPropertyKey.schema: AppPropertyCodec.schemaVersion]
         await h.drive.put(.init(id: "old-root", name: "Old", parentId: "", kind: .folder, appProperties: schema, trashed: true))
         await h.drive.put(.init(id: "old-month", name: "01", parentId: "old-root", kind: .folder, appProperties: schema, trashed: true))
-        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == "camera/2026/10" })
+        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == h.cameraDayPath(daysAgo: 1) })
         await h.drive.externallyTrash(month.id)
         try await h.coordinator.untrashAppItems(.googleDrive)
         #expect(await h.drive.items[month.id]?.trashed == false)

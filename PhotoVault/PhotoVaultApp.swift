@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotoVaultCore
 
 @main
 struct PhotoVaultApp: App {
@@ -15,15 +16,22 @@ struct PhotoVaultApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Chào mừng đến PhotoVault", id: WindowID.onboarding) {
+        Window(tr(vi: "Chào mừng đến PhotoVault", en: "Welcome to PhotoVault"), id: WindowID.onboarding) {
             OnboardingView()
                 .environment(model)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
 
-        Window("Hoạt động gần đây", id: WindowID.activity) {
+        Window(tr(vi: "Hoạt động gần đây", en: "Recent activity"), id: WindowID.activity) {
             ActivityView()
+                .environment(model)
+        }
+        .windowResizability(.contentMinSize)
+        .defaultPosition(.center)
+
+        Window(tr(vi: "Nhật ký", en: "Log"), id: WindowID.log) {
+            LogView()
                 .environment(model)
         }
         .windowResizability(.contentMinSize)
@@ -39,4 +47,5 @@ struct PhotoVaultApp: App {
 enum WindowID {
     static let onboarding = "onboarding"
     static let activity = "activity"
+    static let log = "log"
 }

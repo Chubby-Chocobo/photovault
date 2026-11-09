@@ -1,7 +1,7 @@
 ---
 phase: 12
 title: "Docs: README, sidecar schema, decisions, spikes, test report"
-status: done
+status: completed
 priority: P2
 size: M
 human_effort: 2-3h
@@ -36,7 +36,7 @@ Everything spec §12 asks to be written down. Size: M — several documents, no 
 2. Cross-check every FR behaviour maps to a test or a decision file (see Audit additions).
 
 ## Success Criteria
-- [ ] Acceptance files exist; links resolve.
+- [x] Acceptance files exist; links resolve.
 
 ## Risk Assessment
 - Docs drift from code: written last, from the code.

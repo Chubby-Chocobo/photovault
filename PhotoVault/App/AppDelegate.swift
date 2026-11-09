@@ -11,4 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Opening the app again (Spotlight, Finder, Launchpad) shows a window, so the app stays reachable
+    /// when a crowded menu bar hides its icon.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated { AppModel.shared.openOnReopen() }
+        return false
+    }
 }

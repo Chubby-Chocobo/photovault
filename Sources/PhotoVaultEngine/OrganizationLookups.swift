@@ -13,15 +13,16 @@ enum OrganizationLookups {
         return resolver.displayName(make: asset.cameraMake, model: model)
     }
 
-    /// Geocode of the asset's cell in the display language; nil when place names are off, the
-    /// cell is not geocoded, or the asset is hidden while hidden assets are not uploaded.
+    /// Names of the asset's cell under `PlaceNameRule`; nil when place names are off, the cell is not
+    /// geocoded, or the asset is hidden while hidden assets are not uploaded.
     static func place(_ db: Database, asset: AssetRecord, settings: GlobalSettings) throws -> GeoPlace? {
         guard settings.placeNamesEnabled, settings.includeHidden || !asset.isHidden,
               let cell = asset.geoCell ?? asset.location.map(GeoCell.init) else { return nil }
-        let english = try GeoCacheRepository.fetch(db, cell: cell, locale: "en")?.place
-        guard english != nil else { return nil }
-        if settings.placeNameLanguage == "en" { return english }
-        return try GeoCacheRepository.fetch(db, cell: cell, locale: settings.placeNameLanguage)?.place ?? english
+        guard let english = try GeoCacheRepository.fetch(db, cell: cell, locale: "en")?.place else { return nil }
+        // Wait for the second answer, so a file's metadata is not written once in English and again
+        // in Vietnamese.
+        guard let local = try GeoCacheRepository.fetch(db, cell: cell, locale: localLocaleKey)?.place else { return nil }
+        return PlaceNameRule.display(english: english, local: local, withNative: false)
     }
 
     /// FR-43 description text for the files of `asset`.
@@ -29,15 +30,24 @@ enum OrganizationLookups {
         DescriptionBuilder.text(asset: asset, deviceName: try deviceName(db, asset: asset), place: try place(db, asset: asset, settings: settings))
     }
 
-    /// Both locale maps for the given cells, for the view rules.
-    static func geocodes(_ db: Database, cells: Set<GeoCell>, language: String) throws -> (english: [GeoCell: GeoPlace], display: [GeoCell: GeoPlace]) {
+    /// `geo_cache` locale under which a cell's answer in its second locale is kept, whatever that
+    /// language is (`PlaceNameRule.secondLocale`).
+    static let localLocaleKey = "local"
+
+    /// The English and second-locale answers for the given cells.
+    static func geocodes(_ db: Database, cells: Set<GeoCell>) throws -> (english: [GeoCell: GeoPlace], local: [GeoCell: GeoPlace]) {
         var english: [GeoCell: GeoPlace] = [:]
-        var display: [GeoCell: GeoPlace] = [:]
+        var local: [GeoCell: GeoPlace] = [:]
         for cell in cells {
             if let entry = try GeoCacheRepository.fetch(db, cell: cell, locale: "en") { english[cell] = entry.place }
-            if language != "en", let entry = try GeoCacheRepository.fetch(db, cell: cell, locale: language) { display[cell] = entry.place }
+            if let entry = try GeoCacheRepository.fetch(db, cell: cell, locale: localLocaleKey) { local[cell] = entry.place }
         }
-        return (english, display)
+        return (english, local)
+    }
+
+    /// Names per cell under `PlaceNameRule`, for views.
+    static func displayPlaces(english: [GeoCell: GeoPlace], local: [GeoCell: GeoPlace]) -> [GeoCell: GeoPlace] {
+        english.reduce(into: [:]) { result, item in result[item.key] = PlaceNameRule.display(english: item.value, local: local[item.key]) }
     }
 }
 

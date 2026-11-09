@@ -14,5 +14,9 @@
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.annh.photovault</string>
+	</array>
 </dict>
 </plist>

@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import PhotoVaultCore
 import PhotoVaultStore
 
@@ -12,6 +13,7 @@ struct SnapshotBuilder: Sendable {
         var backfill: (done: Int, total: Int)
         var bytes: Int64
         var totals: EngineQueries.JobCounts
+        var imports: [ImportSnapshot]
     }
 
     func read() async throws -> Raw {
@@ -27,7 +29,23 @@ struct SnapshotBuilder: Sendable {
             }
             return Raw(
                 scan: try KeyValueRepository.scanState(db), destinations: list, backfill: try EngineQueries.backfillProgress(db),
-                bytes: try EngineQueries.uploadedBytes(db), totals: byDestination.values.reduce(EngineQueries.JobCounts(), +))
+                bytes: try EngineQueries.uploadedBytes(db), totals: byDestination.values.reduce(EngineQueries.JobCounts(), +),
+                imports: try Self.imports(db))
+        }
+    }
+
+    /// Folder imports, newest first. Upload progress is counted only while a job is open.
+    static func imports(_ db: Database) throws -> [ImportSnapshot] {
+        try SourceRepository.fetchAll(db).filter { $0.mode == .oneTime }.reversed().map { source in
+            let counts = try ImportItemRepository.counts(db, sourceId: source.id)
+            let pending = counts[.pending] ?? 0
+            let found = counts.values.reduce(0, +)
+            let progress = source.status.isOpen ? try EngineQueries.importUploadProgress(db, sourceId: source.id) : (done: 0, total: 0)
+            return ImportSnapshot(
+                id: source.id, displayName: source.displayName, status: source.status, createdAt: source.createdAt,
+                finishedAt: source.finishedAt, found: found, processed: found - pending, imported: counts[.imported] ?? 0,
+                duplicates: counts[.duplicate] ?? 0, unsupported: counts[.unsupported] ?? 0, failed: counts[.failed] ?? 0,
+                filesUploaded: progress.done, filesTotal: progress.total)
         }
     }
 }

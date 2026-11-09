@@ -17,45 +17,30 @@ public struct StatusPresentation: Equatable, Sendable {
 /// Vietnamese text for destination status (spec 8.9.2) and the Mac disk guard.
 public enum StatusText {
     public static func presentation(for status: DestinationStatus) -> StatusPresentation {
+        let label = DestinationStatusText.label(status)
         let code = status.description
         switch status {
         case .active:
-            return StatusPresentation(label: "Đang hoạt động", code: code, tone: .green, needsOwnerDecision: false)
+            return StatusPresentation(label: label, code: code, tone: .green, needsOwnerDecision: false)
         case .paused(.userPaused):
-            return StatusPresentation(label: "Tạm dừng (bởi bạn)", code: code, tone: .gray, needsOwnerDecision: false)
+            return StatusPresentation(label: label, code: code, tone: .gray, needsOwnerDecision: false)
         case .paused(let reason):
             return StatusPresentation(
-                label: "Tạm dừng · " + reasonText(reason), code: code, tone: .orange,
+                label: label, code: code, tone: .orange,
                 needsOwnerDecision: [.rootTrashed, .rootMissing, .folderTrashed].contains(reason))
-        case .unavailable(let reason):
-            return StatusPresentation(label: "Không khả dụng · " + reasonText(reason), code: code, tone: .red, needsOwnerDecision: false)
-        case .error(let reason):
-            return StatusPresentation(label: "Lỗi · " + reasonText(reason), code: code, tone: .red, needsOwnerDecision: false)
+        case .unavailable, .error:
+            return StatusPresentation(label: label, code: code, tone: .red, needsOwnerDecision: false)
         }
     }
 
-    public static func reasonText(_ reason: StatusReason) -> String {
-        switch reason {
-        case .userPaused: "bởi bạn"
-        case .full: "đích đã đầy"
-        case .dailyCapReached: "đã đạt giới hạn upload trong ngày"
-        case .offline: "mất kết nối"
-        case .bookmarkInvalid: "mất quyền truy cập thư mục"
-        case .reauthRequired: "cần đăng nhập lại"
-        case .signedOut: "đã đăng xuất"
-        case .rootMissing: "không thấy thư mục gốc"
-        case .rootTrashed: "thư mục gốc trong Thùng rác"
-        case .folderTrashed: "thư mục backup trong Thùng rác"
-        case .recovering: "đang khôi phục trạng thái"
-        }
-    }
+    public static func reasonText(_ reason: StatusReason) -> String { DestinationStatusText.reasonText(reason) }
 
     /// Label of the backup mode shown next to a destination.
     public static func scopeText(_ scope: ScopeMode) -> String {
         switch scope {
-        case .full: "Toàn bộ thư viện"
-        case .since(let day): "Từ " + dayText(day)
-        case .newOnly: "Chỉ ảnh mới"
+        case .full: tr(vi: "Toàn bộ thư viện", en: "Entire library")
+        case .since(let day): tr(vi: "Từ ", en: "From ") + dayText(day)
+        case .newOnly: tr(vi: "Chỉ ảnh mới", en: "New photos only")
         }
     }
 

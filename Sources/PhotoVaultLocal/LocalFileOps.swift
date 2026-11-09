@@ -162,6 +162,25 @@ struct LocalFileOps: Sendable {
         }
     }
 
+    /// Names of the folders directly inside `path` (empty = the root); a folder that does not exist has none.
+    /// One directory read, no descent, so it is cheap on a large share.
+    func childFolderNames(under path: String) throws -> [String] {
+        try withRoot { root in
+            let directory: DirectoryHandle
+            if path.isEmpty {
+                directory = root
+            } else {
+                do { directory = try userDirectory(root, path) } catch DestinationError.notFound { return [] }
+            }
+            var names: [String] = []
+            for name in try directory.entries().sorted() {
+                if path.isEmpty, name == LocalPath.reservedDirectory { continue }
+                if try directory.status(name)?.isDirectory == true { names.append(name) }
+            }
+            return names
+        }
+    }
+
     private func walkDirectory(_ dir: DirectoryHandle, path: String, isCancelled: @Sendable () -> Bool, skipped: inout Int,
                                yield: @Sendable (RemoteItem) -> Void) throws {
         for name in try dir.entries().sorted() {

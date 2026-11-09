@@ -2,7 +2,7 @@ import Foundation
 import PhotoVaultCore
 import PhotoVaultStore
 
-/// Step 8: pending day-folder moves and folder renames.
+/// Step 8: pending moves and folder renames.
 struct MoveStage: CycleStage {
     let worker: MoveWorker
     var step: CycleStep { .moves }

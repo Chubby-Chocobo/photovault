@@ -1,7 +1,7 @@
 ---
 phase: 05
 title: "Photos adapter, export streaming, metadata reader"
-status: done
+status: completed
 priority: P1
 size: M
 human_effort: 3-5h
@@ -34,7 +34,7 @@ sources:
 2. Implement adapter; PhotoKit calls are thin and covered by the owner's manual T-scenarios.
 
 ## Success Criteria
-- [ ] Hasher and metadata tests green; adapter compiles under strict concurrency.
+- [x] Hasher and metadata tests green; adapter compiles under strict concurrency.
 
 ## Risk Assessment
 - [VERIFY M0-1b/M0-5] byte-exactness, cancel behaviour, bytes needed for header on iCloud-only assets: defaults documented in `docs/decisions/`.

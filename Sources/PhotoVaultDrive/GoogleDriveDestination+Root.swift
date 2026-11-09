@@ -9,6 +9,14 @@ extension GoogleDriveDestination {
         return roots
     }
 
+    /// Folders directly inside `parentId` (a root or one of its folders), without descending.
+    public func childFolders(of parentId: String) async throws -> [RemoteItem] {
+        let query = DriveQuery.all.parent(parentId).notTrashed.mimeType(DriveMime.folder)
+        var folders: [RemoteItem] = []
+        for try await item in stream(query) { folders.append(item) }
+        return folders
+    }
+
     public func checkRoot(remoteId: String) async throws -> RootCheck {
         do {
             let file = try await api.get(remoteId)

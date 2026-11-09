@@ -18,7 +18,7 @@ import Testing
             $0.sidecarXmpEnabled = false
         }
         try h.addDrive(scope: .full)
-        await h.geocoder.seed(daLat, en: daLatEnglish, vi: daLatVietnamese)
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         await h.add(h.snapshot("p0", daysAgo: 3, location: daLat), recordChange: false)
         try await h.baseline(.googleDrive)
         await h.settle()
@@ -61,7 +61,7 @@ import Testing
     @Test func aChangedAnswerUpdatesOnlyWhatFollowsFromIt() async throws {
         let h = try await placeLife()
         let corrected = GeoPlace(isoCountryCode: "VN", country: "Việt Nam", administrativeArea: "Lâm Đồng", locality: "Xuân Hương")
-        await h.geocoder.seed(daLat, en: daLatEnglish, vi: corrected)
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: corrected)
         try await h.coordinator.refreshPlaceNames()
         await h.settle()
         #expect(await h.backupFile(h.drive)?.description?.contains("Xuân Hương") == true)
@@ -73,7 +73,7 @@ import Testing
         try h.write { db in try db.execute(sql: "UPDATE asset SET camera_make = NULL, camera_model = NULL, lens_model = NULL") }
         try await h.coordinator.refreshOrganization()
         await h.settle()
-        #expect(await h.backupFile(h.drive)?.description == "Place: Đà Lạt, Lâm Đồng, Việt Nam")
+        #expect(await h.backupFile(h.drive)?.description == "Place: Đà Lạt, Lâm Đồng, Vietnam")
 
         try await h.update { $0.placeNamesEnabled = false }
         try await h.coordinator.refreshOrganization()

@@ -27,7 +27,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>PhotoVault đọc thư viện Ảnh để sao lưu bản gốc và bản chỉnh sửa lên Google Drive và thư mục bạn chọn. Ứng dụng không bao giờ sửa hay xoá ảnh trong thư viện.</string>
+	<string>PhotoVault đọc thư viện Ảnh để sao lưu bản gốc và bản chỉnh sửa lên Google Drive và thư mục bạn chọn. Ứng dụng không bao giờ sửa hay xoá ảnh trong thư viện. PhotoVault reads your Photos library to back up originals and edited versions to Google Drive and the folders you choose. The app never edits or deletes photos in your library.</string>
 	<key>PVGoogleClientID</key>
 	<string>$(GOOGLE_CLIENT_ID)</string>
 	<key>PVGoogleClientSecret</key>

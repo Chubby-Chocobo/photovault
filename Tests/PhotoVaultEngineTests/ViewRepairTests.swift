@@ -25,13 +25,13 @@ import Testing
 
     @Test func rebuildRestoresDeletedFoldersAndShortcutsWithoutAnIntegrityCheck() async throws {
         let h = try await favoritesLife()
-        let year = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical]?.hasPrefix("view/favorites") == true && $0.name == "2026" })
-        await h.drive.externallyDelete(year.id)
+        let dayFolder = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical]?.hasPrefix("view/favorites/") == true })
+        await h.drive.externallyDelete(dayFolder.id)
         for shortcut in await h.drive.shortcuts { await h.drive.externallyDelete(shortcut.id) }
         try await h.coordinator.rebuildViews()
         await h.settle()
         #expect(await live(h).count == 1)
-        #expect(await h.drive.folders.filter { $0.name == "2026" && $0.appProperties[AppPropertyKey.logical]?.hasPrefix("view/favorites") == true }.count == 1)
+        #expect(await h.drive.folders.filter { $0.appProperties[AppPropertyKey.logical]?.hasPrefix("view/favorites/") == true }.count == 1)
         #expect(await h.drive.contractViolations.isEmpty)
     }
 

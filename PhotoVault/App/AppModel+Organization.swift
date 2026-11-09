@@ -5,31 +5,12 @@ import PhotoVaultEngine
 
 /// Day folders, views, device groups and place names (spec 8.7, FR-103, FR-104, FR-106).
 extension AppModel {
-    func resortPreview() async -> ResortPreview? {
-        guard let env else { return nil }
-        do { return try await env.coordinator.resortPreview() } catch {
-            showError(error)
-            return nil
-        }
-    }
-
-    func resortApply() async {
-        guard let env else { return }
-        do {
-            let result = try await env.coordinator.resortApply()
-            requestSync(.manual)
-            showNotice("Đã xếp hàng chuyển \(VietnameseFormat.integer(result.files)) file của \(VietnameseFormat.integer(result.days)) ngày.")
-        } catch {
-            showError(error)
-        }
-    }
-
     func rebuildViews() async {
         guard let env else { return }
         do {
             try await env.coordinator.rebuildViews()
             requestSync(.manual)
-            showNotice("Đã yêu cầu dựng lại view.")
+            showNotice(tr(vi: "Đã yêu cầu dựng lại view.", en: "Requested a rebuild of the views."))
         } catch {
             showError(error)
         }
@@ -40,7 +21,7 @@ extension AppModel {
         do {
             try await env.coordinator.refreshPlaceNames()
             requestSync(.manual)
-            showNotice("Đang tra lại địa danh ở nền.")
+            showNotice(tr(vi: "Đang tra lại địa danh ở nền.", en: "Looking up place names again in the background."))
         } catch {
             showError(error)
         }
@@ -66,7 +47,7 @@ extension AppModel {
         do {
             for key in models { try await env.coordinator.mergeDeviceModel(key, into: groupId) }
             requestSync(.manual)
-            showNotice("Đã gộp nhóm thiết bị.")
+            showNotice(tr(vi: "Đã gộp nhóm thiết bị.", en: "Merged the device groups."))
         } catch {
             showError(error)
         }

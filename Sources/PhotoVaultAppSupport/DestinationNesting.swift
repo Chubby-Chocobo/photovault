@@ -1,4 +1,5 @@
 import Foundation
+import PhotoVaultCore
 
 /// A local destination root must not contain, or sit inside, another one: the outer destination's walk,
 /// integrity check and recovery would see the inner tree (and its `.photovault`) as content.
@@ -27,9 +28,9 @@ public enum DestinationNesting {
     /// Owner-facing message (Vietnamese, like the rest of the UI).
     public static func message(name: String, relation: Relation) -> String {
         switch relation {
-        case .same: "Thư mục này đã là đích “\(name)”."
-        case .inside: "Thư mục này nằm trong đích “\(name)”. Hãy chọn một thư mục riêng, không lồng nhau."
-        case .contains: "Thư mục này chứa đích “\(name)”. Hãy chọn một thư mục riêng, không lồng nhau."
+        case .same: tr(vi: "Thư mục này đã là đích “\(name)”.", en: "This folder is already the destination “\(name)”.")
+        case .inside: tr(vi: "Thư mục này nằm trong đích “\(name)”. Hãy chọn một thư mục riêng, không lồng nhau.", en: "This folder is inside the destination “\(name)”. Choose a separate folder that isn't nested.")
+        case .contains: tr(vi: "Thư mục này chứa đích “\(name)”. Hãy chọn một thư mục riêng, không lồng nhau.", en: "This folder contains the destination “\(name)”. Choose a separate folder that isn't nested.")
         }
     }
 

@@ -1,5 +1,6 @@
 import PhotoVaultAppSupport
 import SwiftUI
+import PhotoVaultCore
 
 /// The first-run wizard (FR-01), 720 × 560 like the onboarding mockup.
 struct OnboardingView: View {
@@ -10,6 +11,8 @@ struct OnboardingView: View {
         Group {
             if let model {
                 OnboardingContent(model: model)
+                    .navigationTitle(tr(vi: "Chào mừng đến PhotoVault", en: "Welcome to PhotoVault"))
+                    .id(app.language)
             } else {
                 ProgressView().frame(width: 720, height: 560)
             }
@@ -47,10 +50,11 @@ private struct OnboardingContent: View {
                 Image(systemName: "photo.on.rectangle.angled").font(.title2).foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading) {
                     Text("PhotoVault").font(.headline)
-                    Text("Thiết lập lần đầu").font(.caption).foregroundStyle(.secondary)
+                    Text(tr(vi: "Thiết lập lần đầu", en: "First-time setup")).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
+            InterfaceLanguagePicker().labelsHidden().padding(.bottom, 12)
             ForEach(OnboardingStep.allCases, id: \.self) { step in
                 Button { model.jump(to: step) } label: {
                     HStack(spacing: 8) {
@@ -97,16 +101,16 @@ private struct OnboardingContent: View {
 
     private var bottomBar: some View {
         HStack {
-            Text("Bước \(model.step.rawValue) / 9").font(.caption).foregroundStyle(.secondary)
+            Text(tr(vi: "Bước \(model.step.rawValue) / 9", en: "Step \(model.step.rawValue) of 9")).font(.caption).foregroundStyle(.secondary)
             Spacer()
-            if model.step.rawValue > 1 && !model.started { Button("Quay lại") { model.back() } }
-            if model.canSkip { Button("Bỏ qua") { model.advance() } }
+            if model.step.rawValue > 1 && !model.started { Button(tr(vi: "Quay lại", en: "Back")) { model.back() } }
+            if model.canSkip { Button(tr(vi: "Bỏ qua", en: "Skip")) { model.advance() } }
             if model.step != .start && !model.canSkip {
-                Button("Tiếp tục") { model.advance() }
+                Button(tr(vi: "Tiếp tục", en: "Continue")) { model.advance() }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!model.canAdvance)
             }
             if model.step == .start && !model.started {
-                Button("Bắt đầu") { Task { await model.start() } }
+                Button(tr(vi: "Bắt đầu", en: "Start")) { Task { await model.start() } }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
             }
         }

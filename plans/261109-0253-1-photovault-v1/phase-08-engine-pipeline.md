@@ -1,7 +1,7 @@
 ---
 phase: 08
 title: "Engine: change tracking, export, fan-out, sync cycle"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 6-10h
@@ -39,7 +39,7 @@ The M1 pipeline: `ChangeTracker → Classifier → Store → ExportWorker → fa
 2. Implement services and coordinator.
 
 ## Success Criteria
-- [ ] Engine tests green; crash-injection test leaves DB and fake destinations consistent.
+- [x] Engine tests green; crash-injection test leaves DB and fake destinations consistent.
 
 ## Risk Assessment
 - Concurrency bugs under Swift 6 strict checking: actors per shared resource (ResourceGuard, folder creation, store writer).

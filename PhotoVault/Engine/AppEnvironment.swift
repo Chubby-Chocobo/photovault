@@ -18,18 +18,22 @@ enum LaunchFailure: Error {
 
     var alertTitle: String {
         switch self {
-        case .unsandboxed: "PhotoVault cần chạy với --dev-container"
-        case .alreadyRunning: "PhotoVault đang chạy"
-        case .other: "PhotoVault không thể khởi động"
+        case .unsandboxed: tr(vi: "PhotoVault cần chạy với --dev-container", en: "PhotoVault must run with --dev-container")
+        case .alreadyRunning: tr(vi: "PhotoVault đang chạy", en: "PhotoVault is already running")
+        case .other: tr(vi: "PhotoVault không thể khởi động", en: "PhotoVault can’t start")
         }
     }
 
     var alertText: String {
         switch self {
         case .unsandboxed:
-            "Bản này không chạy trong sandbox nên dùng chung dữ liệu với bản đã ký sẽ làm hỏng trạng thái. Chạy lại với đối số --dev-container để dùng thư mục dữ liệu riêng (PhotoVault-dev), hoặc build bản đã ký."
+            tr(
+                vi: "Bản này không chạy trong sandbox nên dùng chung dữ liệu với bản đã ký sẽ làm hỏng trạng thái. Chạy lại với đối số --dev-container để dùng thư mục dữ liệu riêng (PhotoVault-dev), hoặc build bản đã ký.",
+                en: "This build does not run in the sandbox, so sharing data with the signed build would corrupt its state. Run again with the --dev-container argument to use a separate data folder (PhotoVault-dev), or build the signed version.")
         case .alreadyRunning:
-            "Một bản PhotoVault khác đang dùng cùng thư mục dữ liệu. Tìm biểu tượng PhotoVault trên menu bar."
+            tr(
+                vi: "Một bản PhotoVault khác đang dùng cùng thư mục dữ liệu. Tìm biểu tượng PhotoVault trên menu bar.",
+                en: "Another PhotoVault is using the same data folder. Look for the PhotoVault icon in the menu bar.")
         case .other(let message): message
         }
     }
@@ -57,14 +61,29 @@ struct AppEnvironment: Sendable {
     let backups: DatabaseBackup
     let notificationLedger: NotificationLedgerFile
     let dailyCapFile: DailyCapFile
+    /// Adapters of imports that were still open when the app last ran; registered before recovery.
+    let folderSources: [LocalFolderSource]
 
     static let setupReadmeSection = "README › Google Cloud setup"
+
+    /// After a Factory Reset the app relaunches itself; the old process may still hold the lock for
+    /// a moment, so the new one waits for it (up to 15 s) instead of reporting "already running".
+    private static func acquireLock(_ layout: ContainerLayout) throws -> InstanceLock {
+        let deadline = Date().addingTimeInterval(FactoryReset.isRequested(layout) ? 15 : 0)
+        while true {
+            do {
+                return try InstanceLock.acquire(containerDirectory: layout.root)
+            } catch InstanceLock.LockError.alreadyRunning where Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+        }
+    }
 
     static func make(
         arguments: [String] = CommandLine.arguments, bundle: Bundle = .main
     ) throws -> AppEnvironment {
         guard let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw LaunchFailure.other("Không tìm thấy thư mục Application Support.")
+            throw LaunchFailure.other(tr(vi: "Không tìm thấy thư mục Application Support.", en: "The Application Support folder was not found."))
         }
         let layout: ContainerLayout
         do {
@@ -73,20 +92,31 @@ struct AppEnvironment: Sendable {
         } catch EngineError.unsandboxedBuild {
             throw LaunchFailure.unsandboxed
         } catch {
-            throw LaunchFailure.other("Không tạo được thư mục dữ liệu: \(error.localizedDescription)")
+            throw LaunchFailure.other(tr(vi: "Không tạo được thư mục dữ liệu: \(error.localizedDescription)", en: "Could not create the data folder: \(error.localizedDescription)"))
         }
 
         let lock: InstanceLock
         do {
-            lock = try InstanceLock.acquire(containerDirectory: layout.root)
+            lock = try acquireLock(layout)
         } catch InstanceLock.LockError.alreadyRunning {
             throw LaunchFailure.alreadyRunning
         } catch {
-            throw LaunchFailure.other("Không khoá được thư mục dữ liệu: \(error.localizedDescription)")
+            throw LaunchFailure.other(tr(vi: "Không khoá được thư mục dữ liệu: \(error.localizedDescription)", en: "Could not lock the data folder: \(error.localizedDescription)"))
+        }
+        // Factory Reset: emptied now, holding the lock and before the database opens.
+        let wasReset: Bool
+        do {
+            wasReset = try FactoryReset.applyIfRequested(layout)
+            if wasReset { try ContainerLocator.prepare(layout) }
+        } catch {
+            throw LaunchFailure.other(tr(
+                vi: "Không đặt lại được dữ liệu của PhotoVault: \(error.localizedDescription)\n\nCó thể xoá tay nội dung thư mục \(layout.root.path) (giữ file photovault.lock) rồi mở lại.",
+                en: "Could not reset PhotoVault’s data: \(error.localizedDescription)\n\nYou can empty the folder \(layout.root.path) by hand (keep photovault.lock) and open the app again."))
         }
 
         let fileLog = RotatingFileLog(directory: layout.logs)
         let log = AppLogSink(file: fileLog)
+        if wasReset { log.log(.notice, category: "reset", "factory reset applied; starting from onboarding") }
         let backups = DatabaseBackup(directory: layout.backups)
         let store: Store
         let settings: SettingsStore
@@ -95,7 +125,7 @@ struct AppEnvironment: Sendable {
             settings = try SettingsStore(store: store, log: log)
         } catch {
             log.log(.fault, category: "launch", "database could not be opened: \(type(of: error))")
-            throw LaunchFailure.other("Không mở được cơ sở dữ liệu. Chi tiết nằm trong thư mục log.")
+            throw LaunchFailure.other(tr(vi: "Không mở được cơ sở dữ liệu. Chi tiết nằm trong thư mục log.", en: "Could not open the database. Details are in the log folder."))
         }
 
         let clientID = (bundle.object(forInfoDictionaryKey: "PVGoogleClientID") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -111,7 +141,7 @@ struct AppEnvironment: Sendable {
         do {
             records = try store.read { db in try DestinationRepository.fetchAll(db) }
         } catch {
-            throw LaunchFailure.other("Không đọc được danh sách đích: \(error.localizedDescription)")
+            throw LaunchFailure.other(tr(vi: "Không đọc được danh sách đích: \(error.localizedDescription)", en: "Could not read the list of destinations: \(error.localizedDescription)"))
         }
         let driveRecord = records.first { $0.id == .googleDrive }
         let capFile = DailyCapFile(url: layout.root.appendingPathComponent("drive-daily-cap.json"))
@@ -129,6 +159,7 @@ struct AppEnvironment: Sendable {
             }
         }
         let registry = DestinationRegistry(live)
+        let folderSources = Self.openFolderSources(store: store, log: log)
 
         let system = SystemMonitor()
         let photos = PhotoKitSource()
@@ -142,7 +173,29 @@ struct AppEnvironment: Sendable {
             coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth, transport: transport,
             googleConfigured: !clientID.isEmpty, fileLog: fileLog, log: log, system: system, disk: disk, backups: backups,
             notificationLedger: NotificationLedgerFile(url: layout.root.appendingPathComponent("notification-ledger.json")),
-            dailyCapFile: capFile)
+            dailyCapFile: capFile, folderSources: folderSources)
+    }
+
+    /// One read-only adapter per import, finished or not. A stale bookmark is refreshed in place.
+    private static func openFolderSources(store: Store, log: AppLogSink) -> [LocalFolderSource] {
+        // Finished imports too: a destination added later still receives their files.
+        let rows = (try? store.read { db in try SourceRepository.withBookmarks(db) }) ?? []
+        return rows.compactMap { row in
+            row.config.bookmark.map { makeFolderSource(id: row.id, bookmark: $0, store: store, log: log) }
+        }
+    }
+
+    static func makeFolderSource(id: SourceID, bookmark: Data, store: Store, log: AppLogSink) -> LocalFolderSource {
+        let root = SecurityScopedBookmarkRoot(bookmark: bookmark, readOnly: true) { fresh in
+            Task {
+                do {
+                    try await store.write { db in try SourceRepository.setConfig(db, id: id, SourceConfig(bookmark: fresh)) }
+                } catch {
+                    log.log(.error, category: "source", "could not persist refreshed bookmark for \(id)")
+                }
+            }
+        }
+        return LocalFolderSource(id: id, root: root, metadata: ImageIOMetadataReader())
     }
 }
 

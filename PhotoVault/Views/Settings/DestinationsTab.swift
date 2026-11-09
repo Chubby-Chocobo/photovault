@@ -24,16 +24,16 @@ struct DestinationsTab: View {
                     .tag(record.id)
                 }
                 .frame(width: 210, height: 300)
-                .accessibilityLabel("Danh sách đích")
+                .accessibilityLabel(tr(vi: "Danh sách đích", en: "Destination list"))
                 HStack {
                     Button { Task { pending = await model.pickLocalFolder() } } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Thêm đích")
+                        .accessibilityLabel(tr(vi: "Thêm đích", en: "Add destination"))
                     Button { confirmRemove = true } label: { Image(systemName: "minus") }
                         .disabled(selectedRecord?.kind != .localFolder)
-                        .accessibilityLabel("Xoá đích")
+                        .accessibilityLabel(tr(vi: "Xoá đích", en: "Remove destination"))
                     Spacer()
                     if let record = selectedRecord {
-                        Button(model.isOwnerPaused(record) ? "Tiếp tục" : "Tạm dừng") { model.togglePause(record) }
+                        Button(model.isOwnerPaused(record) ? tr(vi: "Tiếp tục", en: "Resume") : tr(vi: "Tạm dừng", en: "Pause")) { model.togglePause(record) }
                     }
                 }
                 .frame(width: 210)
@@ -41,20 +41,22 @@ struct DestinationsTab: View {
             if let record = selectedRecord {
                 DestinationDetail(record: record).id(record.id)
             } else {
-                Text("Chọn một đích ở bên trái.").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 200)
+                Text(tr(vi: "Chọn một đích ở bên trái.", en: "Select a destination on the left.")).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 200)
             }
         }
         .onAppear { selection = selection ?? model.destinations.first?.id }
         .sheet(item: $pending) { item in AddDestinationSheet(pending: item) { pending = nil } }
         .confirmationDialog(
-            "Xoá “\(selectedRecord?.displayName ?? "")” khỏi PhotoVault?", isPresented: $confirmRemove, titleVisibility: .visible
+            tr(vi: "Xoá “\(selectedRecord?.displayName ?? "")” khỏi PhotoVault?", en: "Remove “\(selectedRecord?.displayName ?? "")” from PhotoVault?"), isPresented: $confirmRemove, titleVisibility: .visible
         ) {
-            Button("Xoá đích", role: .destructive) {
+            Button(tr(vi: "Xoá đích", en: "Remove destination"), role: .destructive) {
                 if let record = selectedRecord { Task { await model.removeDestination(record); selection = model.destinations.first?.id } }
             }
-            Button("Huỷ", role: .cancel) {}
+            Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
-            Text("PhotoVault chỉ xoá trạng thái của đích này trong cơ sở dữ liệu. Không xoá file nào trong \(selectedRecord?.config.displayPath ?? "thư mục đích").")
+            Text(tr(
+                vi: "PhotoVault chỉ xoá trạng thái của đích này trong cơ sở dữ liệu. Không xoá file nào trong \(selectedRecord?.config.displayPath ?? "thư mục đích").",
+                en: "PhotoVault only removes this destination's state from its database. No files in \(selectedRecord?.config.displayPath ?? "the destination folder") are deleted."))
         }
     }
 
@@ -80,22 +82,22 @@ private struct DestinationDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            SettingsSection("Phạm vi") {
+            SettingsSection(tr(vi: "Phạm vi", en: "Scope")) {
                 ScopePicker(scope: $scope, timeZone: model.archiveTimeZone)
             }
             RulesEditor(rules: $rules, settings: model.persistedSettings)
             let lines = RuleEditor.changeLines(
                 old: record.rules, new: rules, oldScope: record.scope, newScope: scope, settings: model.persistedSettings, counts: counts)
             if !lines.isEmpty {
-                Banner(.warning, title: "Thay đổi chưa áp dụng", message: lines.joined(separator: "\n") + "\nKhông xoá gì ở đích. Job đã xong giữ nguyên.") {
+                Banner(.warning, title: tr(vi: "Thay đổi chưa áp dụng", en: "Unapplied changes"), message: lines.joined(separator: "\n") + tr(vi: "\nKhông xoá gì ở đích. Job đã xong giữ nguyên.", en: "\nNothing at the destination is deleted. Finished jobs stay as they are.")) {
                     HStack {
-                        Button("Huỷ") { rules = record.rules; scope = record.scope; name = record.displayName }
-                        Button("Áp dụng") { Task { await model.updateDestination(record.id, name: name, rules: rules, scope: scope) } }
+                        Button(tr(vi: "Huỷ", en: "Cancel")) { rules = record.rules; scope = record.scope; name = record.displayName }
+                        Button(tr(vi: "Áp dụng", en: "Apply")) { Task { await model.updateDestination(record.id, name: name, rules: rules, scope: scope) } }
                             .buttonStyle(.borderedProminent)
                     }
                 }
             } else if name != record.displayName {
-                Button("Lưu tên") { Task { await model.updateDestination(record.id, name: name, rules: rules, scope: scope) } }
+                Button(tr(vi: "Lưu tên", en: "Save name")) { Task { await model.updateDestination(record.id, name: name, rules: rules, scope: scope) } }
             }
         }
         .task {
@@ -105,24 +107,24 @@ private struct DestinationDetail: View {
     }
 
     private var header: some View {
-        SettingsSection(record.kind == .googleDrive ? "Google Drive" : "Thư mục") {
+        SettingsSection(record.kind == .googleDrive ? "Google Drive" : tr(vi: "Thư mục", en: "Folder")) {
             if record.kind == .localFolder {
-                FormRow("Tên") { TextField("Tên đích", text: $name).textFieldStyle(.roundedBorder).frame(width: 240) }
+                FormRow(tr(vi: "Tên", en: "Name")) { TextField(tr(vi: "Tên đích", en: "Destination name"), text: $name).textFieldStyle(.roundedBorder).frame(width: 240) }
             }
             FormRow(record.kind == .googleDrive ? "My Drive / \(record.config.driveRootName ?? "—")" : (record.config.displayPath ?? "—")) {
                 let status = StatusText.presentation(for: record.status)
                 HStack(spacing: 5) { StatusDot(color: status.tone.color); Text(status.label) }
             }
-            FormRow("Dung lượng trống") { Text(freeBytes.map(VietnameseFormat.bytes) ?? "—").monospacedDigit() }
+            FormRow(tr(vi: "Dung lượng trống", en: "Free space")) { Text(freeBytes.map(VietnameseFormat.bytes) ?? "—").monospacedDigit() }
             HStack {
                 Button("Test connection") { Task { await model.testConnection(record) } }
                 if record.kind == .localFolder {
-                    Button("Chọn lại thư mục…") { Task { await model.repickFolder(for: record) } }
-                    Button("Mở trong Finder") { model.revealInFinder(record) }
+                    Button(tr(vi: "Chọn lại thư mục…", en: "Choose folder again…")) { Task { await model.repickFolder(for: record) } }
+                    Button(tr(vi: "Mở trong Finder", en: "Show in Finder")) { model.revealInFinder(record) }
                 }
             }
             if record.status == .paused(.userPaused) || model.isOwnerPaused(record) {
-                SettingsNote("Đích đang tạm dừng độc lập với các đích khác (FR-71).")
+                SettingsNote(tr(vi: "Đích đang tạm dừng độc lập với các đích khác (FR-71).", en: "This destination is paused independently of the others (FR-71)."))
             }
         }
     }

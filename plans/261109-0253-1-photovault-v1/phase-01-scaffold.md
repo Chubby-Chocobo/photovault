@@ -1,7 +1,7 @@
 ---
 phase: 01
 title: "Scaffold: SPM package, Xcode app project, CI, config"
-status: done
+status: completed
 priority: P1
 size: M
 human_effort: 2-3h
@@ -47,8 +47,8 @@ Creates the package with every target from the module graph, a thin Xcode app ta
 5. Verify the three acceptance commands.
 
 ## Success Criteria
-- [ ] All three acceptance commands pass locally.
-- [ ] `xcodebuild -list` shows scheme `PhotoVault`.
+- [x] All three acceptance commands pass locally.
+- [x] `xcodebuild -list` shows scheme `PhotoVault`.
 
 ## Risk Assessment
 - Hand-written pbxproj may be rejected by Xcode: validate with `xcodebuild -list` early; fallback is to regenerate it with the same structure.

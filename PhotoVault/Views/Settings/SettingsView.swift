@@ -1,3 +1,4 @@
+import PhotoVaultCore
 import SwiftUI
 
 /// The Settings scene: toolbar-style tabs as in settings.html.
@@ -13,6 +14,7 @@ struct SettingsView: View {
                     .tag(tab)
             }
         }
+        .id(model.language)
         .frame(width: 720, height: 560)
         .task { await model.refresh() }
     }
@@ -31,6 +33,7 @@ private struct SettingsTabContent: View {
                 case .content: ContentTab()
                 case .organization: OrganizationTab()
                 case .places: PlacesTab()
+                case .sources: SourcesTab()
                 case .destinations: DestinationsTab()
                 case .advanced: AdvancedTab()
                 }
@@ -79,9 +82,9 @@ private struct SettingsIssuesBanner: View {
 
     var body: some View {
         if !model.settingsIssues.isEmpty {
-            Banner(.warning, title: "Một số thay đổi chưa được lưu",
+            Banner(.warning, title: tr(vi: "Một số thay đổi chưa được lưu", en: "Some changes were not saved"),
                    message: model.settingsIssues.map(\.message).joined(separator: " ")
-                       + " Các thay đổi khác đã được lưu.")
+                       + tr(vi: " Các thay đổi khác đã được lưu.", en: " Other changes were saved."))
         }
     }
 }

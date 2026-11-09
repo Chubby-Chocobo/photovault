@@ -1,6 +1,6 @@
 # Test report
 
-Date: 2026-11-09. Spec: [photovault-spec-v1.md §11](./requirements/photovault-spec-v1.md) (T1–T43, with the lettered variants T4b, T27b, T27c, T30b: 47 rows).
+Date: 2026-11-09 (numbers refreshed on the release branch after the release review fixes). Spec: [photovault-spec-v1.md §11](./requirements/photovault-spec-v1.md) (T1–T43, with the lettered variants T4b, T27b, T27c, T30b: 47 rows).
 
 Status meanings:
 
@@ -13,31 +13,21 @@ Status meanings:
 
 ## Automated run
 
-Final run on the branch head after the review fixes (2026-11-09):
+Final run on the release branch after the release review fixes (2026-11-09):
 
 ```text
-swift test --scratch-path .build-docs
-✔ Test run with 806 tests in 135 suites passed after 19.791 seconds.
+swift test --scratch-path .build-relfix
+✔ Test run with 1014 tests in 176 suites passed after 21.331 seconds.
 ```
 
-- Tests: 806 in 135 suites, all passing (2026-11-09, after the audit fixes). The unsigned app build (`xcodebuild … CODE_SIGNING_ALLOWED=NO`) was not re-run for this update.
-- Tests added by the audit fixes are in these suites: `SettingsFormTests`, `DestinationRulesEditorTests`, `SettingsSavableTests`, `JobTransitionsTests`, `DriveQueryTests`, `DriveAPIRequestTests`, `ResumableFlowTests`, `ClassifyPassWalkTests`, `DeletedAssetAndClockTests`, `DirtyQueueSweepTests`, `EditGateTests`, `EngineQueriesApplyTests`, `ExportPassFailureTests`, `IntegrityRootStateTests`, `LastSuccessfulSyncTests`, `PlaceRefreshTests`, `RecoveryTriggerTests`, `ResourceGuardTests`, `SettingsStoreTests`, `UploadResumeParentTests`, `ViewRepairTests`, `LocalResilienceTests`, `ImageIOMetadataReaderTests`, `UTTypeResolverTests`, `PhotosErrorMapperTests`, `StalledRequestGuardTests`, `DatabaseBackupTests`, `PlacementTests`, `DayStatTests`, `SnapshotCounterTests`.
-- An earlier snapshot taken while the Drive fixes were half applied showed 3 loopback OAuth failures; they do not reproduce on the final tree (`OAuthPrimitivesTests` 8 of 8 pass on their own and in the full run).
-- Two timing-sensitive tests were made deterministic: `AuthSessionTests` no longer shares one fake clock between parallel tests, and `TriggerDebouncerTests` polls for the expected fire instead of fixed sleeps.
+- Tests: 1,014 in 176 suites, all passing (2026-11-09). The signed Release build (`xcodebuild … -configuration Release -allowProvisioningUpdates build`) was run after the last code change and reported `BUILD SUCCEEDED`.
+- The sections below the §11 table map the features added after the spec's first version (folder import, factory reset, log viewer, language switch, old-layout block) to their tests.
 - **Real-file camera detection** is covered at two levels:
   - `RawHeaderFixtureTests` uses the opening bytes of 21 public-domain RAW files kept in git.
   - `MediaCorpusTests` uses 27 complete files (about 750 MB) that CI fetches by checksum and caches.
   - `RawCameraFallbackTests` and `HeaderReadTests` add synthetic cases.
 
-  Run locally on 2026-11-09 from a clean build directory. The test count is the same either way, because without the corpus `MediaCorpusTests` is reported as skipped:
-
-  ```text
-  swift test
-  ✔ Test run with 839 tests in 139 suites passed after 19.937 seconds.     (MediaCorpusTests skipped)
-  PHOTOVAULT_MEDIA_CORPUS=.media-corpus swift test
-  ✔ Suite MediaCorpusTests passed after 1.309 seconds.
-  ✔ Test run with 839 tests in 139 suites passed after 20.751 seconds.
-  ```
+  The test count is the same with or without the corpus, because without it `MediaCorpusTests` is reported as skipped (it runs when `PHOTOVAULT_MEDIA_CORPUS` is set; CI always runs it). The run above is the one without the corpus.
 
   Ten deliberate breakages each turn these suites red. They are listed in [the M0-5 spike](./spikes/m0-5-exif-and-header-classification.md).
 - Per-target counts: [codebase-summary.md](./architecture/codebase-summary.md#test-targets).
@@ -57,8 +47,8 @@ Test names are from `Tests/**`. Spec expectations and the fakes used are in each
 | T6 | 1,000+ mixed assets: every burst frame uploaded, hidden excluded | Automated | `RulesAndLayoutTests.t6MixedLibraryUploadsEveryFrameAndNoHiddenAsset` (1,000 fake assets) | Real library of 1,000+ assets (on device). |
 | T7 | RAW-only and a drone video over 4 GB reach both destinations, same checksum and EXIF | Partially automated | `ExportWorkerTests.exportStoresHashesSizeAndCameraMetadata`; `StreamingFileWriterTests.streamingSHA256MatchesKnownVector`; `LocalWriteTests.passesConformanceSuite` | No test uses a file over 4 GB or a real RAW. Owner: real library and Drive ([M0-1b](./spikes/m0-1b-resource-bytes-and-mapping.md)). |
 | T8 | Upload longer than 2 hours is not cut | Partially automated | `DestinationTests.sessionIsReportedBeforeAnyByteAndChunksAreAligned`; `DestinationTests.transientChunkFailureProbesAndResumesFromServerOffset`; `DestinationTests.resumeUploadContinuesFromProbe`; `ResumableAndCapTests.offsetThatNeverAdvancesFailsTransiently`; `ResumableAndCapTests.restoredStateCountsAfterRestart` | Real 2-hour upload to Drive ([M0-3](./spikes/m0-3-google-drive-behaviour.md)). |
-| T9 | Ten camera and eight screenshots, then an eleventh camera: day split at both destinations | Automated | `DayFolderTests.t9EleventhCameraPhotoSplitsTheDayAndScreenshotsDoNotCount` | — |
-| T10 | Change N, then "Sắp xếp lại": the reported file count is correct | Automated | `DayFolderTests.t10ResortReportsTheNumberOfFilesItMoves` | — |
+| T9 | Camera photos and screenshots of one day land in `Camera Uploads/<day>` and `Screenshots/<day>` at both destinations, with no move | Automated | `DayFolderTests.theFirstCameraPhotoOfADayIsUploadedStraightIntoItsDayFolder` | — |
+| T10 | Removed with the day-folder threshold (decision 0023) | — | — |
 | T11 | Change the system timezone: archive timezone is kept | Partially automated | `ConfigurationAndRecoveryTests.settingsAndArchiveTimeZonePersistAcrossRestarts`; `SchemaAndAssetTests.creationDayUsesArchiveTimezone`; `ModelsAndCodecsTests.archiveDayParsingAndTimezone` | No test changes the system timezone. Owner: change it in System Settings and check a new day folder. |
 | T12 | Edit after changing the capture date: edited file sits beside the original | Automated | `EditGateTests.t12TheEditedFileLandsBesideTheOriginalEvenAfterTheDateChanged` | — |
 | T13 | Edit, edit again, favourite, album, revert: one edited file per kind | Automated | `EditGateTests.t13EditEditAgainFavoriteAndRevertKeepOneEditedFile`; `SidecarTests.aFavoriteOnlyRefreshesTheSidecarsAndAnUnchangedOneIsNotUploadedAgain` | — |
@@ -97,6 +87,25 @@ Test names are from `Tests/**`. Spec expectations and the fakes used are in each
 | T43 | Mac off for more than a week during an upload: IDs checked first, no duplicate file | Partially automated | `CrashRecoveryTests.t43MacOffForAWeekWithAnOpenSessionReusesTheReservedId`; `CrashRecoveryTests.interruptedSessionIsResumedWhenItIsStillOpen` | Simulated time and fake Drive. Owner: a real week off ([M0-3](./spikes/m0-3-google-drive-behaviour.md)). |
 
 Totals (47 rows, 43 spec IDs): **Automated 33**, **Partially automated 13**, **Manual 0**, **Not covered 1** (T25). 46 rows have at least one automated test.
+
+## Features added after the spec's first version
+
+Test names are from `Tests/**`. These rows have no T-number in spec §11; the requirement is in the spec section named in the first column.
+
+| Feature (requirement) | Scenario | Status | Swift test(s) | Owner check or reason |
+|---|---|---|---|---|
+| Folder import (FR-110 to FR-116, [0024](./decisions/0024-multiple-sources-and-folder-import.md)) | Files reach the destination and the job completes with one activity row; same path and names as a Photos asset; RAW+JPEG and Live Photo pairs | Automated | `FolderImportTests.importedFilesReachTheDestinationAndTheJobCompletesWithOneActivityRow`; `FolderImportTests.anImportedFileGetsTheSamePathAsAPhotosAssetWithTheSameMetadata`; `FolderImportTests.rawPlusJpegIsOneAssetWithTwoUploads`; `FolderImportTests.aLivePairIsOneAssetOnlyWhenTheContentIdentifiersMatch`; `FolderItemGrouperTests` | — |
+| | Categories, dates and sidecar `source` block | Automated | `FolderImportTests.screenshotsAndPhotosWithoutACameraGoToTheirOwnBranches`; `FolderImportTests.theSidecarCarriesTheSourceBlock`; `ImportDatePolicyTests`; `SourceRoutingTests.sidecarCarriesTheSourceBlockOnlyForImports` | — |
+| | Duplicates: same bytes, same folder again, Photos asset by hash or fingerprint; a distinct file is never dropped | Automated | `FolderImportDedupeTests` (six tests); `FolderImportDedupeRulesTests` (six tests) | Known limit: re-importing after a database loss uploads again ([0024](./decisions/0024-multiple-sources-and-folder-import.md)). |
+| | Cancel keeps uploaded files; a later import revives the rest; assets kept by a cancel reach a destination added later | Automated | `FolderImportTests.cancelStopsIngestAndCancelsUnuploadedJobsButKeepsUploadedFiles`; `FolderImportDedupeTests.aRemovedImportComesBackWhenTheSameFolderIsImportedAgain`; `FolderImportDedupeRulesTests.assetsKeptAfterACancelUploadToADestinationAddedLater` | — |
+| | Folder away or flapping holds only its own job; Photos keeps uploading | Automated | `FolderImportTests.anOfflineFolderHoldsItsJobAndPhotosKeepUploading`; `FolderImportRecoveryTests` (ten tests); `SourceRoutingTests.anUnreachableSourceGoesOfflineAndPhotosKeepExporting` | Unplug a real disk during an import. |
+| | Crash at each import step: no loss, no duplicate | Automated | `FolderImportCrashTests` (four crash points) | `kill -9` on a real import. |
+| | Progress text, notification text and the once-only completion notice | Automated | `ImportProgressTextTests` (including `onlyAnImportThatWasOpenAndIsNowCompletedIsNewlyCompleted`, `waitingForPhotosAccessIsSaidInsteadOfReadingTheFolder`); `ImportFolderGuardTests` | The notification itself needs a real Mac. |
+| Factory reset (FR-117, [0025](./decisions/0025-old-layout-block-and-reset.md)) | Only the lock and the daily cap survive; nothing happens without a request; links are removed without touching their targets; a failed wipe keeps the marker | Automated | `FactoryResetTests.aRequestedResetKeepsOnlyTheLockAndTheDailyCap`; `FactoryResetTests.nothingHappensWithoutARequest`; `FactoryResetTests.linksInTheFolderAreRemovedWithoutTouchingTheirTargets`; `FactoryResetTests.aFailedWipeKeepsTheMarkerForTheNextLaunch` | The relaunch, the lock wait and the Google sign-out are in the app target (no tests). Owner: run "Đặt lại từ đầu…" on a signed build. |
+| Log viewer | Parsing, newest first across rotated files, filters, copy, distinct ids | Automated | `LogReaderTests` (five tests); `LoggingTests.writesFormattedLine` | The window itself is UI. Owner: open View log. |
+| Language switch ([0022](./decisions/0022-interface-languages.md)) | Text follows the pinned language; Vietnamese default; plurals; destination folder names never change; no bare Vietnamese literal | Automated | `LocalizationTests` (six tests); `EnglishTextTests` (14 tests); `UITextCoverageTests` | The live switch of open windows. Owner: switch language in Settings › General. |
+| Old-layout block (FR-118, [0025](./decisions/0025-old-layout-block-and-reset.md)) | A 0.1.0-shaped database: nothing moves, uploads or is written; the block is stored once and survives a restart; startup recovery and job-writing commands stop; a fresh database syncs | Automated | `LegacyLayoutBlockTests.oldLayoutDatabaseDoesNothingAndReportsTheBlock`; `LegacyLayoutBlockTests.blockSurvivesARestartAndSkipsStartupRecoveryAndCommands`; `LegacyLayoutBlockTests.freshDatabaseAfterResetSyncs`; `LegacyLayoutBlockTests.detectsOnlyYearFoldersUnderBranches`; `StatusTextTests.oldLayoutBlocksEverythingElse` | The red menu bar card and the Settings shortcut are UI. Owner: open 0.2.0 on a copy of a 0.1.0 database. |
+| | A root with year folders is not offered for reuse and recovery refuses it | Automated | `LegacyRootProbeTests` (seven tests: probe, folder paths, Drive and NAS inventory, `recoveryRefusesAnOldLayoutRootAndQueuesNoMoves`) | Owner: pick a real 0.1.0 Drive root and NAS folder. |
 
 ## [VERIFY] items for the owner
 

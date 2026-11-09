@@ -1,7 +1,7 @@
 ---
 phase: 03b
 title: "Core policies: rate limiting, disk guard, places, sidecars, devices, views"
-status: done
+status: completed
 priority: P1
 size: M
 human_effort: 3-5h
@@ -36,7 +36,7 @@ Pure algorithms consumed only by the engine (phases 08–10). Runs in parallel w
 2. Implement.
 
 ## Success Criteria
-- [ ] Policy tests green; sidecar bytes identical across runs.
+- [x] Policy tests green; sidecar bytes identical across runs.
 
 ## Risk Assessment
 - Device-name table entries are [VERIFY]: shipped as a small table, owner-editable via group rename.

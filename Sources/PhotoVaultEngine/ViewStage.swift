@@ -30,7 +30,9 @@ struct ViewStage: CycleStage {
     static func disable(_ db: Database, _ id: DestinationID, now: Date) throws {
         try KeyValueRepository.set(db, disabledPrefix + id.rawValue, 1)
         try ActivityRepository.record(db, ActivityEvent(
-            at: now, kind: .notice, destinationId: id, message: "Google Drive không cho tạo shortcut với quyền hiện tại; các view đã tắt"))
+            at: now, kind: .notice, destinationId: id, message: tr(
+                vi: "Google Drive không cho tạo shortcut với quyền hiện tại; các view đã tắt",
+                en: "Google Drive does not allow creating shortcuts with the current permission; views are turned off")))
     }
 
     /// Queues a full pass that also restores shortcuts the owner removed ("Dựng lại view").

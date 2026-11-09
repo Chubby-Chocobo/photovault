@@ -11,6 +11,7 @@ extension SyncCoordinator {
     /// Throws when the scan is not complete or Photos refuses.
     public func runReconciliation() async throws {
         try await exclusive {
+            try await refuseLegacyLayout()
             try await hardening.reconciler.reconcile(reason: .requested)
             needsReconciliation = nil
         }
@@ -59,13 +60,19 @@ extension SyncCoordinator {
 
     /// "Khôi phục giúp tôi": untrashes the root and the folders the app created.
     public func untrashAppItems(_ id: DestinationID) async throws {
-        try await exclusive { try await hardening.roots.untrashAppItems(id) }
+        try await exclusive {
+            try await refuseLegacyLayout()
+            try await hardening.roots.untrashAppItems(id)
+        }
         await publish()
     }
 
     /// The owner's answer to a missing or trashed root. The engine never recreates a root by itself.
     public func resolveRootProblem(_ id: DestinationID, choice: RootProblemChoice) async throws {
-        try await exclusive { try await hardening.roots.resolve(id, choice: choice) }
+        try await exclusive {
+            try await refuseLegacyLayout()
+            try await hardening.roots.resolve(id, choice: choice)
+        }
         await publish()
     }
 
@@ -75,7 +82,10 @@ extension SyncCoordinator {
     /// `destination.json` (`rootId` is ignored for a local destination). The destination waits for
     /// recovery, which runs in the first cycle after the scan is complete.
     public func adoptExistingRoot(_ id: DestinationID, rootId: String) async throws {
-        try await exclusive { try await hardening.triggers.adoptExistingRoot(id, rootId: rootId) }
+        try await exclusive {
+            try await refuseLegacyLayout()
+            try await hardening.triggers.adoptExistingRoot(id, rootId: rootId)
+        }
         await publish()
     }
 
@@ -84,6 +94,7 @@ extension SyncCoordinator {
     public func changeDriveRoot(
         _ id: DestinationID, rootId: String, rootName: String, account: DriveAccount? = nil, rootHasContent: Bool
     ) async throws {
+        try await refuseLegacyLayout()
         // The old root's transfers stop now; the rest of the cycle yields at its next boundary.
         await uploader.cancelUploads(of: id)
         try await exclusive {
@@ -101,6 +112,7 @@ extension SyncCoordinator {
         _ id: DestinationID, rootId: String, rootName: String, account: DriveAccount, rootHasContent: Bool,
         checkRootWith checker: any RootManaging, commitAccount: @Sendable () async throws -> Void
     ) async throws {
+        try await refuseLegacyLayout()
         await uploader.cancelUploads(of: id)
         try await exclusive {
             try await hardening.triggers.changeDriveAccount(
@@ -117,6 +129,7 @@ extension SyncCoordinator {
     public func startRecovery(_ id: DestinationID, onlyIfRequired: Bool = false) async throws -> RecoveryOutcome {
         let env = env
         let result = try await exclusive { () async throws -> (outcome: RecoveryOutcome, skipped: Bool) in
+            try await refuseLegacyLayout()
             if onlyIfRequired {
                 let required = try await env.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired ?? false }
                 if !required { return (.recovered(RecoveryStats()), true) }

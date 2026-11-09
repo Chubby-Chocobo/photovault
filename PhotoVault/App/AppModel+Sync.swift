@@ -46,7 +46,7 @@ extension AppModel {
 
     func openGoogleDrive() {
         guard let rootId = driveRecord?.config.driveRootId, let url = DriveRootService.webURL(rootId: rootId) else {
-            showNotice("Chưa có thư mục gốc trên Drive.", isError: true)
+            showNotice(tr(vi: "Chưa có thư mục gốc trên Drive.", en: "There is no root folder on Drive yet."), isError: true)
             return
         }
         NSWorkspace.shared.open(url)
@@ -54,7 +54,9 @@ extension AppModel {
 
     /// Reveals a local destination's folder in Finder; the bookmark gives the current location.
     func revealInFinder(_ record: DestinationRecord) {
-        let failure = "Không mở được thư mục. Hãy chọn lại thư mục trong Settings › Đích."
+        let failure = tr(
+            vi: "Không mở được thư mục. Hãy chọn lại thư mục trong Settings › Đích.",
+            en: "Could not open the folder. Choose the folder again in Settings › Destinations.")
         guard let bookmark = record.config.bookmark else {
             showNotice(failure, isError: true)
             return
@@ -72,6 +74,9 @@ extension AppModel {
         }
     }
 
+    /// Where `RotatingFileLog` writes, for the log window.
+    var logDirectory: URL? { env?.layout.logs }
+
     func revealLog() {
         guard let env else { return }
         NSWorkspace.shared.open(env.layout.logs)
@@ -85,6 +90,15 @@ extension AppModel {
         NSApp.activate(ignoringOtherApps: true)
         if case .settings(let tab) = request { settingsTab = tab }
         windowRequest = request
+    }
+
+    /// The window for a relaunch of the running app: onboarding until it is done, then Settings.
+    func openOnReopen() {
+        switch phase {
+        case .launching: return
+        case .needsOnboarding: open(.onboarding)
+        case .running: open(.settings(settingsTab))
+        }
     }
 
     func quit() {

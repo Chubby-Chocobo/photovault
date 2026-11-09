@@ -19,6 +19,14 @@ final class AppModel {
 
     static let shared = AppModel()
 
+    init() {
+        setInterfaceLanguage(Self.storedInterfaceLanguage(), save: false)
+    }
+
+    /// What the owner picked, and the language it resolves to; views key their content on `language`
+    /// so a switch re-renders them.
+    var interfaceLanguage: InterfaceLanguageChoice = .vi
+    var language: AppLanguage = .vi
     var phase: Phase = .launching
     var env: AppEnvironment?
     var snapshot: EngineSnapshot?
@@ -38,6 +46,8 @@ final class AppModel {
     var firstStart: FirstStartState?
     /// One short message for the user (success or failure); views show it as a banner.
     var notice: Notice?
+    /// A factory reset is signing out or relaunching; its button stays disabled.
+    var factoryResetInProgress = false
     var windowRequest: WindowRequest?
     var settingsTab: SettingsTab = .general
     var hardening: (any HardeningCommands)?
@@ -56,6 +66,8 @@ final class AppModel {
     @ObservationIgnored let activityAssertion = ActivityAssertion()
     @ObservationIgnored let notificationService = NotificationService()
     @ObservationIgnored var runtime: Runtime?
+    /// Status of every import at the last snapshot, to notice the moment one finishes.
+    @ObservationIgnored var importStatuses: [SourceID: SourceStatus] = [:]
 
     /// Things that run only while the engine is live.
     struct Runtime {
@@ -130,6 +142,7 @@ final class AppModel {
     /// Recovery, monitors, first cycle. Called at launch with a baseline, and by onboarding after Start.
     func goLive() async {
         guard let env, runtime == nil else { return }
+        await env.coordinator.registerSources(env.folderSources)
         do {
             let summary = try await env.coordinator.start()
             env.log.log(.info, category: "launch", "startup recovery finished: \(summary)")
@@ -168,6 +181,7 @@ final class AppModel {
             for await value in await env.coordinator.snapshots() {
                 guard let self else { return }
                 self.snapshot = value
+                await self.noteImportProgress(value)
                 await self.refresh()
             }
         }
@@ -201,7 +215,7 @@ final class AppModel {
         alert.alertStyle = .warning
         alert.messageText = failure.alertTitle
         alert.informativeText = failure.alertText
-        alert.addButton(withTitle: "Thoát")
+        alert.addButton(withTitle: tr(vi: "Thoát", en: "Quit"))
         alert.runModal()
         NSApp.terminate(nil)
     }
@@ -234,7 +248,9 @@ final class AppModel {
 
     func refreshSnapshot() async {
         guard let env, phase == .running else { return }
-        snapshot = await env.coordinator.currentSnapshot()
+        let current = await env.coordinator.currentSnapshot()
+        snapshot = current
+        await noteImportProgress(current)
         await refresh()
     }
 

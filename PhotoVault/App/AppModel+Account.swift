@@ -31,9 +31,18 @@ extension AppModel {
         return try await env.auth.signIn()
     }
 
-    func driveRoots() async throws -> [RemoteItem] {
+    func driveRoots() async throws -> [RootChooser.RemoteItemSummary] {
         guard let env else { return [] }
-        return try await DriveRootService(drive: env.drive).existingRoots()
+        return try await rootSummaries(DriveRootService(drive: env.drive))
+    }
+
+    /// The roots found, each marked when it holds a 0.1.0 backup (the owner is told to move it to the Trash).
+    private func rootSummaries(_ service: DriveRootService) async throws -> [RootChooser.RemoteItemSummary] {
+        var summaries: [RootChooser.RemoteItemSummary] = []
+        for root in try await service.existingRoots() {
+            summaries.append(.init(id: root.remoteId, name: root.name, isLegacy: await service.holdsOldLayout(rootId: root.remoteId)))
+        }
+        return summaries
     }
 
     /// Pauses Drive as signed out, then deletes the Keychain item and revokes the token. Pausing first
@@ -44,7 +53,7 @@ extension AppModel {
             guard await markDriveSignedOut(env) else { throw EngineError.invalidState("could not pause Drive") }
             try await env.auth.signOut()
             await refresh()
-            showNotice("Đã đăng xuất Google.")
+            showNotice(tr(vi: "Đã đăng xuất Google.", en: "Signed out of Google."))
         } catch {
             showError(error)
         }
@@ -96,9 +105,9 @@ extension AppModel {
     }
 
     /// PhotoVault roots in the staged account, listed before that account goes live.
-    func driveRoots(for change: AccountChange) async throws -> [RemoteItem] {
+    func driveRoots(for change: AccountChange) async throws -> [RootChooser.RemoteItemSummary] {
         guard let env, let staged = change.staged else { return try await driveRoots() }
-        return try await DriveRootService(drive: stagedDrive(env, staged)).existingRoots()
+        return try await rootSummaries(DriveRootService(drive: stagedDrive(env, staged)))
     }
 
     /// "Huỷ": the old account and its state stay exactly as they were. Does nothing for a change that
@@ -174,7 +183,9 @@ extension AppModel {
             await env.registry.add(env.drive)
             requestSync(.manual)
             await refresh()
-            showNotice(root.reused ? "Đang khôi phục trạng thái từ thư mục đã chọn." : "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.")
+            showNotice(root.reused
+            ? tr(vi: "Đang khôi phục trạng thái từ thư mục đã chọn.", en: "Recovering state from the chosen folder.")
+            : tr(vi: "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.", en: "Created the folder “\(root.name)” and reset the Drive destination."))
         } catch {
             if committed.isSet {
                 // The Keychain holds the new account but the reset did not finish: sign in again to continue.
@@ -248,7 +259,9 @@ extension AppModel {
         await env.registry.add(env.drive)
         requestSync(.manual)
         await refresh()
-        showNotice(root.reused ? "Đang khôi phục trạng thái từ thư mục đã chọn." : "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.")
+        showNotice(root.reused
+            ? tr(vi: "Đang khôi phục trạng thái từ thư mục đã chọn.", en: "Recovering state from the chosen folder.")
+            : tr(vi: "Đã tạo thư mục “\(root.name)” và đặt lại đích Drive.", en: "Created the folder “\(root.name)” and reset the Drive destination."))
     }
 
     /// Clears sign-in states; a user pause is lifted only when this sign-in set it.
@@ -285,7 +298,7 @@ extension AppModel {
                 try DestinationRepository.save(db, record)
             }
             await refresh()
-            showNotice("Đã đổi tên thư mục gốc thành “\(clean)”.")
+            showNotice(tr(vi: "Đã đổi tên thư mục gốc thành “\(clean)”.", en: "Renamed the root folder to “\(clean)”."))
         } catch {
             showError(error)
         }

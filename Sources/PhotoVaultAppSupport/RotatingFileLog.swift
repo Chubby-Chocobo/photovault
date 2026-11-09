@@ -2,11 +2,13 @@ import Foundation
 import PhotoVaultCore
 
 /// File log with rotation (NFR-07): `photovault.log` plus `photovault.1.log`...`photovault.4.log`,
-/// each up to 5 MB, so at most 25 MB stay on disk. Messages pass through `LogRedactor`.
+/// each up to 5 MB, so at most 25 MB stay on disk: the oldest file is deleted when a new one starts. Messages pass through `LogRedactor`.
 public final class RotatingFileLog: LogSink, @unchecked Sendable {
     public static let fileSize = 5 * 1024 * 1024
     public static let fileCount = 5
     static let maxLineLength = 2000
+    /// `2026-11-09T13:02:38.512Z`: UTC with milliseconds.
+    static let timestampStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
     public let directory: URL
     private let maxBytes: Int
@@ -60,7 +62,7 @@ public final class RotatingFileLog: LogSink, @unchecked Sendable {
     static func format(level: LogLevel, category: String, message: String, date: Date) -> String {
         let flat = message.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
         let clipped = flat.count > maxLineLength ? String(flat.prefix(maxLineLength)) + "…" : flat
-        return "\(date.formatted(.iso8601)) [\(level.rawValue.uppercased())] \(category): \(clipped)\n"
+        return "\(date.formatted(timestampStyle)) [\(level.rawValue.uppercased())] \(category): \(clipped)\n"
     }
 
     private func open() throws {

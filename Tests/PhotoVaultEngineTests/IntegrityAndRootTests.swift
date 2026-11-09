@@ -20,8 +20,10 @@ import Testing
         return h
     }
 
-    private func monthFolder(_ h: Harness) async throws -> FakeDestination.Item {
-        try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == "camera/2026/10" })
+    /// The day folder of the newest photo of `driveLife`.
+    private func dayFolder(_ h: Harness) async throws -> FakeDestination.Item {
+        let path = h.cameraDayPath(daysAgo: 1)
+        return try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == path })
     }
 
     // MARK: T20
@@ -98,10 +100,10 @@ import Testing
 
     // MARK: T40
 
-    @Test func t40ATrashedMonthFolderIsFoundAtTheNextWriteAndUntrashingRestoresIt() async throws {
+    @Test func t40ATrashedDayFolderIsFoundAtTheNextWriteAndUntrashingRestoresIt() async throws {
         let h = try await driveLife(assets: 2)
-        let month = try await monthFolder(h)
-        await h.drive.externallyTrash(month.id)
+        let folder = try await dayFolder(h)
+        await h.drive.externallyTrash(folder.id)
         await h.add(h.snapshot("late", daysAgo: 1), recordChange: true)
         await h.run()
         #expect(try h.destinationRecord(.googleDrive).status == .paused(.folderTrashed))
@@ -112,26 +114,26 @@ import Testing
         #expect(try h.destinationRecord(.googleDrive).status == .paused(.folderTrashed))
 
         try await h.coordinator.untrashAppItems(.googleDrive)
-        #expect(await h.drive.items[month.id]?.trashed == false)
+        #expect(await h.drive.items[folder.id]?.trashed == false)
         #expect(try h.destinationRecord(.googleDrive).status == .active)
         await h.settle()
         #expect(await h.drive.files.count == 3)
-        #expect(await h.drive.folders.filter { $0.name == "10" }.count == 1, "the same folder, not a second one")
+        #expect(await h.drive.folders.filter { $0.appProperties[AppPropertyKey.logical] == h.cameraDayPath(daysAgo: 1) }.count == 1, "the same folder, not a second one")
         #expect(await h.coordinator.pendingOwnerDecisions().isEmpty)
     }
 
     @Test func aFolderThatAnswersNotFoundIsRecreatedAndItsFilesAreMarkedMissing() async throws {
         let h = try await driveLife(assets: 2)
-        let month = try await monthFolder(h)
-        await h.drive.externallyDelete(month.id)
+        let folder = try await dayFolder(h)
+        await h.drive.externallyDelete(folder.id)
         await h.add(h.snapshot("late", daysAgo: 1), recordChange: true)
         await h.settle()
-        #expect(try h.jobs(.missingRemote).count == 2, "the files that were in the folder")
-        #expect(try h.jobs(.done).count == 1, "the new photo went into the recreated folder")
-        let recreated = await h.drive.folders.filter { $0.appProperties[AppPropertyKey.logical] == "camera/2026/10" }
-        #expect(recreated.count == 1 && recreated[0].id != month.id)
+        #expect(try h.jobs(.missingRemote).count == 1, "the file that was in the folder")
+        #expect(try h.jobs(.done).count == 2, "the new photo went into the recreated folder")
+        let recreated = await h.drive.folders.filter { $0.appProperties[AppPropertyKey.logical] == h.cameraDayPath(daysAgo: 1) }
+        #expect(recreated.count == 1 && recreated[0].id != folder.id)
         #expect(try h.activity().contains { $0.kind == .missingFile })
-        #expect(await h.coordinator.pendingOwnerDecisions().contains(.integrityMissing(.googleDrive, count: 2)))
+        #expect(await h.coordinator.pendingOwnerDecisions().contains(.integrityMissing(.googleDrive, count: 1)))
     }
 
     // MARK: Root problems

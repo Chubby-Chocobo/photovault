@@ -1,12 +1,11 @@
 import PhotoVaultAppSupport
+import PhotoVaultCore
 import PhotoVaultEngine
 import SwiftUI
 
-/// Settings › Sắp xếp: day folders (spec 8.7), classification (FR-20), Drive views (FR-103), device groups (FR-104).
+/// Settings › Sắp xếp: classification (FR-20), Drive views (FR-103), device groups (FR-104).
 struct OrganizationTab: View {
     @Environment(AppModel.self) private var model
-    @State private var preview: ResortPreview?
-    @State private var confirmResort = false
     @State private var confirmRebuild = false
     @State private var newAlbum = ""
     @State private var counts: AppQueries.ViewCounts?
@@ -14,102 +13,72 @@ struct OrganizationTab: View {
     private static let itemWarningThreshold = 400_000
 
     var body: some View {
-        SettingsSection("Thư mục ngày") {
-            FormRow("Tách thư mục ngày khi một ngày có hơn", detail: "Chỉ tính ảnh camera. Áp dụng cho ngày mới từ giờ.") {
-                HStack {
-                    TextField("", value: model.binding(\.dayFolderThreshold), format: .number)
-                        .frame(width: 60).multilineTextAlignment(.trailing).textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Ngưỡng thư mục ngày")
-                    Text("ảnh")
-                }
-            }
-            issues(for: [.dayThresholdOutOfRange])
-            FormRow(resortCaption) {
-                Button("Sắp xếp lại…") { confirmResort = true }.disabled((preview?.files ?? 0) == 0)
-            }
-        }
-        .task(id: model.persistedSettings.dayFolderThreshold) { preview = await model.resortPreview() }
-        .confirmationDialog(resortTitle, isPresented: $confirmResort) {
-            Button("Sắp xếp lại") { Task { await model.resortApply(); preview = await model.resortPreview() } }
-            Button("Huỷ", role: .cancel) {}
-        } message: {
-            Text("PhotoVault sẽ chuyển \(VietnameseFormat.integer(preview?.files ?? 0)) file (bản gốc, bản chỉnh sửa, sidecar) của \(VietnameseFormat.integer(preview?.days ?? 0)) ngày vào thư mục ngày ở mọi đích. Thư mục ngày đã có giữ nguyên.")
-        }
-
-        SettingsSection("Phân loại") {
+        SettingsSection(tr(vi: "Phân loại", en: "Classification")) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Album app chat → “Saved”")
-                Text("So khớp chính xác tên album (không phân biệt hoa thường).").font(.caption).foregroundStyle(.secondary)
+                Text(tr(vi: "Album app chat → “Saved”", en: "Chat app albums → “Saved”"))
+                Text(tr(vi: "So khớp chính xác tên album (không phân biệt hoa thường).", en: "Matches the album name exactly (case-insensitive).")).font(.caption).foregroundStyle(.secondary)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
                     ForEach(model.settings.chatAppAlbumNames, id: \.self) { name in
                         HStack(spacing: 4) {
                             Text(name)
                             Button { removeAlbum(name) } label: { Image(systemName: "xmark") }
-                                .buttonStyle(.plain).accessibilityLabel("Bỏ \(name)")
+                                .buttonStyle(.plain).accessibilityLabel(tr(vi: "Bỏ \(name)", en: "Remove \(name)"))
                         }
                         .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                     }
                 }
                 HStack {
-                    TextField("Tên album", text: $newAlbum).textFieldStyle(.roundedBorder).frame(width: 200)
+                    TextField(tr(vi: "Tên album", en: "Album name"), text: $newAlbum).textFieldStyle(.roundedBorder).frame(width: 200)
                         .onSubmit(addAlbum)
-                    Button("Thêm", action: addAlbum)
+                    Button(tr(vi: "Thêm", en: "Add"), action: addAlbum)
                 }
             }
             Toggle(isOn: model.binding(\.photosWithoutCameraExifAreSaved)) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Ảnh thiếu EXIF máy ảnh → “Saved”")
-                    Text("Ảnh scan có thể bị xếp vào Saved.").font(.caption).foregroundStyle(.secondary)
+                    Text(tr(vi: "Ảnh thiếu EXIF máy ảnh → “Saved”", en: "Photos without camera EXIF → “Saved”"))
+                    Text(tr(vi: "Ảnh scan có thể bị xếp vào Saved.", en: "Scanned photos may end up in Saved.")).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            SettingsNote("Đổi quy tắc phân loại chỉ áp dụng cho ảnh chưa được xếp chỗ.")
+            SettingsNote(tr(vi: "Đổi quy tắc phân loại chỉ áp dụng cho ảnh chưa được xếp chỗ.", en: "A new classification rule only applies to photos not yet placed."))
         }
 
-        SettingsSection("View trên Drive") {
+        SettingsSection(tr(vi: "View trên Drive", en: "Views on Drive")) {
             Toggle("By device", isOn: model.binding(\.viewByDeviceEnabled))
             Toggle(isOn: model.binding(\.viewByPlaceEnabled)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("By place")
                     if !model.settings.placeNamesEnabled {
-                        Text("Cần bật địa danh ở tab Địa danh & riêng tư").font(.caption).foregroundStyle(.secondary)
+                        Text(tr(vi: "Cần bật địa danh ở tab Địa danh & riêng tư", en: "Turn on place names in the Places & privacy tab")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             .disabled(!model.settings.placeNamesEnabled)
             Toggle("Favorites", isOn: model.binding(\.viewFavoritesEnabled))
             Divider()
-            FormRow("Ước tính số item trên My Drive") {
+            FormRow(tr(vi: "Ước tính số item trên My Drive", en: "Estimated items in My Drive")) {
                 Text(VietnameseFormat.integer(estimatedItems))
                     .monospacedDigit().foregroundStyle(estimatedItems > Self.itemWarningThreshold ? Color.red : Color.primary)
             }
             if estimatedItems > Self.itemWarningThreshold {
-                Banner(.warning, title: "Vượt ngưỡng cảnh báo \(VietnameseFormat.integer(Self.itemWarningThreshold)) item",
-                       message: "Google có thể giới hạn số item trong My Drive; cân nhắc tắt bớt view.")
+                Banner(.warning, title: tr(vi: "Vượt ngưỡng cảnh báo \(VietnameseFormat.integer(Self.itemWarningThreshold)) item",
+                                           en: "Over the warning threshold of \(VietnameseFormat.integer(Self.itemWarningThreshold)) items"),
+                       message: tr(vi: "Google có thể giới hạn số item trong My Drive; cân nhắc tắt bớt view.", en: "Google may limit the number of items in My Drive; consider turning off some views."))
             }
-            SettingsNote("Tắt view thì cây hiện có được giữ nguyên. Shortcut không tốn dung lượng.")
-            FormRow("Đưa By device, By place và Favorites về đúng trạng thái, kể cả shortcut bạn đã xoá.") {
-                Button("Dựng lại view…") { confirmRebuild = true }
+            SettingsNote(tr(vi: "Tắt view thì cây hiện có được giữ nguyên. Shortcut không tốn dung lượng.", en: "Turning a view off leaves the existing tree as it is. Shortcuts use no storage."))
+            FormRow(tr(vi: "Đưa By device, By place và Favorites về đúng trạng thái, kể cả shortcut bạn đã xoá.", en: "Bring By device, By place and Favorites back to the right state, including shortcuts you deleted.")) {
+                Button(tr(vi: "Dựng lại view…", en: "Rebuild views…")) { confirmRebuild = true }
             }
         }
         .task { counts = await model.viewCounts() }
-        .confirmationDialog("Dựng lại view?", isPresented: $confirmRebuild) {
-            Button("Dựng lại view") { Task { await model.rebuildViews() } }
-            Button("Huỷ", role: .cancel) {}
+        .confirmationDialog(tr(vi: "Dựng lại view?", en: "Rebuild views?"), isPresented: $confirmRebuild) {
+            Button(tr(vi: "Dựng lại view", en: "Rebuild views")) { Task { await model.rebuildViews() } }
+            Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
-            Text("Tạo shortcut còn thiếu (kể cả shortcut bạn đã xoá), chuyển shortcut sai chỗ, cho shortcut thừa vào Thùng rác. File backup không bị đụng tới.")
+            Text(tr(vi: "Tạo shortcut còn thiếu (kể cả shortcut bạn đã xoá), chuyển shortcut sai chỗ, cho shortcut thừa vào Thùng rác. File backup không bị đụng tới.", en: "Creates missing shortcuts (including ones you deleted), moves misplaced shortcuts and puts extra shortcuts in the Trash. Backup files are not touched."))
         }
 
         DeviceGroupsSection()
-    }
-
-    private var resortTitle: String { "Sắp xếp lại theo ngưỡng \(model.persistedSettings.dayFolderThreshold) ảnh?" }
-
-    private var resortCaption: String {
-        guard let preview else { return "Đang tính…" }
-        return preview.files > 0
-            ? "Sắp xếp lại sẽ chuyển \(VietnameseFormat.integer(preview.files)) file của \(VietnameseFormat.integer(preview.days)) ngày vào thư mục ngày."
-            : "Không có file nào cần chuyển. Thư mục ngày đã có không bị gộp ngược."
     }
 
     private var estimatedItems: Int {

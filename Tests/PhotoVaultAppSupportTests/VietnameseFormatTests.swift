@@ -1,4 +1,5 @@
 import Foundation
+import PhotoVaultCore
 import Testing
 @testable import PhotoVaultAppSupport
 
@@ -32,6 +33,15 @@ struct VietnameseFormatTests {
 
     @Test func gigabytesAlwaysOneDecimal() {
         #expect(VietnameseFormat.gigabytes(15 * (1 << 30)) == "15,0 GB")
+    }
+
+    @Test func englishSwapsTheSeparators() {
+        L10n.$override.withValue(.en) {
+            #expect(VietnameseFormat.integer(1_234_567) == "1,234,567")
+            #expect(VietnameseFormat.decimal(12345.6, fractionDigits: 1) == "12,345.6")
+            #expect(VietnameseFormat.bytes((1 << 30) * 3 + (1 << 30) / 5) == "3.2 GB")
+            #expect(VietnameseFormat.gigabytes(15 * (1 << 30)) == "15.0 GB")
+        }
     }
 }
 

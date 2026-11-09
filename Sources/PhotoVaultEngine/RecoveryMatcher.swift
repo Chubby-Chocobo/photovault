@@ -37,6 +37,7 @@ struct RecoveryMatcher: Sendable {
 
     private struct AssetInfo: Sendable {
         var key: AssetKey
+        var sourceId: SourceID
         var localId: String
         var width: Int
         var height: Int
@@ -90,9 +91,9 @@ struct RecoveryMatcher: Sendable {
         let zone = timeZone
         return try await env.store.read { db in
             var index = Index()
-            for row in try Row.fetchAll(db, sql: "SELECT asset_key, local_id, creation_date, pixel_width, pixel_height, duration FROM asset") {
+            for row in try Row.fetchAll(db, sql: "SELECT asset_key, source_id, local_id, creation_date, pixel_width, pixel_height, duration FROM asset") {
                 guard let key = AssetKey(rawValue: row["asset_key"]) else { continue }
-                index.assets[key] = AssetInfo(key: key, localId: row["local_id"], width: row["pixel_width"], height: row["pixel_height"], duration: row["duration"])
+                index.assets[key] = AssetInfo(key: key, sourceId: SourceID(rawValue: row["source_id"]) ?? .photos, localId: row["local_id"], width: row["pixel_width"], height: row["pixel_height"], duration: row["duration"])
                 let descriptors = try ResourceRepository.fetchAll(db, key: key).map(\.descriptor)
                 guard let primary = ResourcePlanner.primary(of: descriptors) ?? descriptors.first else { continue }
                 let stem = NameStemBuilder.originalStem(of: primary.originalFilename).lowercased()
@@ -195,14 +196,16 @@ struct RecoveryMatcher: Sendable {
             guard budget > 0, let info = index.assets[key] else { break }
             let resolved: ResourceType? = try await env.store.read { db in try resourceType(of: entry, key: key, db: db) }
             guard let resolved, !resolved.isSidecar else { continue }
+            let filename = try await env.store.read { db in try ResourceRepository.fetch(db, key: key, type: resolved)?.originalFilename } ?? ""
             budget -= 1
             try await env.tuning.sleep(env.tuning.recoveryExportInterval)
             let directory = env.stagingDirectory.appendingPathComponent("recovery-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: directory) }
             do {
-                let exported = try await env.photos.exportResource(
-                    localId: info.localId, type: resolved, to: directory.appendingPathComponent("candidate"), control: ExportControl())
+                guard let content = await env.sources.content(for: info.sourceId) else { throw SourceError.unavailable }
+                let locator = ResourceLocator(sourceId: info.sourceId, localId: info.localId, type: resolved, originalFilename: filename)
+                let exported = try await content.exportResource(locator, to: directory.appendingPathComponent("candidate"), control: ExportControl())
                 if (remote.kind == .md5 ? exported.md5 : exported.sha256) == remote.value {
                     hits.append(RecoveredFile(entry: entry, assetKey: key, resType: resolved, alias: nil))
                 }

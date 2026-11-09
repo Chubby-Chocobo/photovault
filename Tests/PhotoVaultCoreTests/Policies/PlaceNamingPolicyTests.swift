@@ -18,13 +18,13 @@ import Testing
 
     func evaluate(
         _ assets: [PlaceAsset], en: [GeoPoint: GeoPlace] = [:], display: [GeoPoint: GeoPlace] = [:], includeHidden: Bool = false,
-        locale: String = "vi", home: String = "VN", now: Date? = nil
+        home: String = "VN", now: Date? = nil
     ) -> PlaceNamingResult {
         PlaceNamingPolicy.evaluate(PlaceNamingInput(
             assets: assets, includeHidden: includeHidden,
             englishGeocodes: Dictionary(en.map { (GeoCell($0.key), $0.value) }, uniquingKeysWith: { $1 }),
-            displayGeocodes: Dictionary(display.map { (GeoCell($0.key), $0.value) }, uniquingKeysWith: { $1 }),
-            displayLocale: locale, homeCountryCode: home, day: day, archiveTimeZone: tz, now: now ?? afterSixHours
+            localGeocodes: Dictionary(display.map { (GeoCell($0.key), $0.value) }, uniquingKeysWith: { $1 }),
+            homeCountryCode: home, day: day, archiveTimeZone: tz, now: now ?? afterSixHours
         ))
     }
 
@@ -56,10 +56,12 @@ import Testing
         #expect(onlyDisplayMissing.cellsToGeocode == [GeoCell(daLat)])
     }
 
-    @Test func displayLocaleEnNeedsOnlyEnglishGeocodes() {
-        let result = evaluate([pa(daLat)], en: [daLat: place()], locale: "en")
+    @Test func englishSpeakingCountriesNeedOnlyTheEnglishGeocode() {
+        let london = GeoPoint(latitude: 51.5074, longitude: -0.1278)
+        let uk = GeoPlace(isoCountryCode: "GB", country: "United Kingdom", administrativeArea: "England", locality: "London")
+        let result = evaluate([pa(london)], en: [london: uk])
         #expect(result.state == .named)
-        #expect(result.placeName == "Da Lat")
+        #expect(result.placeName == "London, United Kingdom")
     }
 
     @Test func twoProvincesAreUnnamedEvenWhileOtherCellsAreMissing() {
@@ -80,12 +82,12 @@ import Testing
 
     @Test func foreignCountryGetsSuffix() {
         let japan = GeoPlace(isoCountryCode: "JP", country: "Japan", administrativeArea: "Tokyo", locality: "Shibuya")
-        let nhat = GeoPlace(isoCountryCode: "JP", country: "Nhật Bản", administrativeArea: "Tokyo", locality: "Shibuya")
-        let result = evaluate([pa(tokyo)], en: [tokyo: japan], display: [tokyo: nhat])
-        #expect(result.placeName == "Shibuya, Nhật Bản")
+        let native = GeoPlace(isoCountryCode: "JP", country: "日本", administrativeArea: "東京都", locality: "渋谷区")
+        let result = evaluate([pa(tokyo)], en: [tokyo: japan], display: [tokyo: native])
+        #expect(result.placeName == "Shibuya (渋谷区), Japan")
         #expect(result.placeKey == "JP|Tokyo")
-        let abroadHome = evaluate([pa(tokyo)], en: [tokyo: japan], display: [tokyo: nhat], home: "jp")
-        #expect(abroadHome.placeName == "Shibuya")
+        let abroadHome = evaluate([pa(tokyo)], en: [tokyo: japan], display: [tokyo: native], home: "jp")
+        #expect(abroadHome.placeName == "Shibuya (渋谷区)")
     }
 
     @Test func seaOrMissingAdministrativeAreaIsIgnoredOrUnnamed() {

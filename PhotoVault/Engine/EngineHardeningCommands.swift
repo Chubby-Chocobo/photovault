@@ -119,12 +119,18 @@ enum RecoveryCommandError: Error, Equatable {
     var message: String {
         switch self {
         case .needsOwnerDecision:
-            "PhotoVault ghép được quá ít file với thư viện nên tạm dừng đích này. Chọn cách xử lý trong menu bar."
-        case .notReady(.scanIncomplete): "Cần quét xong thư viện Photos trước khi khôi phục."
-        case .notReady(.cloudIdsPending): "PhotoVault đang ghép mã iCloud của ảnh. Thử lại sau ít phút."
-        case .notReady(.destinationUnavailable): "Đích chưa truy cập được. Kiểm tra mạng hoặc ổ NAS."
-        case .notReady(.unknownDestination): "Không tìm thấy đích này."
-        case .notReady(.alreadyRunning): "Đang khôi phục đích này."
+            tr(
+                vi: "PhotoVault ghép được quá ít file với thư viện nên tạm dừng đích này. Chọn cách xử lý trong menu bar.",
+                en: "PhotoVault matched too few files with the library, so it paused this destination. Choose what to do in the menu bar.")
+        case .notReady(.scanIncomplete): tr(vi: "Cần quét xong thư viện Photos trước khi khôi phục.", en: "The Photos library must finish scanning before recovery.")
+        case .notReady(.cloudIdsPending): tr(vi: "PhotoVault đang ghép mã iCloud của ảnh. Thử lại sau ít phút.", en: "PhotoVault is matching the iCloud IDs of the photos. Try again in a few minutes.")
+        case .notReady(.destinationUnavailable): tr(vi: "Đích chưa truy cập được. Kiểm tra mạng hoặc ổ NAS.", en: "The destination can’t be reached yet. Check the network or the NAS.")
+        case .notReady(.unknownDestination): tr(vi: "Không tìm thấy đích này.", en: "This destination was not found.")
+        case .notReady(.legacyLayout):
+            tr(
+                vi: "Thư mục này chứa bản sao lưu của PhotoVault 0.1.0 (bố cục cũ) nên không dùng lại được. Hãy chuyển nó vào Thùng rác hoặc chọn thư mục khác.",
+                en: "This folder holds a PhotoVault 0.1.0 backup (the old layout), so it can’t be reused. Move it to the Trash or pick another folder.")
+        case .notReady(.alreadyRunning): tr(vi: "Đang khôi phục đích này.", en: "This destination is being recovered.")
         }
     }
 }

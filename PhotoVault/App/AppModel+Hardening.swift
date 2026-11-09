@@ -8,7 +8,7 @@ extension AppModel {
 
     private func withHardening(_ title: String, _ body: @escaping @MainActor (any HardeningCommands) async throws -> String?) {
         guard let hardening else {
-            showNotice("\(title) chưa khả dụng trong bản build này.", isError: true)
+            showNotice(tr(vi: "\(title) chưa khả dụng trong bản build này.", en: "\(title) is not available in this build."), isError: true)
             return
         }
         Task {
@@ -23,14 +23,14 @@ extension AppModel {
     }
 
     func runReconciliation() {
-        withHardening("Đối soát thư viện") { commands in
+        withHardening(tr(vi: "Đối soát thư viện", en: "Library reconciliation")) { commands in
             try await commands.runReconciliation()
-            return "Đã đối soát thư viện."
+            return tr(vi: "Đã đối soát thư viện.", en: "Library reconciled.")
         }
     }
 
     func runIntegrityCheck(_ id: DestinationID? = nil) {
-        withHardening("Kiểm tra toàn vẹn") { [weak self] commands in
+        withHardening(tr(vi: "Kiểm tra toàn vẹn", en: "Integrity check")) { [weak self] commands in
             let summary = try await commands.runIntegrityCheck(id)
             if let env = self?.env {
                 let now = Date()
@@ -47,39 +47,46 @@ extension AppModel {
     }
 
     func retryDeferred(_ id: DestinationID? = nil) {
-        withHardening("Thử lại job bị hoãn") { commands in
+        withHardening(tr(vi: "Thử lại job bị hoãn", en: "Retry deferred jobs")) { commands in
             try await commands.retryDeferred(id)
-            return "Đã xếp hàng lại các job bị hoãn."
+            return tr(vi: "Đã xếp hàng lại các job bị hoãn.", en: "Deferred jobs queued again.")
         }
     }
 
     func retrySkipped(_ id: DestinationID? = nil) {
-        withHardening("Thử lại job bị bỏ qua") { commands in
+        withHardening(tr(vi: "Thử lại job bị bỏ qua", en: "Retry skipped jobs")) { commands in
             try await commands.retrySkipped(id)
-            return "Đã xếp hàng lại các job bị bỏ qua."
+            return tr(vi: "Đã xếp hàng lại các job bị bỏ qua.", en: "Skipped jobs queued again.")
         }
     }
 
     func startRecovery(_ id: DestinationID) {
-        withHardening("Khôi phục trạng thái từ đích") { commands in
+        withHardening(tr(vi: "Khôi phục trạng thái từ đích", en: "Restore state from the destination")) { commands in
             let report = try await commands.startRecovery(id)
-            return "Khôi phục xong: ghép \(VietnameseFormat.integer(report.matchedFiles)) file"
-                + (report.unmatchedFiles > 0 ? ", \(VietnameseFormat.integer(report.unmatchedFiles)) file không ghép được." : ".")
+            let matched = VietnameseFormat.integer(report.matchedFiles)
+            let unmatched = VietnameseFormat.integer(report.unmatchedFiles)
+            let matchedText = tr(
+                vi: "Khôi phục xong: ghép \(matched) file",
+                en: "Recovery done: matched \(L10n.plural(report.matchedFiles, one: "1 file", other: "\(matched) files"))")
+            guard report.unmatchedFiles > 0 else { return matchedText + "." }
+            return matchedText + tr(
+                vi: ", \(unmatched) file không ghép được.",
+                en: ", \(L10n.plural(report.unmatchedFiles, one: "1 file", other: "\(unmatched) files")) could not be matched.")
         }
     }
 
     // MARK: Owner decisions (FR-47, FR-76)
 
     func untrashAndContinue(_ decision: OwnerDecisionItem) {
-        withHardening("Khôi phục thư mục") { commands in
+        withHardening(tr(vi: "Khôi phục thư mục", en: "Recover folder")) { commands in
             try await commands.untrashAppItems(decision.destinationId)
             try await commands.resolveRootProblem(decision.destinationId, choice: .ownerRestored)
-            return "Đã khôi phục thư mục. \(decision.destinationName) chạy lại."
+            return tr(vi: "Đã khôi phục thư mục. \(decision.destinationName) chạy lại.", en: "Folder recovered. \(decision.destinationName) is running again.")
         }
     }
 
     func ownerRestored(_ decision: OwnerDecisionItem) {
-        withHardening("Kiểm tra lại thư mục") { commands in
+        withHardening(tr(vi: "Kiểm tra lại thư mục", en: "Recheck folder")) { commands in
             try await commands.resolveRootProblem(decision.destinationId, choice: .ownerRestored)
             return nil
         }
@@ -87,33 +94,35 @@ extension AppModel {
 
     func uploadToNewRoot(_ decision: OwnerDecisionItem, name: String) {
         guard RootNameValidator.validate(name) == nil else {
-            showNotice(RootNameValidator.validate(name)?.message ?? "Tên không hợp lệ.", isError: true)
+            showNotice(RootNameValidator.validate(name)?.message ?? tr(vi: "Tên không hợp lệ.", en: "Invalid name."), isError: true)
             return
         }
         let clean = RootNameValidator.normalized(name)
-        withHardening("Upload vào thư mục mới") { commands in
+        withHardening(tr(vi: "Upload vào thư mục mới", en: "Upload to a new folder")) { commands in
             try await commands.resolveRootProblem(decision.destinationId, choice: .uploadToNewRoot(name: clean))
-            return "Đang tạo thư mục “\(clean)” và upload lại."
+            return tr(vi: "Đang tạo thư mục “\(clean)” và upload lại.", en: "Creating the folder “\(clean)” and uploading again.")
         }
     }
 
     func confirmReupload(_ decision: OwnerDecisionItem) {
-        withHardening("Upload lại file thiếu") { commands in
+        withHardening(tr(vi: "Upload lại file thiếu", en: "Re-upload missing files")) { commands in
             try await commands.confirmReupload(decision.destinationId)
-            return "Đã xếp hàng upload lại."
+            return tr(vi: "Đã xếp hàng upload lại.", en: "Re-upload queued.")
         }
     }
 
     func proceedWithoutRecovery(_ decision: OwnerDecisionItem) {
-        withHardening("Tiếp tục không dùng dữ liệu cũ") { commands in
+        withHardening(tr(vi: "Tiếp tục không dùng dữ liệu cũ", en: "Continue without the old data")) { commands in
             try await commands.proceedWithoutRecovery(decision.destinationId)
-            return "\(decision.destinationName) chạy lại; file mới được ghi bên cạnh dữ liệu cũ."
+            return tr(
+                vi: "\(decision.destinationName) chạy lại; file mới được ghi bên cạnh dữ liệu cũ.",
+                en: "\(decision.destinationName) is running again; new files are written next to the old data.")
         }
     }
 
     /// "Đã xem": the engine forgets the mismatch count until a later check finds more.
     func dismissChecksumMismatch(_ decision: OwnerDecisionItem) {
-        withHardening("Đánh dấu đã xem") { commands in
+        withHardening(tr(vi: "Đánh dấu đã xem", en: "Mark as seen")) { commands in
             try await commands.dismissChecksumMismatch(decision.destinationId)
             return nil
         }

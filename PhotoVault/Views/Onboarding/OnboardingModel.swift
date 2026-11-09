@@ -24,7 +24,7 @@ final class OnboardingModel {
 
     var photos: PhotosAuthorization
 
-    var rootName = "Camera Uploads"
+    var rootName = "PhotoVault"
     var roots: [RootChooser.RemoteItemSummary] = []
     var reuseRootId: String?
     var rootsError: String?
@@ -84,7 +84,9 @@ final class OnboardingModel {
 
     func signIn() async {
         guard app.googleConfigured else {
-            signInError = "Chưa cấu hình Google OAuth: PVGoogleClientID trống. Làm theo \(AppEnvironment.setupReadmeSection) rồi build lại."
+            signInError = tr(
+                vi: "Chưa cấu hình Google OAuth: PVGoogleClientID trống. Làm theo \(AppEnvironment.setupReadmeSection) rồi build lại.",
+                en: "Google OAuth is not configured: PVGoogleClientID is empty. Follow \(AppEnvironment.setupReadmeSection), then build again.")
             return
         }
         signInGeneration += 1
@@ -144,8 +146,8 @@ final class OnboardingModel {
     func loadRoots() async {
         rootsError = nil
         do {
-            roots = try await app.driveRoots().map { .init(id: $0.remoteId, name: $0.name) }
-            reuseRootId = app.hardeningAvailable ? roots.first?.id : nil
+            roots = try await app.driveRoots()
+            reuseRootId = app.hardeningAvailable ? roots.first { !$0.isLegacy }?.id : nil
         } catch {
             roots = []
             rootsError = ErrorText.message(for: error)
@@ -168,7 +170,10 @@ final class OnboardingModel {
     func chooseNas() async {
         guard let picked = await app.pickLocalFolder() else { return }
         if picked.isReuse, !app.hardeningAvailable {
-            app.showNotice("Dùng lại thư mục cũ cần chức năng khôi phục, chưa khả dụng trong bản build này.", isError: true)
+            app.showNotice(
+                tr(vi: "Dùng lại thư mục cũ cần chức năng khôi phục, chưa khả dụng trong bản build này.",
+                   en: "Reusing an old folder needs recovery, which is not available in this build."),
+                isError: true)
             return
         }
         nas = picked
@@ -208,11 +213,13 @@ final class OnboardingModel {
     func start() async {
         // The sidebar lets the owner change earlier answers: check the whole plan again.
         if let problem = OnboardingProgress.firstProblem(facts) {
-            startError = "Bước \(problem.rawValue) (\(problem.title)) chưa hợp lệ. Quay lại bước đó để sửa trước khi bắt đầu."
+            startError = tr(
+                vi: "Bước \(problem.rawValue) (\(problem.title)) chưa hợp lệ. Quay lại bước đó để sửa trước khi bắt đầu.",
+                en: "Step \(problem.rawValue) (\(problem.title)) is not valid yet. Go back to that step and fix it before starting.")
             return
         }
         guard let identity else {
-            startError = "Chưa đăng nhập Google. Quay lại bước 1."
+            startError = tr(vi: "Chưa đăng nhập Google. Quay lại bước 1.", en: "Not signed in to Google. Go back to step 1.")
             return
         }
         startError = nil

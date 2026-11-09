@@ -157,7 +157,9 @@ struct RecoveryWriter: Sendable {
             suspect = true
             try ActivityRepository.record(db, ActivityEvent(
                 at: context.now, kind: .missingFile, destinationId: record.id, assetKey: file.assetKey,
-                message: "Một file khôi phục có dung lượng khác với sidecar; cần xác nhận trước khi upload lại"))
+                message: tr(
+                    vi: "Một file khôi phục có dung lượng khác với sidecar; cần xác nhận trước khi upload lại",
+                    en: "A recovered file has a different size from its sidecar; confirmation is needed before uploading again")))
         }
         try JobRepository.save(db, &job)
         if !file.resType.isSidecar, let size = item.size {
