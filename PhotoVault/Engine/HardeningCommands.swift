@@ -81,6 +81,8 @@ struct OwnerDecisionItem: Identifiable, Equatable, Sendable {
     var destinationName: String
     var kind: Kind
 
+    /// Also the snooze key: a count is part of it, so "Để sau" hides a card only until a later check
+    /// finds a different number of files.
     var id: String { destinationId.rawValue + "|" + kindKey }
 
     private var kindKey: String {
@@ -89,8 +91,8 @@ struct OwnerDecisionItem: Identifiable, Equatable, Sendable {
         case .rootMissing: "rootMissing"
         case .folderTrashed: "folderTrashed"
         case .recoveryNeedsDecision: "recoveryNeedsDecision"
-        case .integrityMissing: "integrityMissing"
-        case .checksumMismatch: "checksumMismatch"
+        case .integrityMissing(let count, _, let mismatched): "integrityMissing:\(count):\(mismatched)"
+        case .checksumMismatch(let count): "checksumMismatch:\(count)"
         }
     }
 }

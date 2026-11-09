@@ -175,6 +175,11 @@ extension AppModel {
                 firstStart?.matchedFiles += report.matchedFiles
             } catch RecoveryCommandError.notReady(.alreadyRunning) {
                 continue
+            } catch RecoveryCommandError.notReady(let blocker) where blocker == .destinationUnavailable || blocker == .cloudIdsPending {
+                // The destination stays "recovery required": the sync cycle runs it once it can, and
+                // nothing is uploaded there before. The start itself is done.
+                showNotice(RecoveryCommandError.notReady(blocker).message + " Khôi phục sẽ tự chạy tiếp.")
+                continue
             } catch RecoveryCommandError.needsOwnerDecision {
                 // The decision card in the menu bar takes over; the other destinations keep going.
                 continue
