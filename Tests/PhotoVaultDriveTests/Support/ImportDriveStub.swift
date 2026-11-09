@@ -21,12 +21,15 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
     private var order: [String] = []
     private var recorded: [URLRequest] = []
     private var failures: [String: StubResponse] = [:]
+    private var listingFailures: [String: StubResponse] = [:]
     var pageSize = 1000
     let validToken = LockedBox("token-1")
 
     func add(_ node: Node) { lock.withLock { nodes[node.id] = node; order.append(node.id) } }
     func remove(_ id: String) { lock.withLock { nodes[id] = nil } }
     func fail(_ id: String, with response: StubResponse) { lock.withLock { failures[id] = response } }
+    /// Listing the children of this folder answers `response`.
+    func failListing(of id: String, with response: StubResponse) { lock.withLock { listingFailures[id] = response } }
     var requests: [URLRequest] { lock.withLock { recorded } }
     var listingRequests: Int { requests.filter { $0.url?.path == "/drive/v3/files" }.count }
 
@@ -56,6 +59,7 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         let q = query["q"] ?? ""
         guard let open = q.firstIndex(of: "'"), let close = q[q.index(after: open)...].firstIndex(of: "'") else { return .json(400, [:]) }
         let parentId = String(q[q.index(after: open)..<close])
+        if let failure = listingFailures[parentId] { return failure }
         if nodes[parentId]?.hidesChildren == true { return .json(200, ["files": []]) }
         let all = order.compactMap { nodes[$0] }.filter { $0.parent == parentId && !$0.trashed }
         let start = Int(query["pageToken"] ?? "0") ?? 0

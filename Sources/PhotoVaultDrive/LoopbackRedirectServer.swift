@@ -163,7 +163,6 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             answer(connection, status: "400 Bad Request", body: Self.failurePage)
             return
         }
-        lock.withLock { acceptedCallback = callback }
         switch Result(catching: { try LoopbackRequestParser.authorizationCode(from: callback, expectedState: expectedState) }) {
         case .failure(let error):
             answer(connection, status: "400 Bad Request", body: Self.failurePage)
@@ -172,6 +171,8 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             _ = forget(connection)
             let accepted = lock.withLock { () -> Bool in
                 guard outcome == nil else { return false }
+                // Only the request that delivered the code counts: a reload or prefetch must not replace the picked ids.
+                acceptedCallback = callback
                 callbackConnection = connection
                 return true
             }

@@ -4,34 +4,39 @@ import Testing
 import PhotoVaultCore
 @testable import PhotoVaultDrive
 
-private let sourceId = SourceID(rawValue: "folder-" + UUID().uuidString.lowercased())!
+let importSourceId = SourceID(rawValue: "folder-" + UUID().uuidString.lowercased())!
 
-private struct Rig {
+struct ImportRig {
     let stub = ImportDriveStub()
     let scratch: URL
+    let state: URL
     let keychain = InMemoryKeychainStore()
     let clock = FixedClock()
 
-    init() throws { scratch = try tempDir().appendingPathComponent("scratch") }
+    init() throws {
+        let root = try tempDir()
+        scratch = root.appendingPathComponent("scratch")
+        state = root.appendingPathComponent("state")
+    }
 
     func auth(_ transport: any HTTPTransport, initial: Bool = true) -> DriveImportAuth {
         let oauth = OAuthClient(config: OAuthConfig(clientID: "c"), transport: transport, clock: clock, openURL: { _ in true })
-        return DriveImportAuth(sourceId: sourceId, oauth: oauth, keychain: keychain, clock: clock,
+        return DriveImportAuth(sourceId: importSourceId, oauth: oauth, keychain: keychain, clock: clock,
                                initial: initial ? ("token-1", clock.now.addingTimeInterval(3600)) : nil)
     }
 
     func source(_ picked: [String], transport: (any HTTPTransport)? = nil, auth override: (any DriveAuthorizing)? = nil) -> DriveImportSource {
-        DriveImportSource(id: sourceId, pickedIds: picked, auth: override ?? auth(transport ?? stub), transport: transport ?? stub,
-                          scratchDirectory: scratch, metadata: StubMetadataReader())
+        DriveImportSource(id: importSourceId, pickedIds: picked, auth: override ?? auth(transport ?? stub), transport: transport ?? stub,
+                          scratchDirectory: scratch, stateDirectory: state, metadata: StubMetadataReader())
     }
 }
 
-private func sha(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
-private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+func sha(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
 @Suite struct DriveImportListingTests {
     @Test func listsTreeWithPagingAndSkips() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.pageSize = 2
         rig.stub.add(.init(id: "F", name: "Trip", mime: DriveMime.folder))
         for i in 1...5 { rig.stub.add(.init(id: "a\(i)", name: "p\(i).jpg", parent: "F", content: Data(count: i))) }
@@ -51,7 +56,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func singlePickedFolderNameOnlyForOneFolder() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "F", name: " Trip 2024 ", mime: DriveMime.folder))
         rig.stub.add(.init(id: "A", name: "a.jpg"))
         #expect(await rig.source(["F"]).singlePickedFolderName() == "Trip 2024")
@@ -61,7 +66,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func duplicateNamesGetDistinctPaths() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "F", name: "Dir", mime: DriveMime.folder))
         rig.stub.add(.init(id: "z", name: "IMG.jpg", parent: "F"))
         rig.stub.add(.init(id: "a", name: "IMG.jpg", parent: "F"))
@@ -73,14 +78,14 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func pickedFolderWithNoReadableChildrenIsEmptyNotAnError() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "F", name: "Hidden", mime: DriveMime.folder, hidesChildren: true))
         rig.stub.add(.init(id: "c", name: "x.jpg", parent: "F"))
         #expect(try await rig.source(["F"]).listFiles().isEmpty)
     }
 
     @Test func deletedPickIsSkippedAndProbeStillSucceeds() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "A", name: "a.jpg"))
         let source = rig.source(["gone", "A"])
         try await source.probe()
@@ -88,7 +93,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func unsafeNamesStayInsideTheRoot() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "A", name: "../evil/a.jpg"))
         rig.stub.add(.init(id: "B", name: "..", mime: DriveMime.folder))
         rig.stub.add(.init(id: "c", name: "ok.jpg", parent: "B"))
@@ -100,7 +105,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
 
 @Suite struct DriveImportTransferTests {
     @Test func inspectAndExportHashesMatchTheBytes() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         let bytes = Data((0..<3_000_000).map { UInt8(truncatingIfNeeded: $0 &* 31) })
         rig.stub.add(.init(id: "A", name: "big.jpg", content: bytes))
         let source = rig.source(["A"])
@@ -112,7 +117,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
 
         let dir = try tempDir()
         let dest = dir.appendingPathComponent("out.jpg")
-        let locator = ResourceLocator(sourceId: sourceId, localId: ImportLocator(sourceId: sourceId, relativePath: "big.jpg").localId,
+        let locator = ResourceLocator(sourceId: importSourceId, localId: ImportLocator(sourceId: importSourceId, relativePath: "big.jpg").localId,
                                       type: .photo, originalFilename: "big.jpg")
         let exported = try await source.exportResource(locator, to: dest, control: ExportControl())
         #expect(exported.size == Int64(bytes.count) && exported.sha256 == sha(bytes) && exported.md5 == md5(bytes))
@@ -120,21 +125,21 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func exportUsesTheSiblingNameInTheSameFolder() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "F", name: "D", mime: DriveMime.folder))
         rig.stub.add(.init(id: "A", name: "a.jpg", parent: "F", content: Data("one".utf8)))
         rig.stub.add(.init(id: "B", name: "a.mov", mime: "video/quicktime", parent: "F", content: Data("two".utf8)))
         let source = rig.source(["F"])
         _ = try await source.listFiles()
-        let primary = ImportLocator(sourceId: sourceId, relativePath: "D/a.jpg").localId
+        let primary = ImportLocator(sourceId: importSourceId, relativePath: "D/a.jpg").localId
         let dest = try tempDir().appendingPathComponent("o")
-        let file = try await source.exportResource(.init(sourceId: sourceId, localId: primary, type: .pairedVideo, originalFilename: "a.mov"),
+        let file = try await source.exportResource(.init(sourceId: importSourceId, localId: primary, type: .pairedVideo, originalFilename: "a.mov"),
                                                    to: dest, control: ExportControl())
         #expect(file.sha256 == sha(Data("two".utf8)))
     }
 
     @Test func relistsLazilyAfterRelaunch() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "F", name: "D", mime: DriveMime.folder))
         rig.stub.add(.init(id: "A", name: "a.jpg", parent: "F", content: Data("x".utf8)))
         let fresh = rig.source(["F"])
@@ -148,7 +153,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func missingFileMapsToFileMissing() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "A", name: "a.jpg"))
         let source = rig.source(["A"])
         _ = try await source.listFiles()
@@ -159,27 +164,28 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func cancellationStopsTheDownloadAndLeavesNoFile() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "A", name: "a.jpg", content: Data(count: 4_000_000)))
         let source = rig.source(["A"])
         _ = try await source.listFiles()
         let control = ExportControl(checkpointBytes: 1, checkpoint: { _ in false })
         let dest = try tempDir().appendingPathComponent("o")
-        let locator = ResourceLocator(sourceId: sourceId, localId: ImportLocator(sourceId: sourceId, relativePath: "a.jpg").localId,
+        let locator = ResourceLocator(sourceId: importSourceId, localId: ImportLocator(sourceId: importSourceId, relativePath: "a.jpg").localId,
                                       type: .photo, originalFilename: "a.jpg")
         await #expect(throws: SourceError.cancelled) { try await source.exportResource(locator, to: dest, control: control) }
         #expect(!FileManager.default.fileExists(atPath: dest.path))
     }
 
     @Test func serverErrorsMapToSourceErrors() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "A", name: "a.jpg"))
         let source = rig.source(["A"])
         _ = try await source.listFiles()
         let cases: [(StubResponse, SourceError)] = [
-            (.json(429, [:]), .unavailable), (.json(503, [:]), .unavailable),
+            (.json(429, [:]), .busy), (.json(503, [:]), .busy), (.json(500, [:]), .busy),
             (.json(403, ["error": ["errors": [["reason": "downloadQuotaExceeded"]]]]), .readFailed(code: 403)),
-            (.json(403, ["error": ["errors": [["reason": "userRateLimitExceeded"]]]]), .unavailable),
+            (.json(403, ["error": ["errors": [["reason": "userRateLimitExceeded"]]]]), .busy),
+            (.json(403, ["error": ["errors": [["reason": "rateLimitExceeded"]]]]), .busy),
         ]
         for (response, expected) in cases {
             rig.stub.fail("A", with: response)
@@ -190,7 +196,7 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func networkFailureIsUnavailable() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         let down = StubTransport { _ in throw URLError(.notConnectedToInternet) }
         let source = rig.source(["A"], transport: down, auth: FixedTokenAuth(token: "t"))
         await #expect(throws: SourceError.unavailable) { try await source.probe() }
@@ -204,9 +210,9 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func refreshesOnUnauthorizedAndRetries() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         rig.stub.add(.init(id: "A", name: "a.jpg", content: Data("abc".utf8)))
-        try DriveImportAuth.store(refreshToken: "r-1", for: sourceId, in: rig.keychain)
+        try DriveImportAuth.store(refreshToken: "r-1", for: importSourceId, in: rig.keychain)
         rig.stub.validToken.value = "token-2"
         let oauth = StubTransport { [self] _ in tokenResponse("token-2") }
         let router = RouterTransport(oauth: oauth, drive: rig.stub)
@@ -218,8 +224,8 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func invalidGrantIsAccessRevoked() async throws {
-        let rig = try Rig()
-        try DriveImportAuth.store(refreshToken: "dead", for: sourceId, in: rig.keychain)
+        let rig = try ImportRig()
+        try DriveImportAuth.store(refreshToken: "dead", for: importSourceId, in: rig.keychain)
         rig.stub.validToken.value = "other"
         let router = RouterTransport(oauth: StubTransport { _ in .json(400, ["error": "invalid_grant"]) }, drive: rig.stub)
         let source = rig.source(["A"], transport: router)
@@ -227,28 +233,27 @@ private func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { S
     }
 
     @Test func missingGrantIsAccessRevoked() async throws {
-        let rig = try Rig()
+        let rig = try ImportRig()
         let router = RouterTransport(oauth: StubTransport { _ in .json(500, [:]) }, drive: rig.stub)
         let source = rig.source(["A"], transport: router, auth: rig.auth(router, initial: false))
         await #expect(throws: SourceError.accessRevoked) { try await source.probe() }
-        #expect(!DriveImportAuth.hasGrant(for: sourceId, in: rig.keychain))
+        #expect(try rig.keychain.read(account: CloudTokenAccount.importGrant(importSourceId)) == nil)
     }
 
     @Test func grantLivesUnderThePerImportAccount() throws {
         let keychain = InMemoryKeychainStore()
-        try DriveImportAuth.store(refreshToken: "r", for: sourceId, in: keychain)
-        #expect(try keychain.read(account: "import-" + sourceId.rawValue) == Data("r".utf8))
-        #expect(DriveImportAuth.hasGrant(for: sourceId, in: keychain))
-        try DriveImportAuth.removeGrant(for: sourceId, from: keychain)
-        #expect(!DriveImportAuth.hasGrant(for: sourceId, in: keychain))
+        try DriveImportAuth.store(refreshToken: "r", for: importSourceId, in: keychain)
+        #expect(try keychain.read(account: "import-" + importSourceId.rawValue) == Data("r".utf8))
+        try DriveImportAuth.removeGrant(for: importSourceId, from: keychain)
+        #expect(try keychain.read(account: "import-" + importSourceId.rawValue) == nil)
     }
 
     @Test func rotatedRefreshTokenIsStored() async throws {
-        let rig = try Rig()
-        try DriveImportAuth.store(refreshToken: "r-1", for: sourceId, in: rig.keychain)
+        let rig = try ImportRig()
+        try DriveImportAuth.store(refreshToken: "r-1", for: importSourceId, in: rig.keychain)
         let oauth = StubTransport { _ in .json(200, ["access_token": "t2", "refresh_token": "r-2", "expires_in": 3600]) }
         let auth = rig.auth(oauth, initial: false)
         #expect(try await auth.accessToken() == "t2")
-        #expect(try rig.keychain.read(account: DriveImportAuth.keychainAccount(for: sourceId)) == Data("r-2".utf8))
+        #expect(try rig.keychain.read(account: CloudTokenAccount.importGrant(importSourceId)) == Data("r-2".utf8))
     }
 }

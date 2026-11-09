@@ -27,6 +27,8 @@ public enum PickerError: Error, Equatable, Sendable {
 public struct GooglePickerFlow: Sendable {
     public static let scope = "https://www.googleapis.com/auth/drive.file"
     static let maxPickedIds = 5000
+    /// Picking many photos across folders takes a while; the selection is lost when this runs out.
+    public static let pickTimeout: TimeInterval = 20 * 60
 
     private let config: OAuthConfig
     private let transport: any HTTPTransport
@@ -35,7 +37,7 @@ public struct GooglePickerFlow: Sendable {
     private let loopbackTimeout: TimeInterval
 
     public init(config: OAuthConfig, transport: any HTTPTransport, clock: any Clock = SystemClock(),
-                openURL: @escaping URLOpening, loopbackTimeout: TimeInterval = LoopbackRedirectServer.defaultTimeout) {
+                openURL: @escaping URLOpening, loopbackTimeout: TimeInterval = GooglePickerFlow.pickTimeout) {
         self.config = config
         self.transport = transport
         self.clock = clock

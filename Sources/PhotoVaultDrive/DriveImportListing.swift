@@ -87,7 +87,7 @@ struct DriveImportLister: Sendable {
     func list() async throws -> Listing {
         var roots: [ImportItem] = []
         for id in pickedIds {
-            do { roots.append(try await item(id)) } catch DestinationError.notFound { continue }
+            do { roots.append(try await item(id)) } catch where Self.isPerItem(error) { continue }
         }
         var listing = Listing()
         var visited = Set<String>()
@@ -96,8 +96,18 @@ struct DriveImportLister: Sendable {
         return listing
     }
 
+    /// A missing item or one the app may not read (403) says nothing about the source: Drive answered, this item is skipped.
+    static func isPerItem(_ error: any Error) -> Bool {
+        guard let error = error as? DestinationError else { return false }
+        switch error {
+        case .notFound: return true
+        case .itemRejected(let reason): return reason.hasPrefix("http 403")
+        default: return false
+        }
+    }
+
     func item(_ id: String) async throws -> ImportItem {
-        let url = DriveURL.make(DriveURL.api, "/files/" + FormEncoding.escape(id), [("fields", ImportItem.fields)])
+        let url = DriveURL.make(DriveURL.api, "/files/" + FormEncoding.escape(id), [("fields", ImportItem.fields), ("supportsAllDrives", "true")])
         return try await http.sendJSON(ImportItem.self, url, method: "GET")
     }
 
@@ -106,7 +116,8 @@ struct DriveImportLister: Sendable {
             let path = prefix + name
             if item.isFolder {
                 guard depth < Self.maxDepth, visited.insert(item.id).inserted else { continue }
-                let children = try await children(of: item.id).filter { !$0.isSkipped }
+                let children: [ImportItem]
+                do { children = try await self.children(of: item.id).filter { !$0.isSkipped } } catch where Self.isPerItem(error) { continue }
                 try await walk(children, prefix: path + "/", depth: depth + 1, visited: &visited, into: &listing)
             } else if let uti = ImportNames.uti(name: name, mimeType: item.mimeType) {
                 listing.ids[path] = item.id
@@ -126,6 +137,7 @@ struct DriveImportLister: Sendable {
             var query: [(String, String)] = [
                 ("q", DriveQuery.all.parent(folderId).notTrashed.q), ("spaces", "drive"), ("pageSize", "1000"),
                 ("fields", "nextPageToken,files(\(ImportItem.fields))"),
+                ("supportsAllDrives", "true"), ("includeItemsFromAllDrives", "true"),
             ]
             if let token { query.append(("pageToken", token)) }
             let page = try await http.sendJSON(Page.self, DriveURL.make(DriveURL.api, "/files", query), method: "GET")

@@ -9,35 +9,29 @@ public final class DriveImportSource: FolderImportSource, Sendable {
     let lister: DriveImportLister
     let metadata: any FileMetadataReading
     let scratchDirectory: URL
-    let index = PathIndex()
-
-    /// Remembers which Drive file a relative path names. Empty after a relaunch until the next listing.
-    actor PathIndex {
-        private var ids: [String: String] = [:]
-        private var listed = false
-        func replace(_ ids: [String: String]) { self.ids = ids; listed = true }
-        func lookup(_ path: String) -> String? { ids[path] }
-        var hasListed: Bool { listed }
-    }
+    let index: RemoteIdIndex
 
     /// - Parameters:
     ///   - pickedIds: Drive ids the owner picked.
     ///   - scratchDirectory: where `inspect` puts its temporary copy; created when missing.
+    ///   - stateDirectory: where this import keeps which Drive file each relative path names; created when missing.
     public init(id: SourceID, pickedIds: [String], auth: any DriveAuthorizing, transport: any HTTPTransport,
-                scratchDirectory: URL, metadata: any FileMetadataReading) {
+                scratchDirectory: URL, stateDirectory: URL, metadata: any FileMetadataReading) {
         self.id = id
         http = DriveHTTP(transport: transport, auth: auth)
         lister = DriveImportLister(http: http, pickedIds: pickedIds)
         self.metadata = metadata
         self.scratchDirectory = scratchDirectory
+        index = RemoteIdIndex(file: stateDirectory.appendingPathComponent("remote-ids.json"))
     }
 
     public func probe() async throws {
         guard let first = lister.pickedIds.first else { throw SourceError.unavailable }
-        do { _ = try await lister.item(first) } catch DestinationError.notFound {
-            // A picked item that was deleted still means Drive answered.
-            return
-        } catch { throw Self.map(error, forFile: false) }
+        do { _ = try await lister.item(first) } catch {
+            // A picked item that was deleted or is no longer shared still means Drive answered.
+            if DriveImportLister.isPerItem(error) { return }
+            throw Self.map(error, forFile: false)
+        }
     }
 
     /// Name of the picked folder when exactly one folder was picked, for the import's display name.
@@ -50,16 +44,18 @@ public final class DriveImportSource: FolderImportSource, Sendable {
     }
 
     public func listFiles() async throws -> [FolderFileEntry] {
-        do {
-            let listing = try await lister.list()
-            await index.replace(listing.ids)
-            return listing.entries
-        } catch { throw Self.map(error, forFile: false) }
+        let listing: DriveImportLister.Listing
+        do { listing = try await lister.list() } catch { throw Self.map(error, forFile: false) }
+        do { return try await index.stabilize(listing.entries, paths: listing.ids) } catch {
+            throw SourceError.readFailed(code: (error as NSError).code)
+        }
     }
 
     public func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
         let fileId = try await resolve(relativePath)
-        try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+        do { try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true) } catch {
+            throw SourceError.readFailed(code: (error as NSError).code)
+        }
         let ext = (relativePath as NSString).pathExtension
         let scratch = scratchDirectory.appendingPathComponent(UUID().uuidString + (ext.isEmpty ? "" : "." + ext))
         defer { try? FileManager.default.removeItem(at: scratch) }
@@ -76,12 +72,16 @@ public final class DriveImportSource: FolderImportSource, Sendable {
 
     // MARK: Internals
 
-    /// Drive id of a path; a path unknown after a relaunch triggers one listing.
+    /// Drive id of a path. A path the map does not know triggers one shared listing that adds what is new.
     func resolve(_ relativePath: String) async throws -> String {
         let path = relativePath.precomposedStringWithCanonicalMapping
         if let found = await index.lookup(path) { return found }
-        if !(await index.hasListed) { _ = try await listFiles() }
-        guard let found = await index.lookup(path) else { throw SourceError.fileMissing }
+        let lister = lister
+        let found: String?
+        do { found = try await index.resolve(path) { try await lister.list().ids } } catch {
+            throw Self.map(error, forFile: false)
+        }
+        guard let found else { throw SourceError.fileMissing }
         return found
     }
 
@@ -90,11 +90,12 @@ public final class DriveImportSource: FolderImportSource, Sendable {
         do { writer = try StreamingFileWriter(url: url, control: control) } catch let failure as StreamingFileWriter.Failure {
             throw Self.map(failure)
         }
-        let media = DriveURL.make(DriveURL.api, "/files/" + FormEncoding.escape(fileId), [("alt", "media")])
+        let media = DriveURL.make(DriveURL.api, "/files/" + FormEncoding.escape(fileId), [("alt", "media"), ("supportsAllDrives", "true")])
         do {
             try await http.download(media) { chunk in
                 if !writer.append(chunk) { throw writer.failure.map(Self.map) ?? SourceError.cancelled }
             }
+            try Task.checkCancellation()
             return try writer.finish()
         } catch {
             writer.abort()
@@ -112,6 +113,7 @@ public final class DriveImportSource: FolderImportSource, Sendable {
     }
 
     /// `forFile` is true when one file was being read: a missing file is then that file's problem.
+    /// Only `SourceError` and `CancellationError` leave the adapter.
     static func map(_ error: any Error, forFile: Bool) -> SourceError {
         if let error = error as? SourceError { return error }
         if error is CancellationError { return .cancelled }
@@ -120,7 +122,8 @@ public final class DriveImportSource: FolderImportSource, Sendable {
         switch error {
         case .reauthRequired, .unauthorized: return .accessRevoked
         case .notFound: return forFile ? .fileMissing : .unavailable
-        case .offline, .rateLimited, .server, .transient: return .unavailable
+        case .offline: return .unavailable
+        case .rateLimited, .server, .transient: return .busy
         case .itemRejected(let reason):
             let status = reason.split(separator: " ").dropFirst().first.flatMap { Int($0) }
             return .readFailed(code: status ?? 0)

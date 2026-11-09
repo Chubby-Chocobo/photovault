@@ -36,6 +36,10 @@ private func server(email: String? = "me@example.com", refresh: String? = "r-1")
 }
 
 @Suite struct GooglePickerFlowTests {
+    @Test func thePickerWaitsLongEnoughToChooseManyPhotos() {
+        #expect(GooglePickerFlow.pickTimeout >= 15 * 60)
+    }
+
     @Test func authorizationURLCarriesPickerParameters() {
         let url = GooglePickerFlow.authorizationURL(clientID: "c", redirectURI: "http://127.0.0.1:5/oauth2/callback", state: "s", challenge: "ch")
         let q = items(url)

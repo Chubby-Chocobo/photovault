@@ -124,6 +124,18 @@ private enum RawSocket {
         await #expect(throws: LoopbackError.timeout) { try await server.awaitCode() }
     }
 
+    @Test func aLaterRequestCannotReplaceThePickedIdsOfTheAcceptedOne() async throws {
+        let server = try LoopbackRedirectServer(expectedState: "st")
+        let port = try await server.start()
+        let first = Task { try await fetch(port, "/oauth2/callback?code=c&state=st&picked_file_ids=A,B") }
+        _ = try await server.awaitCode()
+        // A reload or a prefetch of the same redirect with other ids, while the first page is still waiting.
+        _ = try? await fetch(port, "/oauth2/callback?code=c2&state=st&picked_file_ids=X")
+        server.respond(success: true)
+        _ = try await first.value
+        #expect(server.receivedCallback?.pickedFileIds == "A,B")
+    }
+
     @Test func listenerStopsAfterFirstCallback() async throws {
         let server = try LoopbackRedirectServer(expectedState: "st")
         let port = try await server.start()

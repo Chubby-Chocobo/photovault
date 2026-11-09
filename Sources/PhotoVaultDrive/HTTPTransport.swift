@@ -29,6 +29,7 @@ public protocol HTTPTransport: Sendable {
 
 public struct URLSessionTransport: HTTPTransport {
     fileprivate let session: URLSession
+    fileprivate let configuration: URLSessionConfiguration
 
     public init(timeout: TimeInterval = 120) {
         let configuration = URLSessionConfiguration.ephemeral
@@ -36,6 +37,12 @@ public struct URLSessionTransport: HTTPTransport {
         configuration.waitsForConnectivity = false
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
+        self.init(configuration: configuration)
+    }
+
+    /// For callers that need their own session setup, for example tests with a stub `URLProtocol`.
+    public init(configuration: URLSessionConfiguration) {
+        self.configuration = configuration
         session = URLSession(configuration: configuration)
     }
 
@@ -99,10 +106,8 @@ public protocol StreamingTransport: HTTPTransport {
 }
 
 extension HTTPTransport {
-    static var streamChunkBytes: Int { 256 << 10 }
-
     /// Streams when the transport can; otherwise buffers the response and replays it in chunks.
-    func streamBody(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
+    public func streamBody(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
         if let streaming = self as? any StreamingTransport { return try await streaming.stream(request, sink: sink) }
         let (data, response) = try await send(request, body: .none)
         guard (200..<300).contains(response.statusCode) else { return (data.prefix(1 << 16), response) }
@@ -118,26 +123,7 @@ extension HTTPTransport {
 
 extension URLSessionTransport: StreamingTransport {
     public func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-        let success = (200..<300).contains(http.statusCode)
-        let limit = success ? Self.streamChunkBytes : 1 << 16
-        var buffer = Data()
-        buffer.reserveCapacity(limit)
-        for try await byte in bytes {
-            buffer.append(byte)
-            if buffer.count >= limit {
-                if !success { break }
-                try Task.checkCancellation()
-                try sink(buffer)
-                buffer.removeAll(keepingCapacity: true)
-            }
-        }
-        if success {
-            if !buffer.isEmpty { try sink(buffer) }
-            return (Data(), http)
-        }
-        return (buffer, http)
+        try await URLSessionStreamer(configuration: configuration).stream(request, sink: sink)
     }
 }
 
