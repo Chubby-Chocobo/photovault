@@ -28,10 +28,12 @@ final class ResourceRequestSession: @unchecked Sendable {
     func start(
         resource: PHAssetResource,
         onChunk: @escaping @Sendable (Data) -> Bool,
+        onProgress: @escaping @Sendable () -> Void = {},
         completion: @escaping @Sendable (Error?) -> Void
     ) {
         let options = PHAssetResourceRequestOptions()
         options.isNetworkAccessAllowed = true
+        options.progressHandler = { _ in onProgress() }
         let id = PHAssetResourceManager.default().requestData(
             for: resource,
             options: options,
@@ -59,11 +61,11 @@ extension PhotoKitSource {
     ) async throws {
         let session = ResourceRequestSession()
         try await StalledRequestGuard().run(
-            start: { chunk, completion in
+            start: { chunk, activity, completion in
                 guard let resource = try Self.resource(localId: localId, type: type) else {
                     throw PhotosSourceError.resourceNotFound(localId: localId, type: type)
                 }
-                session.start(resource: resource, onChunk: chunk, completion: completion)
+                session.start(resource: resource, onChunk: chunk, onProgress: activity, completion: completion)
             },
             cancel: { session.cancel() },
             onChunk: onChunk)

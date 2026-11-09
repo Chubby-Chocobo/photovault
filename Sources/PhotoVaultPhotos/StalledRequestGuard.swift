@@ -68,9 +68,11 @@ struct StalledRequestGuard: Sendable {
         }
     }
 
-    /// `start` begins the request with a chunk handler and a completion; `cancel` stops it.
+    /// `start` begins the request with a chunk handler, an activity callback (download progress that
+    /// delivers no bytes yet, such as iCloud preparing an original) and a completion; `cancel` stops it.
     func run(
-        start: (_ onChunk: @escaping @Sendable (Data) -> Bool, _ completion: @escaping @Sendable (Error?) -> Void) throws -> Void,
+        start: (_ onChunk: @escaping @Sendable (Data) -> Bool, _ onActivity: @escaping @Sendable () -> Void,
+                _ completion: @escaping @Sendable (Error?) -> Void) throws -> Void,
         cancel: @escaping @Sendable () -> Void,
         onChunk: @escaping @Sendable (Data) -> Bool
     ) async throws {
@@ -95,7 +97,7 @@ struct StalledRequestGuard: Sendable {
                     try start({ data in
                         outcome.touch()
                         return onChunk(data)
-                    }, { error in
+                    }, { outcome.touch() }, { error in
                         outcome.finish(error.map { .failure($0) } ?? .success(()))
                     })
                 } catch {

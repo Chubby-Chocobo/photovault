@@ -25,7 +25,7 @@ import Testing
     @Test func aRequestThatNeverDeliversIsCancelledAndReportedAsANetworkError() async throws {
         let calls = Calls()
         await #expect(throws: PhotosSourceError.networkError) {
-            try await fast.run(start: { _, _ in }, cancel: { calls.cancelled() }, onChunk: { _ in true })
+            try await fast.run(start: { _, _, _ in }, cancel: { calls.cancelled() }, onChunk: { _ in true })
         }
         #expect(calls.cancels == 1)
     }
@@ -35,7 +35,7 @@ import Testing
         let calls = Calls()
         let clock = ManualClock()
         let guarded = StalledRequestGuard(stallTimeout: 60, checkInterval: 0.01, now: { clock.now })
-        try await guarded.run(start: { chunk, completion in
+        try await guarded.run(start: { chunk, _, completion in
             Task.detached {
                 for _ in 0..<10 {
                     clock.advance(30)
@@ -50,10 +50,28 @@ import Testing
         #expect(clock.now.timeIntervalSince1970 == 500)
     }
 
+    /// iCloud may report download progress for a long time before the first byte arrives.
+    @Test func downloadProgressWithoutDataIsNotAStall() async throws {
+        let clock = ManualClock()
+        let guarded = StalledRequestGuard(stallTimeout: 60, checkInterval: 0.01, now: { clock.now })
+        try await guarded.run(start: { _, activity, completion in
+            Task.detached {
+                for _ in 0..<10 {
+                    clock.advance(30)
+                    try? await Task.sleep(for: .milliseconds(20))
+                    clock.advance(20)
+                    activity()
+                }
+                completion(nil)
+            }
+        }, cancel: {}, onChunk: { _ in true })
+        #expect(clock.now.timeIntervalSince1970 == 500)
+    }
+
     @Test func aLateCompletionAfterAStallIsIgnored() async throws {
         let late = OSAllocatedUnfairLock<(@Sendable (Error?) -> Void)?>(initialState: nil)
         await #expect(throws: PhotosSourceError.networkError) {
-            try await fast.run(start: { _, completion in late.withLock { $0 = completion } }, cancel: {}, onChunk: { _ in true })
+            try await fast.run(start: { _, _, completion in late.withLock { $0 = completion } }, cancel: {}, onChunk: { _ in true })
         }
         late.withLock { $0 }?(nil)
     }
@@ -61,7 +79,7 @@ import Testing
     @Test func taskCancellationReturnsCancelledEvenIfTheRequestNeverCompletes() async throws {
         let calls = Calls()
         let slow = StalledRequestGuard(stallTimeout: 60, checkInterval: 0.05)
-        let task = Task { try await slow.run(start: { _, _ in }, cancel: { calls.cancelled() }, onChunk: { _ in true }) }
+        let task = Task { try await slow.run(start: { _, _, _ in }, cancel: { calls.cancelled() }, onChunk: { _ in true }) }
         try await Task.sleep(for: .milliseconds(50))
         task.cancel()
         await #expect(throws: PhotosSourceError.cancelled) { try await task.value }
@@ -70,7 +88,7 @@ import Testing
 
     @Test func startFailuresAreThrown() async throws {
         await #expect(throws: PhotosSourceError.assetNotFound(localId: "x")) {
-            try await fast.run(start: { _, _ in throw PhotosSourceError.assetNotFound(localId: "x") }, cancel: {}, onChunk: { _ in true })
+            try await fast.run(start: { _, _, _ in throw PhotosSourceError.assetNotFound(localId: "x") }, cancel: {}, onChunk: { _ in true })
         }
     }
 }
