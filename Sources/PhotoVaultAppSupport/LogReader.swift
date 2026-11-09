@@ -4,12 +4,16 @@ import PhotoVaultCore
 /// One line of `photovault.log`: `<ISO date> [LEVEL] category: message`. A line that does not
 /// follow the format is kept whole in `message`.
 public struct LogEntry: Identifiable, Equatable, Sendable {
-    public var id: Int
+    /// The line itself, plus a counter for identical lines: stays the same across reloads, so rows
+    /// do not jump while the log grows.
+    public var id: String
     public var date: Date?
     public var level: LogLevel?
     public var category: String
     public var message: String
     public var raw: String
+    /// `raw` folded for search, computed once off the main thread.
+    var folded: String = ""
 }
 
 /// Which lines the log window shows. `standard` hides the per-request detail lines.
@@ -56,18 +60,28 @@ public struct LogReader: Sendable {
     /// Newest first.
     public func read(limit: Int = LogReader.defaultLimit) -> [LogEntry] {
         var entries: [LogEntry] = []
+        var seen: [String: Int] = [:]
         for index in 0..<RotatingFileLog.fileCount where entries.count < limit {
             let name = index == 0 ? "photovault.log" : "photovault.\(index).log"
             guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else { continue }
-            let lines = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline)
+            // Only "\n" ends a line: messages may hold other line separators.
+            let lines = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
             for line in lines.reversed() where entries.count < limit {
-                entries.append(Self.parse(String(line), id: entries.count))
+                let text = String(line)
+                let repeats = seen[text, default: 0]
+                seen[text] = repeats + 1
+                var entry = Self.parse(text, id: repeats == 0 ? text : "\(text)#\(repeats)")
+                entry.folded = ActivityPresenter.fold(text)
+                entries.append(entry)
             }
         }
         return entries
     }
 
-    static func parse(_ line: String, id: Int) -> LogEntry {
+    /// Most disk the log takes: the rotated files together.
+    public static var maxDiskBytes: Int { RotatingFileLog.fileSize * RotatingFileLog.fileCount }
+
+    static func parse(_ line: String, id: String) -> LogEntry {
         let plain = LogEntry(id: id, date: nil, level: nil, category: "", message: line, raw: line)
         guard let space = line.firstIndex(of: " "),
               let date = Self.date(String(line[..<space])) else { return plain }
@@ -91,7 +105,7 @@ public struct LogReader: Sendable {
     public static func filter(_ entries: [LogEntry], level: LogLevelFilter, query: String) -> [LogEntry] {
         let needle = ActivityPresenter.fold(query.trimmingCharacters(in: .whitespaces))
         return entries.filter { entry in
-            level.matches(entry.level) && (needle.isEmpty || ActivityPresenter.fold(entry.raw).contains(needle))
+            level.matches(entry.level) && (needle.isEmpty || (entry.folded.isEmpty ? ActivityPresenter.fold(entry.raw) : entry.folded).contains(needle))
         }
     }
 

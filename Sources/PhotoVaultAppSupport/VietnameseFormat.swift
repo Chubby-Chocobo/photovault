@@ -6,19 +6,10 @@ import PhotoVaultCore
 /// Vietnamese only.) Sizes are binary (1 GB = 2^30 bytes) so they match the watermarks in Settings,
 /// which are GiB.
 public enum VietnameseFormat {
-    private static var groupSeparator: String { L10n.language == .vi ? "." : "," }
     private static var decimalSeparator: String { L10n.language == .vi ? "," : "." }
 
     /// `48210` -> `"48.210"` (`"48,210"` in English).
-    public static func integer(_ value: Int) -> String {
-        let digits = String(value.magnitude)
-        var grouped = ""
-        for (offset, character) in digits.reversed().enumerated() {
-            if offset > 0, offset % 3 == 0 { grouped.append(groupSeparator) }
-            grouped.append(character)
-        }
-        return (value < 0 ? "-" : "") + String(grouped.reversed())
-    }
+    public static func integer(_ value: Int) -> String { L10n.integer(value) }
 
     /// `3.25, 1` -> `"3,3"`. Always prints `fractionDigits` decimals.
     public static func decimal(_ value: Double, fractionDigits: Int) -> String {

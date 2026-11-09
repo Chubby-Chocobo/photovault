@@ -250,7 +250,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 **FR-62** `SMAppService.mainApp`.
  
-**FR-63** Hoạt động gần đây: 500 sự kiện (đổi tên, di chuyển, file thiếu, đổi trạng thái, khôi phục, tiến độ). Đổi tên và di chuyển gom theo mỗi lượt của một đích: tối đa 5 dòng, nhiều hơn thì một dòng tóm tắt. Tiến độ: số file upload trong một lần sync, và một lần khi backfill của một đích xong. Dòng sự kiện có thể ghi tên thư mục, không bao giờ ghi tên file hay toạ độ.
+**FR-63** Hoạt động gần đây: 500 sự kiện (đổi tên, di chuyển, file thiếu, đổi trạng thái, khôi phục, tiến độ). Sự kiện thường lệ không đẩy mất sự kiện hiếm: đổi tên và di chuyển của một đích gộp vào một dòng trong mỗi giờ, số file upload gộp một dòng mỗi ngày, trạng thái đổi rồi quay lại trong 2 giờ thì bỏ dòng. Tiến độ: số file upload trong ngày, và một lần khi backfill của một đích xong. Dòng sự kiện có thể ghi tên thư mục, không bao giờ ghi tên file hay toạ độ.
  
 ### 4.9 Local/NAS
  

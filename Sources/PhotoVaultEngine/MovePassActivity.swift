@@ -1,53 +1,56 @@
 import Foundation
 import PhotoVaultCore
+import PhotoVaultStore
+import GRDB
 
-/// What one destination's move pass changed, as activity rows (FR-63): one row per renamed folder
-/// and one per target folder of moved files, or a single summary when there are more than
-/// `maxRows` (a first sync can name thousands of day folders). Rows name folders, never files.
+/// What one destination's move pass changed, written to the activity list (FR-63) as one rename row
+/// and one move row per destination and hour: later passes grow the open row. Rows name folders,
+/// never files.
 struct MovePassActivity: Sendable {
-    static let maxRows = 5
+    static let window: TimeInterval = 3600
 
-    private(set) var renames: [(from: String, to: String)] = []
-    /// Target folder name → files moved into it, in first-seen order.
-    private(set) var moves: [(folder: String, count: Int)] = []
+    private(set) var renameCount = 0
+    private(set) var lastRename: (from: String, to: String)?
+    private(set) var moveCount = 0
+    private(set) var lastMoveFolder: String?
 
-    var isEmpty: Bool { renames.isEmpty && moves.isEmpty }
+    var isEmpty: Bool { renameCount == 0 && moveCount == 0 }
 
-    mutating func renamed(from: String, to: String) { renames.append((from, to)) }
+    mutating func renamed(from: String, to: String) {
+        renameCount += 1
+        lastRename = (from, to)
+    }
 
     mutating func moved(into folder: String) {
-        if let index = moves.firstIndex(where: { $0.folder == folder }) {
-            moves[index].count += 1
-        } else {
-            moves.append((folder, 1))
+        moveCount += 1
+        lastMoveFolder = folder
+    }
+
+    func write(_ db: Database, destinationId: DestinationID, now: Date) throws {
+        let fresh: (Date) -> Bool = { now.timeIntervalSince($0) < Self.window }
+        if let last = lastRename {
+            try ActivityRepository.recordCoalesced(
+                db, group: "renamed", kind: .renamed, destinationId: destinationId, count: renameCount, now: now,
+                sameWindow: fresh) { total in Self.renameText(total: total, from: last.from, to: last.to) }
+        }
+        if let folder = lastMoveFolder {
+            try ActivityRepository.recordCoalesced(
+                db, group: "moved", kind: .moved, destinationId: destinationId, count: moveCount, now: now,
+                sameWindow: fresh) { total in Self.moveText(total: total, folder: folder) }
         }
     }
 
-    /// The rows to record, oldest first.
-    func events() -> [(kind: ActivityKind, message: String)] {
-        var rows: [(ActivityKind, String)] = []
-        if renames.count <= Self.maxRows {
-            rows += renames.map { (.renamed, Self.renameText($0.from, $0.to)) }
-        } else if let first = renames.first {
-            rows.append((.renamed, tr(
-                vi: "Đã đổi tên \(renames.count) thư mục, ví dụ \(Self.renameText(first.from, first.to))",
-                en: "Renamed \(renames.count) folders, for example \(Self.renameText(first.from, first.to))")))
-        }
-        if moves.count <= Self.maxRows {
-            rows += moves.map { (.moved, Self.moveText(count: $0.count, folder: $0.folder)) }
-        } else {
-            let files = moves.reduce(0) { $0 + $1.count }
-            rows.append((.moved, tr(
-                vi: "Đã chuyển \(files) file sang \(moves.count) thư mục khác",
-                en: "Moved \(files) files into \(moves.count) other folders")))
-        }
-        return rows
+    /// "“2026-04-26” → “2026-04-26 Hà Nội”", or a count with the latest one.
+    static func renameText(total: Int, from: String, to: String) -> String {
+        let pair = "“\(from)” → “\(to)”"
+        guard total > 1 else { return pair }
+        return tr(vi: "Đã đổi tên \(L10n.integer(total)) thư mục, gần nhất \(pair)",
+                  en: "Renamed \(L10n.integer(total)) folders, latest \(pair)")
     }
 
-    static func renameText(_ from: String, _ to: String) -> String { "“\(from)” → “\(to)”" }
-
-    static func moveText(count: Int, folder: String) -> String {
-        tr(vi: "Đã chuyển \(count) file vào “\(folder)”",
-           en: "\(L10n.plural(count, one: "Moved 1 file", other: "Moved \(count) files")) into “\(folder)”")
+    static func moveText(total: Int, folder: String) -> String {
+        guard total > 1 else { return tr(vi: "Đã chuyển 1 file vào “\(folder)”", en: "Moved 1 file into “\(folder)”") }
+        return tr(vi: "Đã chuyển \(L10n.integer(total)) file, gần nhất vào “\(folder)”",
+                  en: "Moved \(L10n.integer(total)) files, latest into “\(folder)”")
     }
 }

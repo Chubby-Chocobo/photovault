@@ -188,7 +188,7 @@ extension SyncCoordinator {
         // 10–11
         try await runStages(.cloudIds, trigger, &report)
         try await recordSuccess(report)
-        try await SyncMilestones(env: env).record(report)
+        await SyncMilestones(env: env).record(report)
         await publish()
         return .completed(report)
     }

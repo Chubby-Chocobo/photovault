@@ -9,7 +9,10 @@ struct LogView: View {
     @State private var entries: [LogEntry] = []
     @State private var level: LogLevelFilter = .standard
     @State private var query = ""
+    @State private var visible: [LogEntry] = []
     @State private var copied = false
+    /// Off while the owner reads older lines, so new lines do not push them down.
+    @State private var following = true
 
     var body: some View {
         content
@@ -17,7 +20,7 @@ struct LogView: View {
             .id(model.language)
     }
 
-    private var visible: [LogEntry] { LogReader.filter(entries, level: level, query: query) }
+    private func refilter() { visible = LogReader.filter(entries, level: level, query: query) }
 
     private var content: some View {
         VStack(spacing: 0) {
@@ -47,12 +50,15 @@ struct LogView: View {
             }
             Divider()
             Text(tr(
-                vi: "\(VietnameseFormat.integer(lines.count)) dòng · hiển thị tối đa \(VietnameseFormat.integer(LogReader.defaultLimit)) dòng gần nhất · log chiếm tối đa 25 MB, phần cũ nhất tự xoá",
-                en: "\(L10n.plural(lines.count, one: "1 line", other: "\(VietnameseFormat.integer(lines.count)) lines")) · showing up to the latest \(VietnameseFormat.integer(LogReader.defaultLimit)) · the log never takes more than 25 MB; the oldest part is deleted"))
+                vi: "\(VietnameseFormat.integer(lines.count)) dòng · hiển thị tối đa \(VietnameseFormat.integer(LogReader.defaultLimit)) dòng gần nhất · log chiếm tối đa \(VietnameseFormat.bytes(Int64(LogReader.maxDiskBytes))), phần cũ nhất tự xoá",
+                en: "\(L10n.plural(lines.count, one: "1 line", other: "\(VietnameseFormat.integer(lines.count)) lines")) · showing up to the latest \(VietnameseFormat.integer(LogReader.defaultLimit)) · the log never takes more than \(VietnameseFormat.bytes(Int64(LogReader.maxDiskBytes))); the oldest part is deleted"))
                 .font(.caption).foregroundStyle(.secondary).padding(8)
         }
         .frame(minWidth: 680, idealWidth: 820, minHeight: 440, idealHeight: 560)
-        .task { await follow() }
+        .task(id: following) { await follow() }
+        .onChange(of: entries) { refilter() }
+        .onChange(of: level) { refilter() }
+        .onChange(of: query) { refilter() }
     }
 
     private var toolbar: some View {
@@ -68,6 +74,9 @@ struct LogView: View {
                 .frame(minWidth: 140)
                 .accessibilityLabel(tr(vi: "Tìm trong log", en: "Search the log"))
             Spacer(minLength: 0)
+            Toggle(tr(vi: "Tự cập nhật", en: "Live"), isOn: $following)
+                .toggleStyle(.checkbox)
+                .help(tr(vi: "Tắt để đọc các dòng cũ mà không bị dòng mới đẩy xuống", en: "Turn off to read older lines without new ones pushing them down"))
             Button(copied ? tr(vi: "Đã sao chép", en: "Copied") : tr(vi: "Sao chép", en: "Copy"), systemImage: copied ? "checkmark" : "doc.on.doc") {
                 copy()
             }
@@ -96,6 +105,7 @@ struct LogView: View {
         let reader = LogReader(directory: directory)
         var lastStamp: String?
         while !Task.isCancelled {
+            guard following || entries.isEmpty else { return }
             let stamp = reader.stamp()
             if stamp != lastStamp || entries.isEmpty {
                 lastStamp = stamp
@@ -138,8 +148,8 @@ private struct LogRowView: View {
 
     private var levelText: String {
         switch entry.level {
-        case .debug: "DEBUG" // l10n: verbatim
-        case .info: "INFO" // l10n: verbatim
+        case .debug: tr(vi: "Chi tiết", en: "Debug")
+        case .info: tr(vi: "Thông tin", en: "Info")
         case .notice: tr(vi: "Chú ý", en: "Notice")
         case .error: tr(vi: "Lỗi", en: "Error")
         case .fault: tr(vi: "Nghiêm trọng", en: "Fault")

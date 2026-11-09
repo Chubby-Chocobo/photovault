@@ -75,12 +75,27 @@ actor MoveWorker {
                 }
             }
         } catch {
-            // What finished before the error did happen at the destination.
-            await ActivityLog(env: env).record(activity.events(), destination: id)
+            // What finished before the error (or a cancellation) did happen at the destination.
+            await writeActivity(activity, destination: id)
             throw error
         }
-        await ActivityLog(env: env).record(activity.events(), destination: id)
+        await writeActivity(activity, destination: id)
         return finished
+    }
+
+    /// In its own task: a cancelled pass must still record what it did, and GRDB refuses writes
+    /// from a cancelled task.
+    private func writeActivity(_ activity: MovePassActivity, destination id: DestinationID) async {
+        guard !activity.isEmpty else { return }
+        let env = env
+        await Task {
+            let now = env.clock.now
+            do {
+                try await env.store.write { db in try activity.write(db, destinationId: id, now: now) }
+            } catch {
+                env.log.log(.error, category: "activity", "could not record move activity")
+            }
+        }.value
     }
 
     private func execute(_ move: MoveJob, record: DestinationRecord, destination: any Destination, ensurer: FolderEnsurer,

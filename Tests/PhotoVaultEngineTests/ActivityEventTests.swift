@@ -34,7 +34,7 @@ import Testing
         await h.add(h.snapshot("far", daysAgo: 3, location: hanoi))
         await h.settle()
         let renames = try events(h, .renamed)
-        #expect(renames.map(\.message).contains("“\(organizationDay) Đà Lạt” → “\(organizationDay)”"))
+        #expect(renames.contains { $0.message.contains("“\(organizationDay) Đà Lạt” → “\(organizationDay)”") })
         #expect(renames.allSatisfy { $0.destinationId == .googleDrive })
     }
 
@@ -45,7 +45,7 @@ import Testing
             try h.write { db in
                 try DestinationRepository.setStatus(db, id: .googleDrive, status: .unavailable(.offline), now: now)
                 try DestinationRepository.setStatus(db, id: .googleDrive, status: .unavailable(.offline), now: now)
-                try DestinationRepository.setStatus(db, id: .googleDrive, status: .active, now: now)
+                try DestinationRepository.setStatus(db, id: .googleDrive, status: .active, now: now.addingTimeInterval(3 * 3600))
             }
         }
         let rows = try events(h, .statusChanged)
@@ -56,20 +56,48 @@ import Testing
         #expect(rows.allSatisfy { $0.destinationId == .googleDrive })
     }
 
-    @Test func aSyncThatUploadsRecordsTheCountAndTheEndOfTheBackfillOnce() async throws {
+    @Test func aStatusThatFlipsBackSoonLeavesNoRows() async throws {
+        let h = try await harness()
+        let now = Date()
+        try h.write { db in
+            for hour in 0..<5 {
+                // Drive full, then the next cycle's probe resets it, then the next upload fills it again.
+                let start = now.addingTimeInterval(Double(hour) * 1800)
+                try DestinationRepository.setStatus(db, id: .googleDrive, status: .paused(.full), now: start)
+                try DestinationRepository.setStatus(db, id: .googleDrive, status: .active, now: start.addingTimeInterval(600))
+            }
+            try DestinationRepository.setStatus(db, id: .googleDrive, status: .paused(.full), now: now.addingTimeInterval(9000))
+        }
+        #expect(try events(h, .statusChanged).count == 1, "only the status it ended in")
+    }
+
+    @Test func removingADestinationForgetsItsOpenRows() async throws {
+        let h = try await harness()
+        try h.write { db in
+            try SyncMilestones.noteUploads(db, id: .googleDrive, count: 2, now: Date())
+            #expect(try KeyValueRepository.string(db, ActivityRepository.coalesceKey("uploaded", .googleDrive)) != nil)
+            try DestinationRepository.resetState(db, id: .googleDrive)
+            #expect(try KeyValueRepository.string(db, ActivityRepository.coalesceKey("uploaded", .googleDrive)) == nil)
+        }
+    }
+
+    @Test func uploadsOfADayShareOneRowAndTheBackfillIsAnnouncedOnce() async throws {
         let h = try await harness()
         for index in 0..<3 { await h.add(h.snapshot("old\(index)", daysAgo: 5), recordChange: false) }
         try await h.baseline(.googleDrive)
         await h.settle()
         let first = try events(h, .milestone)
-        #expect(first.contains { $0.message.contains("3") && $0.destinationId == .googleDrive })
-        #expect(first.filter { $0.message == SyncMilestones.backfillText(done: 3, deferred: 0) }.count == 1)
+        let backfill = SyncMilestones.backfillText(done: 3, deferred: 0)
+        #expect(first.filter { $0.message == backfill }.count == 1)
+        let uploadedBefore = try #require(first.first { $0.message != backfill })
 
         await h.add(h.snapshot("new", daysAgo: 0))
         await h.settle()
         let second = try events(h, .milestone)
-        #expect(second.filter { $0.message == SyncMilestones.backfillText(done: 3, deferred: 0) }.count == 1, "announced once")
-        #expect(second.contains { $0.message == SyncMilestones.uploadedText(1) })
+        #expect(second.filter { $0.message == backfill }.count == 1, "announced once")
+        let uploadRows = second.filter { $0.message != backfill }
+        #expect(uploadRows.count == 1, "one row per destination and day")
+        #expect(uploadRows[0].id == uploadedBefore.id && uploadRows[0].message != uploadedBefore.message, "the row's count grew")
     }
 
     @Test func aBackfillIsNotAnnouncedWhileItsJobsWait() async throws {
@@ -82,28 +110,35 @@ import Testing
 }
 
 @Suite struct MovePassActivityTests {
-    @Test func fewChangesGetOneRowEach() {
-        var pass = MovePassActivity()
-        pass.renamed(from: "2026-04-26", to: "2026-04-26 Hà Nội")
-        pass.moved(into: "2026-04-27")
-        pass.moved(into: "2026-04-27")
-        let rows = L10n.$override.withValue(.vi) { pass.events() }
-        #expect(rows.map(\.kind) == [.renamed, .moved])
-        #expect(rows[0].message == "“2026-04-26” → “2026-04-26 Hà Nội”")
-        #expect(rows[1].message == "Đã chuyển 2 file vào “2026-04-27”")
+    @Test func oneChangeIsDescribedInFull() {
+        L10n.$override.withValue(.vi) {
+            #expect(MovePassActivity.renameText(total: 1, from: "2026-04-26", to: "2026-04-26 Hà Nội") == "“2026-04-26” → “2026-04-26 Hà Nội”")
+            #expect(MovePassActivity.moveText(total: 1, folder: "2026-04-27") == "Đã chuyển 1 file vào “2026-04-27”")
+            #expect(MovePassActivity.renameText(total: 12000, from: "a", to: "b") == "Đã đổi tên 12.000 thư mục, gần nhất “a” → “b”")
+        }
     }
 
-    @Test func manyChangesCollapseIntoOneSummaryEach() {
-        var pass = MovePassActivity()
-        for day in 1...40 { pass.renamed(from: "2026-04-\(day)", to: "2026-04-\(day) Hà Nội") }
-        for day in 1...12 { pass.moved(into: "2026-05-\(day)") }
-        let rows = L10n.$override.withValue(.en) { pass.events() }
-        #expect(rows.count == 2)
-        #expect(rows[0].message == "Renamed 40 folders, for example “2026-04-1” → “2026-04-1 Hà Nội”")
-        #expect(rows[1].message == "Moved 12 files into 12 other folders")
-    }
-
-    @Test func nothingChangedWritesNothing() {
-        #expect(MovePassActivity().events().isEmpty)
+    @Test func passesWithinAnHourGrowOneRowPerKind() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        let start = Date()
+        var first = MovePassActivity()
+        first.renamed(from: "2026-04-26", to: "2026-04-26 Hà Nội")
+        first.moved(into: "2026-04-27")
+        var second = MovePassActivity()
+        second.renamed(from: "2026-04-28", to: "2026-04-28 Huế")
+        try L10n.$override.withValue(.en) {
+            try h.write { db in
+                try first.write(db, destinationId: .googleDrive, now: start)
+                try second.write(db, destinationId: .googleDrive, now: start.addingTimeInterval(600))
+                try second.write(db, destinationId: .googleDrive, now: start.addingTimeInterval(2 * 3600))
+            }
+        }
+        let rows = try h.read { db in try ActivityRepository.recent(db) }
+        #expect(rows.filter { $0.kind == .moved }.map(\.message) == ["Moved 1 file into “2026-04-27”"])
+        #expect(rows.filter { $0.kind == .renamed }.map(\.message) == [
+            "“2026-04-28” → “2026-04-28 Huế”",
+            "Renamed 2 folders, latest “2026-04-28” → “2026-04-28 Huế”",
+        ], "a pass after the hour opens a new row")
     }
 }

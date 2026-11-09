@@ -14,16 +14,20 @@ struct ActivityLog: Sendable {
     /// Records several rows in one transaction, in order.
     func record(_ rows: [(kind: ActivityKind, message: String)], destination: DestinationID?, asset: AssetKey? = nil) async {
         guard !rows.isEmpty else { return }
-        let now = env.clock.now
-        do {
-            try await env.store.write { db in
-                for row in rows {
-                    try ActivityRepository.record(db, ActivityEvent(
-                        at: now, kind: row.kind, destinationId: destination, assetKey: asset, message: row.message))
+        let env = env
+        // In its own task, so a row about work that did happen is kept when the caller is cancelled.
+        await Task {
+            let now = env.clock.now
+            do {
+                try await env.store.write { db in
+                    for row in rows {
+                        try ActivityRepository.record(db, ActivityEvent(
+                            at: now, kind: row.kind, destinationId: destination, assetKey: asset, message: row.message))
+                    }
                 }
+            } catch {
+                env.log.log(.error, category: "activity", "could not record activity event")
             }
-        } catch {
-            env.log.log(.error, category: "activity", "could not record activity event")
-        }
+        }.value
     }
 }

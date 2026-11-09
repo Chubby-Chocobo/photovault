@@ -30,14 +30,14 @@ Owner request (2026-11-09): do the proposed activity events, and read the log in
 - Why: one place, atomic with the change. The status words move to Core so the store can write them.
 - Review later: no
 
-### Renames and moves are summarised per pass and destination
-- Chosen: up to 5 lines per pass (one per rename, one per target folder of moves); above that one summary line with the count and one example.
-- Alternatives: one row per file or folder (a first sync renames thousands of day folders and would push out every other event of the 500 kept).
-- Why: the activity list must stay readable and keep the rare events.
+### Routine rows grow one row instead of adding rows
+- Chosen: per destination, renames and moves each grow one open row for an hour ("Đã đổi tên 37 thư mục, gần nhất “A” → “B”"; a single change is described in full); uploads grow one row per day ("Hôm nay đã upload 120 file"); a status that flips back within two hours removes its row (Drive full → probe resets to active → full again leaves one row). State lives in `kv` keys `activity_row.*` / `activity_status.*`, dropped with the destination.
+- Alternatives: at most 5 rows per pass (review: passes run every round, so a first sync still wrote hundreds of rows); one row per cycle (20–30 a day); stop Health from resetting full/daily-cap (changes retry behaviour).
+- Why: the 500 rows kept must hold weeks of rare events (missing files, restores, real status changes).
 - Review later: no
 
 ### Milestones are a new kind `milestone` ("Tiến độ")
-- Chosen: one row per destination at the end of a cycle that uploaded files; one row when a destination's backfill (`backfill`/`destinationBackfill` jobs) has nothing pending left after a drained cycle, announced once until new backfill work appears.
+- Chosen: the daily upload row above; one backfill row when, after a drained cycle, no backfill job waits or uploads, no asset waits for classification, and more backfill jobs are done than at the last announcement.
 - Alternatives: reuse `notice` (mixes routine progress with things the owner must read).
 - Why: own filter chip; notices stay rare.
 - Review later: no
@@ -64,3 +64,21 @@ Owner request (2026-11-09): do the proposed activity events, and read the log in
 - Alternatives: default to warnings only (the UI check showed an empty window during a normal sync).
 - Why: an empty window reads as "the log is broken" to a non-technical owner.
 - Review later: no
+
+## Audit Review
+
+### Session — 2026-11-09 (code review of the branch)
+| # | Finding | Severity | Disposition |
+|---|---|---|---|
+| 1 | Progress row every cycle floods the 500 kept | Important | Accept: one upload row per destination per day |
+| 2 | 5-row cap is per pass, not per cycle | Important | Accept: hourly open row per kind and destination |
+| 3 | Status flapping (full/daily cap reset by Health, flaky network) | Important | Accept: a flip back within 2 h removes the row (owner question decided in auto mode) |
+| 4 | Backfill announcement repeats or comes early | Important | Accept: announce on growth of done total; require no provisional assets |
+| 5 | Move rows lost on cancellation (GRDB checks cancellation) | Important | Accept: activity writes run in their own task |
+| 6 | Log rows' ids shift on reload | Important | Accept: id = line text (+ repeat counter); "Tự cập nhật" toggle |
+| 7 | Search folding on the main thread | Important | Accept: folded once off main; filtered list kept in state |
+| 8 | Backfill query scans all jobs | Medium | Accept: EXISTS first, count only when announcing |
+| 9 | Progress write failure fails the cycle | Medium | Accept: logged, never thrown |
+| 10 | Activity keys survive destination removal | Medium | Accept: dropped with dependents |
+| M | Count grouping, derived 25 MB, newline split, level badges | Minor | Accept |
+| M | Downgrade to 0.1.0 cannot read `milestone` rows | Minor | Reject: single owner, no downgrade path |
