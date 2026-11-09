@@ -64,6 +64,19 @@ struct AppEnvironment: Sendable {
 
     static let setupReadmeSection = "README › Google Cloud setup"
 
+    /// After a Factory Reset the app relaunches itself; the old process may still hold the lock for
+    /// a moment, so the new one waits for it (up to 15 s) instead of reporting "already running".
+    private static func acquireLock(_ layout: ContainerLayout) throws -> InstanceLock {
+        let deadline = Date().addingTimeInterval(FactoryReset.isRequested(layout) ? 15 : 0)
+        while true {
+            do {
+                return try InstanceLock.acquire(containerDirectory: layout.root)
+            } catch InstanceLock.LockError.alreadyRunning where Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+        }
+    }
+
     static func make(
         arguments: [String] = CommandLine.arguments, bundle: Bundle = .main
     ) throws -> AppEnvironment {
@@ -82,15 +95,24 @@ struct AppEnvironment: Sendable {
 
         let lock: InstanceLock
         do {
-            lock = try InstanceLock.acquire(containerDirectory: layout.root)
+            lock = try acquireLock(layout)
         } catch InstanceLock.LockError.alreadyRunning {
             throw LaunchFailure.alreadyRunning
         } catch {
             throw LaunchFailure.other(tr(vi: "Không khoá được thư mục dữ liệu: \(error.localizedDescription)", en: "Could not lock the data folder: \(error.localizedDescription)"))
         }
+        // Factory Reset: emptied now, holding the lock and before the database opens.
+        let wasReset: Bool
+        do {
+            wasReset = try FactoryReset.applyIfRequested(layout)
+            if wasReset { try ContainerLocator.prepare(layout) }
+        } catch {
+            throw LaunchFailure.other(tr(vi: "Không đặt lại được dữ liệu của PhotoVault: \(error.localizedDescription)", en: "Could not reset PhotoVault’s data: \(error.localizedDescription)"))
+        }
 
         let fileLog = RotatingFileLog(directory: layout.logs)
         let log = AppLogSink(file: fileLog)
+        if wasReset { log.log(.notice, category: "reset", "factory reset applied; starting from onboarding") }
         let backups = DatabaseBackup(directory: layout.backups)
         let store: Store
         let settings: SettingsStore
