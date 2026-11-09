@@ -48,14 +48,14 @@ Counts are tests reported by `swift test list` on 2026-11-10, after the cloud im
 | Target | Tests | Main subjects |
 |---|---|---|
 | `PhotoVaultCoreTests` | 175 | Job transitions, eligibility, classification, naming, layout, rate limiting, disk guard, sidecar builders, place naming, view rules, device names, models and codecs |
-| `PhotoVaultStoreTests` | 76 | Schema and migration, repositories, backups (including restore from a backup), placement and name allocation, job and resource state, snapshot counters |
+| `PhotoVaultStoreTests` | 77 | Schema and migration, repositories, backups (including restore from a backup), placement and name allocation, job and resource state, snapshot counters |
 | `PhotoVaultPhotosTests` | 64 | Header classifier, metadata reader (images and movies, including imported files), UTI and RAW detection, streaming writer, stalled-request guard |
-| `PhotoVaultDriveTests` | 169 | OAuth (PKCE, loopback, token handling), Keychain query, Drive REST and query escaping, resumable upload, Drive destination, redaction |
+| `PhotoVaultDriveTests` | 171 | OAuth (PKCE, loopback, token handling), Keychain query, Drive REST and query escaping, resumable upload, Drive destination, redaction |
 | `PhotoVaultDropboxTests` | 49 | Dropbox sign-in (PKCE, cancel, denied consent), client (listing, download by id, cancellation), token authorizer, import source |
 | `PhotoVaultLocalTests` | 80 | Atomic writes, symlink refusal, folder safety, root state (trash, missing, offline), metadata marker, small-file reads, conformance suite |
-| `PhotoVaultEngineTests` | 414 | Sync cycle, old-layout block and root probe, factory reset, scan and change tracking, folder import (dedupe, cancel, offline, crash points), source routing, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
+| `PhotoVaultEngineTests` | 423 | Sync cycle, old-layout block and root probe, factory reset, scan and change tracking, folder import (dedupe, cancel, offline, crash points), source routing, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
 | `PhotoVaultAppSupportTests` | 156 | Notification policy, log redaction and rotation, status and progress text, onboarding flow, settings form, Vietnamese formatting, debouncer |
-| **Total** | **1,183** | 196 suites in the full run |
+| **Total** | **1,195** | 196 suites in the full run |
 
 The app target has no tests. Its logic is kept in packages where it can be tested; the remaining app code is UI and launch glue.
 

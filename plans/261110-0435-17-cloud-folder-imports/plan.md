@@ -158,11 +158,14 @@ Phases 02 and 03 run in parallel. Their file sets do not overlap.
 - Why: all found in review as ways to lose or mislabel a file.
 - Review later: no.
 
-### One blocked file does not block the import; give up after a day and ten tries
-- Chosen: a cloud group that cannot be read now (no disk room, busy, dropped connection while the probe answers) is skipped for the cooldown and the others continue. A file waiting for disk room waits without limit and the row shows `statusReason = "diskFull"`. A group that keeps failing (busy or dropped) is given up as a whole, only when at least 24 hours of wall-clock have passed since its first failure and it has failed at least 10 times; if its last failure is more than 2 hours old, the clock and the count start again (time with no tries does not count). A provider-wide outage never marks files failed (failures in a pass that read nothing while several groups failed, or that tripped the breaker, do not count; a streak starts only in a pass that read something). Streaks are kept in memory per group (a relaunch resets them). The files are then marked failed "read" so the import can finish.
-- After 3 groups in a row that end busy or unreachable in one pass, the pass for that source stops and waits out the cooldown; while a cloud import is reading, the app re-checks every 5 minutes so blocked groups are retried soon.
-- Alternatives: pause the whole job (stalled everything behind one file); count attempts only (depends on cycle frequency); 24 h per file (a pair took about 46 h).
-- Why: lead decision after the second release review; recorded in ADR 0026.
+### One blocked file does not block the import; per-group backoff and give-up
+- Chosen: a cloud group that cannot be read now (no disk room, busy, dropped connection while the probe answers) is skipped and the others continue. A file waiting for disk room waits without limit and the row shows `statusReason = "diskFull"`.
+  - Each failing group has its own retry time in memory: 30 s, doubling, at most 1 hour. Never-failed groups are read first (group order), then failing groups by retry time, so stubborn files cannot starve the rest.
+  - A group is given up as a whole (files failed "read") when it has failed at least 10 times and at least 24 h of wall-clock lie between its first and latest failure. A failure counts only if the source's probe answered in that pass; if the probe fails the job goes offline and nothing counts. No gap reset.
+  - Breaker (bounds pass time only): 3 consecutive failures of groups that had never failed stop the source's pass for the 30 s cooldown; failures of already-failing groups do not count toward it, and failures in a tripped pass still count toward giving up. Accepted trade-off: a download-only outage over a day while the API answers can fail files; importing the folder again brings them back.
+  - While a cloud import is reading, the app re-checks every 5 minutes.
+- Alternatives: pause the whole job (stalled everything behind one file); attempt counts alone (depend on cycle frequency); a streak with a 2 h gap reset, "pass read something" and "several failed, none read" rules (too intricate; they left two or more stubborn files unfinished).
+- Why: lead decisions after the second and third release reviews; recorded in ADR 0026.
 - Review later: no.
 
 ### A finished import with a revoked grant asks once; no 0.2.0 downgrade
