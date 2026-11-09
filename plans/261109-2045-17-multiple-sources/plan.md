@@ -49,7 +49,7 @@ ImportStage: no pending item and no pending/uploading job ─► [completed] + o
 | 03 | [Engine: source routing, Photos-only passes](phase-03-engine-source-routing.md) | completed | L | 01, 02 | this |
 | 04 | [Folder adapter and file metadata](phase-04-folder-adapter-and-metadata.md) | completed | M | 01 | this (parallel with 02–03) |
 | 05 | [Engine: folder import job](phase-05-engine-folder-import.md) | completed | L | 02, 03, 04 | this |
-| 06 | [App: Sources tab and import UI](phase-06-app-sources-ui.md) | pending | M | 05 | this |
+| 06 | [App: Sources tab and import UI](phase-06-app-sources-ui.md) | completed | M | 05 | this |
 | 07 | [Docs, spec amendment, decision 0024](phase-07-docs-and-decision.md) | pending | S | 05, 06 | this |
 | 08 | [Continuous non-Photos source runtime](phase-08-continuous-source-runtime.md) | pending | L | 05 | **deferred** |
 | 09 | [Google Drive folder import (one-time)](phase-09-google-drive-folder-import.md) | pending | L | 05 | **deferred**, owner setup |
@@ -161,6 +161,30 @@ Every phase is its own commit range on the feature branch, so reverting it is sa
 - Alternatives: the Google Photos Library API
 - Why: since 2025-03-31 the Library API reads only app-created media, and its readonly scope is gone ([Google Photos API updates](https://developers.google.com/photos/support/updates)).
 - Review later: yes
+
+### Presentation of continuous sources and one-time imports
+- Chosen: two vocabularies. "Nguồn liên tục / Ongoing sources" (Photos now, Dropbox later) are watched forever and show a status like a destination. "Lần nhập / Imports" are one-time jobs with a lifecycle (Đang đọc, Đang upload, Hoàn tất / Đã huỷ, offline while the folder is away) and become history afterwards. Settings › Nguồn has the Photos row (no "Thêm nguồn…" button yet) and an "Nhập ảnh…" menu whose only item is "Từ thư mục trên Mac…". Running jobs come first with cancel; finished jobs sit under "Đã xong" with their counts and time. The menu bar popover gets an "Nhập từ “<folder>”" card only while an import is open (under backfill, above Đích), with one bar, an inline cancel confirmation and "+ N lần nhập khác". There is no sources section in the popover while Photos is the only ongoing source. The overall header reads "Đang nhập ảnh" when an import is the only work. The folder name appears in the app and in the completion notification, never in logs or the activity row.
+- Alternatives: one flat "Nguồn" list mixing Photos and jobs; a permanent sources section in the popover
+- Why: owner decision (2026-11-09). It keeps the menu of a Photos-only owner unchanged and separates things that never end from jobs that do.
+- Review later: yes
+
+### Progress = one bar, read first half and upload second half
+- Chosen: stage 1 is files read / files found (fills 0-50 %), stage 2 is upload jobs done / upload jobs of the job's assets that are not cancelled or skipped, sidecars left out, all destinations (fills 50-100 %). Text: "Đọc 1.240/3.500 · Upload 800/1.100 · 120 đã có". With nothing to upload, the second half counts as done once everything is read. Upload counts are computed only while a job is open.
+- Alternatives: two thin bars; counting sidecar jobs
+- Why: one bar stays readable at 360 pt. Sidecars and skipped jobs would keep the bar from reaching the end.
+- Review later: no
+
+### Import-finished notification is not a `NotificationKind`
+- Chosen: the app posts it through `NotificationService.postImportFinished` when a snapshot shows an import going from open to completed. It is not throttled, not in `NotificationKind.allCases` and not listed in onboarding. Text: `ImportNotificationText`. A job that is already finished when the app starts is not announced.
+- Alternatives: a new `NotificationKind`
+- Why: `NotificationKind` models problems that can repeat and are throttled once per 12 hours per destination, and onboarding lists them as "what can go wrong". A finished import is a one-off event.
+- Review later: no
+
+### A folder that cannot be read holds its own job only while the job is open
+- Chosen: an unreachable folder during export sets the source row `offline` only when it is `scanning` or `importing`. A completed job keeps its status; its export just retries later. The import stage restores `scanning` or `importing` as soon as the folder answers.
+- Alternatives: also flip completed jobs to offline
+- Why: a completed job must not reopen, which would write a second summary row.
+- Review later: no
 
 ## Risks (top)
 

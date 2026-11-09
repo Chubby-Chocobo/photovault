@@ -77,6 +77,10 @@ public enum OverallStatusText {
             vi: "\(count) đích · sync lần cuối ",
             en: L10n.plural(count, one: "1 destination · last sync ", other: "\(count) destinations · last sync ")) + RelativeTimeText.ago(last, now: now, calendar: calendar)
         let backfilling = snapshot.backfillTotalAssets > snapshot.backfillDoneAssets
+        let importing = snapshot.imports.contains { $0.status == .scanning || $0.status == .importing }
+        if importing, !backfilling {
+            return result(tr(vi: "Đang nhập ảnh", en: "Importing photos"), tail, .ok, working: snapshot.overall == .syncing)
+        }
         if snapshot.overall == .syncing || backfilling {
             return result(
                 backfilling ? tr(vi: "Đang backfill", en: "Backfilling") : tr(vi: "Đang đồng bộ", en: "Syncing"), tail, .ok, working: snapshot.overall == .syncing)

@@ -1,7 +1,7 @@
 ---
 phase: 06
 title: "App: Sources tab and import UI"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1-2h

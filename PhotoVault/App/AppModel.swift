@@ -66,6 +66,8 @@ final class AppModel {
     @ObservationIgnored let activityAssertion = ActivityAssertion()
     @ObservationIgnored let notificationService = NotificationService()
     @ObservationIgnored var runtime: Runtime?
+    /// Status of every import at the last snapshot, to notice the moment one finishes.
+    @ObservationIgnored var importStatuses: [SourceID: SourceStatus] = [:]
 
     /// Things that run only while the engine is live.
     struct Runtime {
@@ -140,6 +142,7 @@ final class AppModel {
     /// Recovery, monitors, first cycle. Called at launch with a baseline, and by onboarding after Start.
     func goLive() async {
         guard let env, runtime == nil else { return }
+        await env.coordinator.registerSources(env.folderSources)
         do {
             let summary = try await env.coordinator.start()
             env.log.log(.info, category: "launch", "startup recovery finished: \(summary)")
@@ -178,6 +181,7 @@ final class AppModel {
             for await value in await env.coordinator.snapshots() {
                 guard let self else { return }
                 self.snapshot = value
+                await self.noteImportProgress(value)
                 await self.refresh()
             }
         }
@@ -244,7 +248,9 @@ final class AppModel {
 
     func refreshSnapshot() async {
         guard let env, phase == .running else { return }
-        snapshot = await env.coordinator.currentSnapshot()
+        let current = await env.coordinator.currentSnapshot()
+        snapshot = current
+        await noteImportProgress(current)
         await refresh()
     }
 

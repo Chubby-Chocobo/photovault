@@ -1,5 +1,6 @@
 import Foundation
 import PhotoVaultAppSupport
+import PhotoVaultCore
 @preconcurrency import UserNotifications
 
 /// Posts the FR-61 notifications. Throttling happens before this point (`NotificationEvaluator`).
@@ -37,6 +38,15 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
         let identifier = "pv.\(request.kind.rawValue).\(request.destination?.rawValue ?? "-")"
         try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+    }
+
+    /// A finished import. Not a condition that can repeat, so it is not throttled.
+    func postImportFinished(id: SourceID, title: String, body: String) async throws {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        try await center.add(UNNotificationRequest(identifier: "pv.import.\(id.rawValue)", content: content, trigger: nil))
     }
 
     nonisolated func userNotificationCenter(
