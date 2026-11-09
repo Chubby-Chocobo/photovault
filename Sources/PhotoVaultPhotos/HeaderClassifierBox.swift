@@ -4,11 +4,15 @@ import os
 /// Lock-protected `HeaderClassifier` shared with PhotoKit's data handler.
 final class HeaderClassifierBox: @unchecked Sendable {
     private struct State {
-        var classifier = HeaderClassifier()
+        var classifier: HeaderClassifier
         var stoppedEarly = false
     }
 
-    private let state = OSAllocatedUnfairLock(uncheckedState: State())
+    private let state: OSAllocatedUnfairLock<State>
+
+    init(typeHint: String?) {
+        state = OSAllocatedUnfairLock(uncheckedState: State(classifier: HeaderClassifier(typeHint: typeHint)))
+    }
 
     /// Feeds a chunk; returns `true` once the answer is conclusive and the read should stop.
     func append(_ data: Data) -> Bool {

@@ -37,12 +37,17 @@ struct HeaderClassifier {
     ///     whole prefix each time, so later updates wait until the prefix doubles, at most
     ///     `maxParseIncrement` more bytes, keeping both total work and detection delay bounded.
     ///   - maxBuffered: largest prefix kept in memory.
-    init(parseStride: Int = 64 << 10, maxBuffered: Int = 32 << 20) {
+    ///   - typeHint: the resource's UTI. Without it ImageIO takes a Sony ARW for a plain TIFF and
+    ///     finds no properties at all, so every RAW would look like a photo without a camera.
+    init(parseStride: Int = 64 << 10, maxBuffered: Int = 32 << 20, typeHint: String? = nil) {
         self.parseStride = max(1, parseStride)
         self.maxBuffered = max(self.parseStride, maxBuffered)
         self.nextParseAt = self.parseStride
-        self.source = CGImageSourceCreateIncremental(nil)
+        self.source = CGImageSourceCreateIncremental(ImageIOMetadataReader.sourceOptions(uti: typeHint))
     }
+
+    /// The type ImageIO decided on for the data so far.
+    var sourceType: String? { CGImageSourceGetType(source) as String? }
 
     var bytesConsumed: Int { buffer.count }
 

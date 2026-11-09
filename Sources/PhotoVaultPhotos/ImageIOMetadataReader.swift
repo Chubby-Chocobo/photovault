@@ -16,13 +16,24 @@ public struct ImageIOMetadataReader: MetadataReading {
         case .video:
             return Self.videoMetadata(of: file)
         default:
-            return Self.imageMetadata(of: file)
+            return Self.imageMetadata(of: file, uti: uti)
         }
     }
 
-    static func imageMetadata(of file: URL) -> CaptureMetadata {
-        let options = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(file as CFURL, options),
+    /// Staged files have no extension, so the type comes from the resource's UTI; ImageIO's own
+    /// guess reads a Sony ARW as a plain TIFF without any properties.
+    static func sourceOptions(uti: String?) -> CFDictionary {
+        var options: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        if let uti, !uti.isEmpty { options[kCGImageSourceTypeIdentifierHint] = uti }
+        return options as CFDictionary
+    }
+
+    static func imageSource(of file: URL, uti: String?) -> CGImageSource? {
+        CGImageSourceCreateWithURL(file as CFURL, sourceOptions(uti: uti))
+    }
+
+    static func imageMetadata(of file: URL, uti: String?) -> CaptureMetadata {
+        guard let source = imageSource(of: file, uti: uti),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else { return .empty }
         return metadata(from: props)

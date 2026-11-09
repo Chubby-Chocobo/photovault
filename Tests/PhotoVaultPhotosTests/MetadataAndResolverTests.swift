@@ -1,4 +1,5 @@
 import CoreLocation
+import ImageIO
 import Foundation
 import PhotoVaultCore
 import Testing
@@ -25,6 +26,15 @@ struct ImageIOMetadataReaderTests {
         #expect(metadata.dateTimeOriginal == "2023:12:24 18:30:00")
         #expect(metadata.offsetTime == "+01:00")
         #expect(metadata.hasCameraIdentity)
+    }
+
+    /// Staged files carry no extension: the reader tells ImageIO the resource's type.
+    @Test func stagedFilesAreReadAsTheirResourceType() throws {
+        let url = TestImages.tempURL(UUID().uuidString)
+        try #require(TestImages.make(type: .tiff)).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let source = try #require(ImageIOMetadataReader.imageSource(of: url, uti: "com.sony.arw-raw-image"))
+        #expect(CGImageSourceGetType(source) as String? == "com.sony.arw-raw-image")
     }
 
     @Test func jpegWithoutCameraIdentityHasNone() throws {

@@ -17,6 +17,18 @@ struct HeaderClassifierTests {
         return (classifier.finish(), classifier.bytesConsumed)
     }
 
+    /// Sony ARW is read as a plain TIFF with no properties unless ImageIO is told the type.
+    @Test func theResourceTypeIsGivenToImageIO() throws {
+        // ARW is TIFF-structured, so a TIFF stands in for it.
+        let tiff = try #require(TestImages.make(type: .tiff, spec: camera))
+        var hinted = HeaderClassifier(parseStride: 1, typeHint: "com.sony.arw-raw-image")
+        _ = hinted.append(tiff)
+        #expect(hinted.sourceType == "com.sony.arw-raw-image")
+        var plain = HeaderClassifier(parseStride: 1)
+        _ = plain.append(tiff)
+        #expect(plain.sourceType == "public.tiff")
+    }
+
     @Test func jpegWithMakeModelIsPresentBeforeEndOfFile() throws {
         let jpeg = try #require(TestImages.make(type: .jpeg, spec: camera))
         let (outcome, consumed) = feed(jpeg, chunk: 512)
