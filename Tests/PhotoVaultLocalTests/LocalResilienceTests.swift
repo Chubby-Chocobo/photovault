@@ -186,13 +186,15 @@ import Testing
         return (fx, ops, fifo)
     }
 
-    /// Runs `body` off-thread and fails instead of hanging when it blocks; a blocked open is released afterwards.
+    /// Runs `body` on its own thread and fails instead of hanging when it blocks; a blocked open is
+    /// released afterwards. A dedicated thread starts at once, where a busy shared queue could delay the
+    /// work past the timeout and look like a blocked open.
     private func finishes(_ fifo: URL, _ body: @escaping @Sendable () -> Void) -> Bool {
         let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        Thread {
             body()
             done.signal()
-        }
+        }.start()
         if done.wait(timeout: .now() + 10) == .success { return true }
         let release = open(fifo.path, O_RDWR | O_NONBLOCK)
         if release >= 0 { close(release) }
