@@ -39,4 +39,10 @@ import Testing
         _ = tries(holds, every: 3600, from: start, count: 24)
         #expect(!holds.noteFailure(id, group: "other", now: start.addingTimeInterval(24 * 3600)))
     }
+
+    @Test func aStreakNeverStartsWhileNothingElseCanBeRead() {
+        let holds = ImportHolds()
+        let results = (0..<30).map { holds.noteFailure(id, group: "g", now: start.addingTimeInterval(Double($0) * 3600), startsStreak: false) }
+        #expect(!results.contains(true))
+    }
 }

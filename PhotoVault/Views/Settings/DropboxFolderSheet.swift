@@ -83,6 +83,7 @@ struct DropboxFolderSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var browser = DropboxBrowserModel()
     @State private var starting = false
+    @State private var startTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -96,7 +97,7 @@ struct DropboxFolderSheet: View {
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) { dismiss() }
                 Button(tr(vi: "Nhập thư mục này", en: "Import this folder")) {
                     starting = true
-                    Task {
+                    startTask = Task {
                         if let email = browser.email, await model.importDropboxFolder(path: browser.currentPath, email: email) { dismiss() }
                         starting = false
                     }
@@ -107,6 +108,7 @@ struct DropboxFolderSheet: View {
         }
         .padding(20)
         .frame(width: 460)
+        .onDisappear { startTask?.cancel() }
         .task {
             browser.client = model.dropboxBrowserClient()
             await browser.load()

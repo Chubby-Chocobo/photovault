@@ -50,30 +50,42 @@ import Testing
         let folder = try ImportFolder()
         try folder.add("x.jpg", metadata: ImportFolder.photo(at: h.clock.now.addingTimeInterval(-3 * 86_400)))
         try folder.add("x.mov", "movie-bytes")
+        try folder.add("z.jpg", metadata: ImportFolder.photo(at: h.clock.now.addingTimeInterval(-4 * 86_400)))
         let source = FakeCloudSource(folder)
         source.setFailure(path: "x.jpg", SourceError.busy)
         source.setFailure(path: "x.mov", SourceError.busy)
         let id = try await h.startCloudImport(source)
         await step(h, hours: 1, times: 20)
-        #expect(try h.importCounts(id) == [.pending: 2], "still waiting before a day has passed")
+        #expect(try h.importCounts(id) == [.imported: 1, .pending: 2], "still waiting before a day has passed")
         await step(h, hours: 1, times: 8)
-        #expect(try h.importCounts(id) == [.failed: 2])
+        #expect(try h.importCounts(id) == [.imported: 1, .failed: 2])
         #expect(try h.source(id)?.status == .completed)
     }
 
-    @Test func aProviderThatRefusesEverythingOnlyCostsTheGroupsActuallyTried() async throws {
-        let h = try await harness()
-        let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg"]))
-        source.setFailure(.inspect, SourceError.busy)
-        let id = try await h.startCloudImport(source)
-        await step(h, hours: 1, times: 26)
-        let counts = try h.importCounts(id)
-        #expect((counts[.failed] ?? 0) <= 3, "\(counts)")
-        #expect((counts[.pending] ?? 0) >= 2 && counts[.imported] == nil, "\(counts)")
+    @Test func aProviderWideOutageOfThreeDaysGivesUpNothing() async throws {
+        for names in [["a.jpg", "b.jpg"], ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg"]] {
+            let h = try await harness()
+            let source = FakeCloudSource(try photos(h, names))
+            source.setFailure(.inspect, SourceError.busy)
+            let id = try await h.startCloudImport(source)
+            await step(h, hours: 1, times: 72)
+            let counts = try h.importCounts(id)
+            #expect(counts == [.pending: names.count], "\(counts)")
 
-        source.setFailure(.inspect, nil)
-        await step(h, hours: 0.05, times: 6)
-        #expect(try h.importCounts(id)[.pending] == nil)
-        #expect(try h.importCounts(id)[.imported] == 2)
+            source.setFailure(.inspect, nil)
+            await step(h, hours: 0.05, times: 8)
+            #expect(try h.importCounts(id) == [.imported: names.count])
+            #expect(try h.source(id)?.status == .completed)
+        }
+    }
+
+    @Test func oneBadFileAmongReadableOnesIsStillGivenUp() async throws {
+        let h = try await harness()
+        let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg"]))
+        source.setFailure(path: "b.jpg", SourceError.busy)
+        let id = try await h.startCloudImport(source)
+        await step(h, hours: 1, times: 28)
+        #expect(try h.importCounts(id) == [.imported: 2, .failed: 1])
+        #expect(try h.source(id)?.status == .completed)
     }
 }

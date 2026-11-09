@@ -28,6 +28,7 @@ extension ImportStage {
         var progressed = false
         var waited = false
         var troubled = 0
+        var failedGroups: [[ImportItem]] = []
         loop: for group in groups {
             try Task.checkCancellation()
             switch try await process(group, source: source, folder: folder, settings: settings) {
@@ -36,6 +37,7 @@ extension ImportStage {
             case .waitingForProvider:
                 waited = true
                 troubled += 1
+                failedGroups.append(group)
                 // Group after group failing means the provider is in trouble: stop asking it for now.
                 if troubled >= ImportHolds.troubleStreak {
                     pauseBriefly(id)
@@ -49,10 +51,24 @@ extension ImportStage {
                 if bytes >= env.tuning.importBatchBytes { break loop }
             }
         }
+        try await giveUpStubbornGroups(failedGroups, readSomething: progressed, source: source, folder: folder, settings: settings)
         try await showDiskWait(source)
         // Nothing could be read in this pass: back off instead of asking the provider again at once.
         if waited, !progressed { pauseBriefly(id) }
         return true
+    }
+
+    /// Counts this pass's failures toward giving a group up, then gives up the groups that reached the limits. A pass
+    /// where several groups failed and none could be read says the source is failing, not the files, so it counts
+    /// for nothing; a pass that tripped the breaker returned earlier and never gets here.
+    private func giveUpStubbornGroups(
+        _ failed: [[ImportItem]], readSomething: Bool, source: SourceRecord, folder: any FolderImportSource, settings: SettingsSnapshot
+    ) async throws {
+        guard readSomething || failed.count < 2 else { return }
+        let now = env.clock.now
+        for group in failed where holds.noteFailure(source.id, group: group.first?.groupKey ?? "", now: now, startsStreak: readSomething) {
+            _ = try await process(group, source: source, folder: folder, settings: settings, giveUp: true)
+        }
     }
 
     /// The row says why it is not moving while a file waits for room, and drops the reason once it fits.
@@ -70,10 +86,10 @@ extension ImportStage {
     }
 
     /// Reads the group's files, then ingests them. A group that cannot be read now is left pending and skipped for a while.
-    private func process(_ group: [ImportItem], source: SourceRecord, folder: any FolderImportSource, settings: SettingsSnapshot) async throws -> GroupOutcome {
+    private func process(_ group: [ImportItem], source: SourceRecord, folder: any FolderImportSource, settings: SettingsSnapshot, giveUp: Bool = false) async throws -> GroupOutcome {
         var inspected: [String: InspectedFile] = [:]
         var failed: [String: String] = [:]
-        var givenUp = false
+        var givenUp = giveUp
         let groupKey = group.first?.groupKey ?? ""
         for item in group {
             let mediaType: MediaType = UTType(item.uti)?.conforms(to: .movie) == true ? .video : .image
@@ -93,7 +109,10 @@ extension ImportStage {
             } catch let error as SourceError {
                 switch error {
                 case .busy:
-                    if !givenUp, waitsForRetry(source, group: groupKey) { return .waitingForProvider }
+                    if !givenUp {
+                        blockForRetry(source, group: groupKey)
+                        return .waitingForProvider
+                    }
                     givenUp = true
                     failed[item.relativePath] = "read"
                 case .unavailable:
@@ -102,7 +121,10 @@ extension ImportStage {
                     // A Mac file that cannot be read is that file's problem. A cloud read fails on a dropped
                     // connection all the time; the file waits and is tried again.
                     if source.kind != .localFolder {
-                        if !givenUp, waitsForRetry(source, group: groupKey) { return .waitingForProvider }
+                        if !givenUp {
+                            blockForRetry(source, group: groupKey)
+                            return .waitingForProvider
+                        }
                         givenUp = true
                     }
                     failed[item.relativePath] = "read"
@@ -116,23 +138,17 @@ extension ImportStage {
             }
         }
         try env.reach(.afterImportInspectBeforeCommit)
+        if givenUp, !failed.isEmpty { env.log.log(.notice, category: "import", "import group unreadable for a day; marked failed") }
         try await commitGroup(group, inspected: inspected, failed: failed, source: source, settings: settings)
         holds.settled(source.id, group: groupKey)
         return .committed
     }
 
-    /// True when the group should wait for another try. False once it has failed for a day and ten tries:
-    /// the files that cannot be read are then marked failed so the import can finish (importing the folder
-    /// again brings them back). The whole group is given up together, not file by file.
-    private func waitsForRetry(_ source: SourceRecord, group: String) -> Bool {
-        let now = env.clock.now
-        if holds.noteFailure(source.id, group: group, now: now) {
-            env.log.log(.notice, category: "import", "import group unreadable for a day; marked failed")
-            return false
-        }
-        holds.block(source.id, group: group, reason: .busy, now: now)
+    /// The group is left pending and skipped for the cooldown. Giving up is decided once per pass, after the pass
+    /// shows the source itself reads fine (`giveUpStubbornGroups`).
+    private func blockForRetry(_ source: SourceRecord, group: String) {
+        holds.block(source.id, group: group, reason: .busy, now: env.clock.now)
         env.log.log(.info, category: "import", "source busy; import group waits")
-        return true
     }
 
     private func commitGroup(

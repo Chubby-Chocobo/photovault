@@ -87,8 +87,11 @@ extension AppModel {
         }
         let id = SourceID.folder()
         do {
+            try Task.checkCancellation()
             try env.cloud.copyDropboxAccountToken(to: id)
             do {
+                // The owner may have closed the sheet meanwhile; then nothing starts and the copy goes.
+                try Task.checkCancellation()
                 try await env.coordinator.startImport(
                     source: env.cloud.dropboxSource(id: id, rootPath: path), kind: .dropbox,
                     displayName: CloudImportText.dropboxDisplayName(path: path),

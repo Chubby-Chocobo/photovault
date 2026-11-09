@@ -71,15 +71,21 @@ final class ImportHolds: @unchecked Sendable {
     }
 
     /// Notes that a group could not be read now. True once it has failed for `giveUpAfter` and at least
-    /// `giveUpAfterTries` times; a failure long after the previous one starts the count again.
-    func noteFailure(_ id: SourceID, group: String, now: Date) -> Bool {
+    /// `giveUpAfterTries` times; a failure long after the previous one starts the count again. A streak
+    /// begins only when `startsStreak` is true (the pass could read something else), so an outage that
+    /// hits every file never starts one.
+    func noteFailure(_ id: SourceID, group: String, now: Date, startsStreak: Bool = true) -> Bool {
         lock.withLock {
-            var streak = failing[id]?[group] ?? Streak(first: now, last: now, tries: 0)
-            if now.timeIntervalSince(streak.last) > Self.streakGap { streak = Streak(first: now, last: now, tries: 0) }
-            streak.last = now
-            streak.tries += 1
-            failing[id, default: [:]][group] = streak
-            return now.timeIntervalSince(streak.first) >= Self.giveUpAfter && streak.tries >= Self.giveUpAfterTries
+            var streak = failing[id]?[group]
+            if let old = streak, now.timeIntervalSince(old.last) > Self.streakGap { streak = nil }
+            guard var current = streak ?? (startsStreak ? Streak(first: now, last: now, tries: 0) : nil) else {
+                failing[id]?[group] = nil
+                return false
+            }
+            current.last = now
+            current.tries += 1
+            failing[id, default: [:]][group] = current
+            return now.timeIntervalSince(current.first) >= Self.giveUpAfter && current.tries >= Self.giveUpAfterTries
         }
     }
 
