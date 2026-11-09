@@ -42,6 +42,7 @@ Do this once, in your own Google account. The app cannot do it for you.
 3. APIs & Services → OAuth consent screen:
    - User type **External**. Fill in the app name and your e-mail address.
    - Add the scopes `https://www.googleapis.com/auth/drive.file`, `openid` and `email`. `drive.file` gives access only to files the app creates.
+   - Branding: home page `https://photovault.annh.dev`, privacy policy `https://photovault.annh.dev/privacy`, terms of service `https://photovault.annh.dev/terms`, authorized domain `annh.dev` (see [Website](#website)).
 4. On the same screen, click **Publish app** so the status shows **In production**. In *Testing* mode, refresh tokens expire after 7 days, and the backups would stop each week.
 5. When you sign in, Google shows an "unverified app" screen. This is expected for a personal app. Click **Advanced**, then continue to the app.
 6. APIs & Services → Credentials → **Create credentials** → **OAuth client ID** → application type **Desktop app**. Copy the client ID and the client secret.
@@ -111,6 +112,18 @@ Sync modes:
 - `newOnly`: only what enters the library after you add the destination.
 
 The archive timezone is fixed when you onboard. Changing the Mac's timezone later does not move files (spec §8.6).
+
+## Website
+
+`site/` holds the public landing page with the privacy policy and terms of service that the Google OAuth consent screen links to. It is static HTML served by Cloudflare Workers static assets at [photovault.annh.dev](https://photovault.annh.dev); `annh.dev` uses Cloudflare DNS.
+
+```sh
+cd site
+npx wrangler dev      # preview on localhost
+npx wrangler deploy   # publish (needs `npx wrangler login` once)
+```
+
+Keep `privacy.html` true to what the app does: when the app starts using new Google scopes, new services or new data, update the policy and its effective date in the same change.
 
 ## Privacy
 

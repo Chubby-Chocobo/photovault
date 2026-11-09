@@ -21,3 +21,6 @@ Config/Local.xcconfig
 
 # Media corpus fetched by scripts/fetch-media-corpus.py
 .media-corpus/
+
+# Wrangler local state for the landing site
+site/.wrangler/
