@@ -14,6 +14,7 @@ import Testing
         let h = try await Harness(store: try Store.open(at: directory.appendingPathComponent("db.sqlite")))
         try h.addDrive()
         let staging = StagingManager(env: h.env)
+        var decisiveRounds = 0
         for index in 0..<5 {
             let url = try h.seedStaged("race\(index)")
             let store = h.store
@@ -31,13 +32,17 @@ import Testing
             _ = try await sweep.value
             if claimed {
                 if existedWhenClaimed {
+                    decisiveRounds += 1
                     #expect(FileManager.default.fileExists(atPath: url.path), "a file with a claim is not deleted (round \(index))")
                 }
                 await staging.unlease(url.path)
             } else {
+                decisiveRounds += 1
                 #expect(!FileManager.default.fileExists(atPath: url.path), "a refused claim means the release went through")
             }
         }
+        // Every round may land after the release finished on a slow machine; then nothing was checked.
+        #expect(decisiveRounds > 0, "no round raced the claim against the release")
     }
 
     @Test func aFileBeingReleasedRefusesNewClaims() async throws {

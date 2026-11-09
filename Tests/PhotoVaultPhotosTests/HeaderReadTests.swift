@@ -42,7 +42,7 @@ struct HeaderReadTests {
     /// ImageIO names a HEIC's camera only once the whole file is there (as measured on iPhone photos);
     /// the download is then kept as the staged copy instead of being fetched again.
     @Test func aCameraHeicIsReadWholeAndKept() throws {
-        guard let data = TestImages.make(type: .heic, spec: camera, size: 1500, noise: true) else { return }
+        let data = try #require(TestImages.make(type: .heic, spec: camera, size: 1500, noise: true), "no HEIC encoder on this host")
         try #require(data.count > Self.chunk, "the sample must span several chunks (\(data.count) bytes)")
         let classifier = HeaderClassifierBox(typeHint: UTType.heic.identifier)
         let delivered = stream(data, into: classifier)
@@ -51,9 +51,8 @@ struct HeaderReadTests {
         let result = PhotoKitSource.headerResult(classifier, completeFile: classifier.stoppedEarly ? nil : file, uti: UTType.heic.identifier)
         #expect(result.isConclusive)
         #expect(result.metadata?.make == "Apple" && result.metadata?.model == "iPhone 17 Pro")
-        if delivered == data.count {
-            #expect(result.completeFile?.url == file.url, "a whole download must be kept")
-        }
+        // Either the read stopped before the end, or the whole download is the staged copy.
+        #expect(delivered < data.count || result.completeFile?.url == file.url, "a whole download must be kept")
     }
 
     /// JPEG metadata always precedes the image data, so "no camera" is known once ImageIO reports
