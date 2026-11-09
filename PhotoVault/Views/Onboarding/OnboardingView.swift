@@ -10,7 +10,7 @@ struct OnboardingView: View {
     var body: some View {
         Group {
             if let model {
-                OnboardingContent(model: model)
+                OnboardingContent(model: model).id(app.language)
             } else {
                 ProgressView().frame(width: 720, height: 560)
             }
@@ -75,6 +75,7 @@ private struct OnboardingContent: View {
                 .accessibilityAddTraits(step == model.step ? .isSelected : [])
             }
             Spacer()
+            InterfaceLanguagePicker().labelsHidden().controlSize(.small)
         }
         .padding(16)
         .frame(width: 210)

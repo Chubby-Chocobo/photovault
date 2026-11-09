@@ -9,6 +9,10 @@ struct ActivityView: View {
     @State private var query = ""
 
     var body: some View {
+        content.id(model.language)
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()

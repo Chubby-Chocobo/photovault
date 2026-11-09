@@ -20,6 +20,7 @@ struct MenuBarView: View {
             Divider()
             MenuBarActions()
         }
+        .id(model.language)
         .padding(12)
         .frame(width: 360)
         .task { await model.refreshSnapshot() }

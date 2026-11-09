@@ -14,6 +14,7 @@ struct SettingsView: View {
                     .tag(tab)
             }
         }
+        .id(model.language)
         .frame(width: 720, height: 560)
         .task { await model.refresh() }
     }
