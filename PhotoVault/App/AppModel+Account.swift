@@ -36,17 +36,13 @@ extension AppModel {
         return try await DriveRootService(drive: env.drive).existingRoots()
     }
 
-    /// Deletes the Keychain item, revokes the token and pauses Drive until the owner signs in again.
+    /// Pauses Drive as signed out, then deletes the Keychain item and revokes the token. Pausing first
+    /// keeps new uploads from starting with a token that is about to be revoked.
     func signOutGoogle() async {
         guard let env else { return }
         do {
+            guard await markDriveSignedOut(env) else { throw EngineError.invalidState("could not pause Drive") }
             try await env.auth.signOut()
-            let now = Date()
-            try await env.store.write { db in
-                if try DestinationRepository.fetch(db, id: .googleDrive) != nil {
-                    try DestinationRepository.setStatus(db, id: .googleDrive, status: .paused(.signedOut), now: now)
-                }
-            }
             await refresh()
             showNotice("Đã đăng xuất Google.")
         } catch {

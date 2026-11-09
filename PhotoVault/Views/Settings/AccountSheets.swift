@@ -3,8 +3,10 @@ import PhotoVaultCore
 import PhotoVaultDrive
 import SwiftUI
 
-/// FR-08: sign in with another account, then choose where its backups go.
+/// FR-08: sign in with another account, then choose where its backups go. With `reauth`, the same
+/// flow is offered as "sign in again": the same account simply resumes, another one is a change.
 struct AccountChangeSheet: View {
+    var reauth = false
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var stage: Stage = .confirm
@@ -19,10 +21,12 @@ struct AccountChangeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Đổi tài khoản Google?").font(.title3.weight(.semibold))
+            Text(reauth ? "Đăng nhập lại Google" : "Đổi tài khoản Google?").font(.title3.weight(.semibold))
             switch stage {
             case .confirm:
-                Text("Trạng thái đích Drive sẽ được đặt lại. Nếu tài khoản mới đã có thư mục PhotoVault, ứng dụng khôi phục từ đó trước khi upload.")
+                Text(reauth
+                     ? "Đăng nhập lại bằng \(model.accountEmail ?? "tài khoản đang dùng") để backup chạy tiếp, không mất gì. Nếu chọn tài khoản khác, đó là đổi tài khoản: trạng thái đích Drive được đặt lại."
+                     : "Nếu chọn tài khoản khác, trạng thái đích Drive sẽ được đặt lại; nếu tài khoản đó đã có thư mục PhotoVault, ứng dụng khôi phục từ đó trước khi upload. Chọn lại đúng tài khoản cũ thì chỉ là đăng nhập lại.")
                     .foregroundStyle(.secondary)
             case .signingIn:
                 HStack { ProgressView().controlSize(.small); Text("Đang chờ trình duyệt…") }
@@ -56,7 +60,7 @@ struct AccountChangeSheet: View {
         do {
             let result = try await model.beginAccountChange()
             if result.staged == nil {
-                model.showNotice("Vẫn là tài khoản cũ nên đích Drive chạy tiếp.")
+                model.showNotice(reauth ? "Đã đăng nhập lại, đích Drive chạy tiếp." : "Vẫn là tài khoản cũ nên đích Drive chạy tiếp.")
                 dismiss()
                 return
             }

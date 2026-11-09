@@ -9,7 +9,7 @@ struct GeneralTab: View {
     @State private var confirmSignOut = false
 
     private enum Sheet: String, Identifiable {
-        case changeAccount, changeRoot
+        case changeAccount, signInAgain, changeRoot
         var id: String { rawValue }
     }
 
@@ -21,10 +21,15 @@ struct GeneralTab: View {
             }
         }
         SettingsSection("Tài khoản Google") {
-            FormRow(model.accountEmail ?? "Chưa đăng nhập", detail: "Quyền: drive.file · openid · email") {
+            FormRow(accountTitle, detail: "Quyền: drive.file · openid · email") {
                 HStack {
-                    Button("Đổi tài khoản…") { sheet = .changeAccount }
-                    Button("Đăng xuất…") { confirmSignOut = true }
+                    if model.driveNeedsSignIn {
+                        Button("Đăng nhập lại…") { sheet = .signInAgain }
+                        Button("Đổi tài khoản…") { sheet = .changeAccount }
+                    } else {
+                        Button("Đổi tài khoản…") { sheet = .changeAccount }
+                        Button("Đăng xuất…") { confirmSignOut = true }
+                    }
                 }
             }
             .disabled(model.driveRecord == nil)
@@ -64,9 +69,15 @@ struct GeneralTab: View {
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .changeAccount: AccountChangeSheet()
+            case .signInAgain: AccountChangeSheet(reauth: true)
             case .changeRoot: RootChangeSheet()
             }
         }
+    }
+
+    private var accountTitle: String {
+        guard let email = model.accountEmail else { return "Chưa đăng nhập" }
+        return model.driveNeedsSignIn ? "\(email) — cần đăng nhập lại" : email
     }
 
     private var savedRootName: String { model.driveRecord?.config.driveRootName ?? "" }

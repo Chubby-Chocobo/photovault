@@ -77,6 +77,11 @@ final class AppModel {
     var accountEmail: String? { driveRecord?.accountEmail }
     var isPausedAll: Bool { snapshot?.overall == .paused }
 
+    /// Drive waits for the owner to sign in again: the grant expired or was revoked, or they signed out.
+    var driveNeedsSignIn: Bool {
+        driveRecord?.status == .paused(.reauthRequired) || driveRecord?.status == .paused(.signedOut)
+    }
+
     var diskState: MacDiskState { MacDiskState.classify(freeBytes: macFreeBytes, settings: persistedSettings) }
 
     var visibleDecisions: [OwnerDecisionItem] { decisions.filter { !snoozedDecisions.contains($0.id) } }
@@ -156,7 +161,8 @@ final class AppModel {
                     if record.kind == .localFolder, case .unavailable = record.status { return true }
                     return false
                 } ?? false
-            })
+            },
+            needsDiskRecheck: { [weak self] in self.map { $0.diskState != .ok } ?? false })
         scheduler.start()
         let snapshots = Task { [weak self] in
             for await value in await env.coordinator.snapshots() {
@@ -166,10 +172,12 @@ final class AppModel {
             }
         }
         let poll = Task { [weak self] in
-            // A cycle publishes only at its start and end; polling keeps the progress bar moving during a long backfill.
+            // A cycle publishes only at its start and end; polling keeps the progress bar moving during a
+            // long backfill. Idle, nothing moves, so nothing is polled (NFR-03).
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 guard let self else { return }
+                guard self.snapshot?.overall == .syncing else { continue }
                 await self.refreshSnapshot()
             }
         }

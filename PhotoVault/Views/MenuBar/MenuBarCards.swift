@@ -45,3 +45,15 @@ struct PhotosDeniedCard: View {
         }
     }
 }
+
+struct SignInAgainCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Banner(
+            .danger, title: "Cần đăng nhập lại Google",
+            message: "Đích Drive tạm dừng cho tới khi bạn đăng nhập lại. Dữ liệu và lịch sử backup giữ nguyên.") {
+            Button("Đăng nhập lại…") { model.settingsTab = .general; model.open(.settings(.general)) }
+        }
+    }
+}
