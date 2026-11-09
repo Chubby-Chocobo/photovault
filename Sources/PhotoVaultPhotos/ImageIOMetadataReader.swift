@@ -33,10 +33,18 @@ public struct ImageIOMetadataReader: MetadataReading {
     }
 
     static func imageMetadata(of file: URL, uti: String?) -> CaptureMetadata {
-        guard let source = imageSource(of: file, uti: uti),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        else { return .empty }
-        return metadata(from: props)
+        var read = CaptureMetadata.empty
+        if let source = imageSource(of: file, uti: uti),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            read = metadata(from: props)
+        }
+        // A RAW from a camera newer than this macOS reads as nothing, and some formats lose the make
+        // (Samsung SRW); the file itself still names the camera.
+        guard read.make == nil || read.model == nil, let uti, UTTypeResolver().isRaw(uti),
+              let found = RawCameraFallback.metadata(of: file) else { return read }
+        return CaptureMetadata(
+            make: read.make ?? found.make, model: read.model ?? found.model, lensModel: read.lensModel ?? found.lensModel,
+            dateTimeOriginal: read.dateTimeOriginal ?? found.dateTimeOriginal, offsetTime: read.offsetTime ?? found.offsetTime)
     }
 
     /// Maps an ImageIO properties dictionary to `CaptureMetadata`.
