@@ -28,7 +28,7 @@ Each default is what the code does now. The spike column says which run confirms
 
 ## Results
 
-- **M0-5:** item 1 holds, but only once ImageIO is told the resource's UTI. Without it a Sony ARW reads as an empty TIFF. Both readers now pass `kCGImageSourceTypeIdentifierHint`. Item 3 holds: local data arrives in 1 MiB chunks. Item 8: video metadata loads in under 0.01 s.
+- **M0-5:** item 1 holds, but only once ImageIO is told the resource's UTI. Without it a Sony ARW reads as an empty TIFF. Both readers now pass `kCGImageSourceTypeIdentifierHint`. For a RAW that ImageIO cannot read at all (a camera newer than the installed macOS), `RawCameraFallback` takes make and model from the file's TIFF directory, CR3 `CMT1` box or embedded preview. Item 3 holds: local data arrives in 1 MiB chunks. Item 8: video metadata loads in under 0.01 s.
 - **M0-1b:** items 2 and 10 hold. Cancel throws `cancelled`, no partial file is left, and nothing more is delivered after the cancel. Exports are byte-exact. An iCloud-only 4.7 GB video sends progress from 4 s on, but its first data only after 131 s.
 
 ## Consequences

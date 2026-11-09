@@ -68,14 +68,19 @@ The column "Without hint" is what the code did before the fix: ImageIO reads an 
 
 Conclusions:
 
-- **Bug found and fixed: every Sony ARW was classified as a photo without a camera.** Without a type hint, ImageIO reads an ARW as a plain TIFF and returns no properties at all. This happens both in the incremental header source and on staged files, which have no extension. Under FR-20 rule 3 every RAW would have gone to `saved`. Both paths now pass the resource UTI as `kCGImageSourceTypeIdentifierHint`. With the hint, make and model are readable from the first 64 KB. Tests: `HeaderClassifierTests.theResourceTypeIsGivenToImageIO`, `ImageIOMetadataReaderTests.stagedFilesAreReadAsTheirResourceType`. Checked again on the real files: 20 of 20 header answers equal the full-file answer. Only ARW was affected: NEF keeps make and model in a standard TIFF directory, and DNG is recognised without a hint. All three now read the camera from the first 1 MiB.
+- **Bug found and fixed: a Sony ARW lost its camera make and model.**
+  - **Cause:** without a type hint, ImageIO reads an ARW as a plain TIFF and returns no properties at all. Staged files have no extension, so it gets no other clue.
+  - **Impact:** the photo's category was not affected. A RAW is `camera` from scan time, because FR-20 rule 3 excludes assets with a RAW resource. But the export step stored no make or model, so the photo was missing from the by-device view and its sidecars had no camera.
+  - **Correction:** an earlier version of this note said every RAW would have gone to `saved`. That was wrong.
+  - **Fix:** both readers now pass the resource UTI as `kCGImageSourceTypeIdentifierHint`, and the camera is readable from the first 64 KB. Checked again on the real files: 20 of 20 header answers equal the full-file answer.
+  - **Other formats in the library:** NEF keeps make and model in a standard TIFF directory, and DNG is recognised without a hint.
 - **ImageIO does not return `OffsetTimeOriginal` for ARW**, though exiftool reads +07:00. The offset is not used for day placement, so nothing changes.
 - **PhotoKit delivered local data in 1 MiB chunks.** Classification costs one chunk for JPEG and ARW. Small HEIC files are read whole, and that read is kept as the staged file.
 - **The video metadata read is far below the 30-second timeout.**
 
 ### Other RAW formats (public samples)
 
-The library holds only ARW, NEF and DNG. To cover other formats, the probe ran on one public-domain sample per format from [raw.pixls.us](https://raw.pixls.us/), outside Photos. It used the app's own `HeaderClassifier`, fed in 1 MiB chunks, and `ImageIOMetadataReader` on an extensionless copy, each once with the UTI hint and once without. The UTI comes from `UTType(filenameExtension:)`, and exiftool gives the reference values.
+The library holds only ARW, NEF and DNG. To cover other formats, the probe ran on one public-domain sample per format from [raw.pixls.us](https://raw.pixls.us/), outside Photos. The table below is that first sample set. The test corpus later took the smallest file of each format, so some cameras and sizes differ (the corpus IIQ is 69 MB, and its CR3 files are under 32 MiB); `Tests/PhotoVaultPhotosTests/Fixtures/MediaCorpus/manifest.json` lists the corpus. It used the app's own `HeaderClassifier`, fed in 1 MiB chunks, and `ImageIOMetadataReader` on an extensionless copy, each once with the UTI hint and once without. The UTI comes from `UTType(filenameExtension:)`, and exiftool gives the reference values.
 
 | Format (sample camera) | UTI | `isRaw` | Header with hint | Without hint (old code) | Matches exiftool |
 |---|---|---|---|---|---|
@@ -104,13 +109,19 @@ The library holds only ARW, NEF and DNG. To cover other formats, the probe ran o
 Conclusions:
 
 - **The missing hint broke five formats, not only ARW:** ARW, lossless NEF from the Z 9, NRW, PEF and SRW. With the hint, every format macOS reads names its camera. The camera is in the first 16 KiB for all five.
-- **CR3, CRW and IIQ conclude only on the complete file.** The download is not wasted: the complete file is kept as the staged copy and uploaded from there.
-- **Samsung SRW has a model but no make in ImageIO.** It still counts as a camera (`hasCameraIdentity` needs make or model); only the sidecar lacks the make.
-- **Sigma X3F is not supported by macOS.** It has no system UTI and ImageIO cannot read it.
-- **Regression tests:**
+- **Header classification does not apply to RAW.** RAW photos are `camera` from scan time. The header read classifies only photos without RAW (JPEG, HEIC, PNG):
+  - a large JPEG is decided from the first 1 MiB chunk, with or without a camera;
+  - a HEIC is read whole, and the download is kept as the staged copy.
+- **macOS 15 cannot read the Fujifilm X-T30 III RAF; macOS 26 can.** CI runs macOS 15. A camera newer than the installed macOS gets no properties from ImageIO, so the same by-device and sidecar gap appears there.
+  - The reader now falls back to the file itself when a RAW lacks make or model. It looks in the first TIFF directories (most formats), then the `CMT1` box of a CR3, then an embedded JPEG preview's Exif (RAF).
+  - The fallback names the camera for 26 of the 27 corpus files without ImageIO. It cannot for CRW, IIQ and MRW, which macOS has long supported, and X3F is not RAW to the app.
+  - It also supplies the make that ImageIO leaves out for Samsung SRW (SAMSUNG).
+- **Sigma X3F is not supported by macOS.** It has no system UTI, so the app does not treat it as RAW, and ImageIO cannot read it.
+- **Regression tests** (each checked by breaking the code on purpose: dropping the UTI in either reader, removing the fallback or one of its steps, misclassifying DNG, losing the UTI or the complete-file read on overflow, passing no UTI from the export step, raising the 32 MiB buffer limit; all ten fail):
   - `RawHeaderFixtureTests` runs on the opening bytes of 21 of these samples, kept in git (`Tests/PhotoVaultPhotosTests/Fixtures/RawHeaders/`).
-  - `MediaCorpusTests` runs on 27 complete files that CI fetches by checksum: camera, `isRaw`, and the byte budget of the header read.
-  - Without the hint, 26 issues fail across both suites.
+  - `MediaCorpusTests` runs on 27 complete files that CI fetches by checksum. It checks `isRaw` and the camera category, the make, model and capture date the export step stores, and the fallback alone.
+  - `RawCameraFallbackTests` uses synthetic bytes, so the fallback is checked whatever cameras the installed macOS knows.
+  - `HeaderReadTests` drives `PhotoKitSource.headerResult` as `readClassificationHeader` does. It checks the one-chunk JPEG budget, the kept HEIC download, the 32 MiB buffer limit and the complete-file read with the UTI.
 
 ## Changes this result drives
 
