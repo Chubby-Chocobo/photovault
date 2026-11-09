@@ -157,3 +157,13 @@ Phases 02 and 03 run in parallel. Their file sets do not overlap.
 - Chosen: a rate limit or 5xx is `SourceError.busy` (item stays pending, job not offline, 30 s cooldown; exports retry without an attempt). Each import saves `relativePath → remote id` in `remote-ids.json` before listing returns; reads resolve through it and a miss runs one shared listing that only adds. Dropbox reads by id. A cloud download to scratch space waits when it would eat the critical disk reserve. One delegate-based streamer serves both providers.
 - Why: all found in review as ways to lose or mislabel a file.
 - Review later: no.
+
+### One blocked file does not block the import; give up after 24 hours
+- Chosen: a cloud group that cannot be read now (no disk room, busy, dropped connection while the probe answers) is skipped for the cooldown and the others continue. A file waiting for disk room waits without limit and the row shows `statusReason = "diskFull"`. A file busy or dropped for 24 hours of wall-clock (first failure kept in memory per file; a relaunch resets it) is marked failed "read" so the import can finish.
+- Alternatives: pause the whole job (stalled everything behind one file); count attempts (depends on cycle frequency).
+- Why: lead decision after the first release review; recorded in ADR 0026.
+- Review later: no.
+
+### A finished import with a revoked grant asks once; no 0.2.0 downgrade
+- Chosen: one failed export pushes all of that source's waiting exports an hour ahead; signing in again releases them. Going back to 0.2.0 after a cloud import is unsupported.
+- Why: avoids a token refresh per file per hour; the downgrade path would need a migration for little value.

@@ -71,7 +71,7 @@ Written only for assets imported from a folder on this Mac, Google Drive or Drop
 | Key | Type | When | Source |
 |---|---|---|---|
 | `kind` | string | always | the source kind: `localFolder`, `googleDrive` or `dropbox` (`SourceKind` raw values) |
-| `name` | string | always | the import's display name (the folder's name) |
+| `name` | string | always | a name that does not depend on the app language: the folder's name for a Mac folder, a single picked Drive folder or a Dropbox folder; otherwise the provider (`Google Drive` for several picks, `Dropbox` for the whole account). It is `SourceConfig.sidecarName`, and the import's display name when that is unset |
 | `path` | string | always | path of the primary file inside the imported folder, NFC. For a Google Drive pick it is inside the picked folder, or the file's name when a file was picked. For Dropbox it is relative to the chosen folder (or the account root). |
 | `dateSource` | string | the primary's import row has it | `exif`, `video` or `fileDate`: which rule gave the creation date |
 

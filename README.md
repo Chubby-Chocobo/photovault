@@ -79,13 +79,14 @@ Needed only for the Dropbox import. Do this once, in your own Dropbox account.
 2. Choose **Scoped access** and the access type **Full Dropbox**. Full Dropbox is needed to reach a folder such as `/Camera Uploads`. The app only reads.
 3. On the **Permissions** tab, tick `files.metadata.read`, `files.content.read` and `account_info.read`, then **Submit**. Do this before the first sign-in: Dropbox grants only the permissions that are enabled when you sign in.
 4. On the **Settings** tab, under **OAuth 2** → **Redirect URIs**, add exactly `http://localhost:53682/oauth2/callback`, then **Add**.
-5. Copy the **App key** (not the app secret) into `Config/Secrets.xcconfig`, which you copied from `Config/Secrets.xcconfig.example`:
+5. To import from a Dropbox account other than the one that created the app, open the **Settings** tab and use **Enable additional users**. A Dropbox app in development status links only its creator's account until then.
+6. Copy the **App key** (not the app secret) into `Config/Secrets.xcconfig`, which you copied from `Config/Secrets.xcconfig.example`:
 
    ```
    DROPBOX_APP_KEY = your-app-key
    ```
 
-Without an App key, the Dropbox item in Settings is disabled and shows a hint. The app uses PKCE, so no secret is needed.
+Leave `DROPBOX_APP_KEY` empty (as the template does) to build without Dropbox: the Dropbox item in Settings is then disabled and shows a hint. The app uses PKCE, so no secret is needed.
 
 Dropbox tokens live in the same Keychain service as the Google token (`com.annh.photovault.google`), under the account names `dropbox-account` and `import-<id>`.
 
@@ -240,7 +241,10 @@ Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or
 - **Dropbox:** sign in once in the browser, then choose a folder in PhotoVault's folder browser, or the whole Dropbox. Needs the App key ([Dropbox setup](#dropbox-setup)).
 - **Cần đăng nhập lại** (sign in again): Google or Dropbox revoked the access, or the token is missing. An open import shows this and waits; so does a finished import whose files are still needed for a backup. Use the sign-in action on that import to continue. Sign in with the same account the import reads from: another account is refused with a notice and changes nothing. For Google, the new pick is added to the old one.
 - **Throttling:** when Google or Dropbox slows a download down, the import pauses for a short time and tries the same file again. No file is marked as failed for it.
-- **Signing out of the Google backup destination** also revokes the app's access for that Google account, so imports from the same account then wait and show "Cần đăng nhập lại".
+- **Signing out of the Google backup destination** also revokes the app's access for that Google account, so imports from the same account then wait and show "Cần đăng nhập lại". Imports from another Google account keep their own grant until you remove the app's access in that account ([myaccount.google.com/permissions](https://myaccount.google.com/permissions)) or use Start over, which deletes the tokens on this Mac. For Dropbox, remove the app at [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps).
+- **Google's limit:** one Google account can hold 100 refresh tokens per OAuth client, and each Picker import creates one. After about 100 imports from the backup account, Google drops the oldest, which may be the backup sign-in; sign in to the backup again if it asks.
+- **A file that cannot be read now** (dropped connection, throttling, not enough free disk space) waits and is tried again while the rest of the import goes on. A file that stays unreadable for 24 hours is counted under "lỗi" so the import can finish; import the folder again to retry it.
+- **After a cloud import, do not go back to 0.2.0:** it cannot read the new source kinds and its sync cycles would fail.
 - Read-only: nothing in Drive or Dropbox is changed or deleted.
 
 ## Start over (factory reset)

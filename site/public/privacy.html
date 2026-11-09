@@ -35,12 +35,12 @@
   </ul>
   <p>To import from Google Drive, the app uses the same permission and reads only the files and folders you pick in Google's Picker. The Picker opens in your browser, and Google sends the picked file identifiers back to the app on your Mac.</p>
   <p>Your Google data is used only to provide the backup feature you asked for. It is transferred only between your Mac and Google. It is not sent to the developer or to any third party, not used for advertising, not sold, and not used to train AI or machine learning models. No person reads it.</p>
-  <p>The sign-in tokens are stored only in the macOS Keychain on your Mac. Signing out of Google in the app revokes them with Google. You can also remove PhotoVault's access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. Files already in your Drive remain yours; you can keep or delete them.</p>
+  <p>The sign-in tokens are stored only in the macOS Keychain on your Mac. Signing out of Google in the app revokes the sign-in of the backup account with Google. An import from another Google account keeps its own sign-in on this Mac until you remove PhotoVault's access in that account's settings, or use Start over in the app, which deletes these tokens from this Mac. You can remove PhotoVault's access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. Files already in your Drive remain yours; you can keep or delete them.</p>
   <p>PhotoVault's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
 
   <h2>Dropbox data</h2>
   <p>If you import from Dropbox, PhotoVault asks only for read-only access: <code>files.metadata.read</code> and <code>files.content.read</code>, to list and download the files in the folder you choose, and <code>account_info.read</code>, to show which Dropbox account is connected. It cannot change or delete anything in Dropbox.</p>
-  <p>Your Dropbox data is used only for the import you asked for. It is transferred only between your Mac and Dropbox. It is not sent to the developer or to any third party, not used for advertising, not sold, and not used to train AI or machine learning models. The Dropbox access token is stored only in the macOS Keychain on your Mac. You can remove PhotoVault's access at any time in the Connected apps settings of your Dropbox account.</p>
+  <p>Your Dropbox data is used only for the import you asked for. It is transferred only between your Mac and Dropbox. It is not sent to the developer or to any third party, not used for advertising, not sold, and not used to train AI or machine learning models. The Dropbox access token is stored only in the macOS Keychain on your Mac. You can remove PhotoVault's access at any time in the <a href="https://www.dropbox.com/account/connected_apps">Connected apps</a> settings of your Dropbox account. Signing out of Dropbox in the app only removes the folder browser's sign-in; each import keeps its own copy until you remove access in Dropbox or use Start over, which deletes these tokens from this Mac.</p>
 
   <h2>Place names</h2>
   <p>To name folders after places, the app can ask Apple's geocoding service (built into macOS) for the name of an area. It sends only an approximate point, rounded to about 1 km, not your photo's exact location. You can turn place names off in Settings. Apple's handling of these requests is covered by Apple's privacy policy.</p>
@@ -57,7 +57,7 @@
 
   <h2>Deleting your data</h2>
   <ul>
-    <li>Sign out of Google in the app, or revoke access in your Google account, to stop all access. Remove PhotoVault's access in your Dropbox account to stop Dropbox access.</li>
+    <li>Signing out of Google in the app stops the backup account's access. To stop access for any other Google account you imported from, remove PhotoVault at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. To stop Dropbox access, remove PhotoVault in your <a href="https://www.dropbox.com/account/connected_apps">Dropbox account</a>. Start over in the app deletes every sign-in from this Mac.</li>
     <li>Delete the backup folder in Google Drive or on your disks to remove the copies.</li>
     <li>Uninstalling the app and removing its folders in <code>~/Library</code> removes the local data.</li>
   </ul>

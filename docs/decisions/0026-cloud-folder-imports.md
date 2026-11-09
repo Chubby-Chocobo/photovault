@@ -74,8 +74,35 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 
 ### Disk space for the scratch copy
 
-- **Chosen:** before a cloud file is downloaded to read its hash, the engine checks the free space of the staging volume against the file's size plus the critical reserve. When it does not fit, the job pauses briefly (like a throttle) and the file stays pending.
+- **Chosen:** before a cloud file is downloaded to read its hash, the engine checks the free space of the staging volume against the file's size plus the critical reserve. When it does not fit, that file's group stays pending and waits; it is never marked failed for lack of room. While any group waits for room the row carries `statusReason = "diskFull"` and Settings says so; the reason clears once everything fits.
 - **Why:** Mac folders are read in place; cloud files are not, and a very large video could fill the disk.
+
+### One file that cannot be read now never holds back the import
+
+- **Chosen:** a group that cannot be read now (not enough disk room; `busy`; a dropped connection or timeout on a cloud read while the probe still answers) is left pending and skipped for a cooldown (30 s), and the import goes on with the other groups. Only when nothing in a pass could be read does the whole job back off. A Drive 403 `downloadQuotaExceeded` counts as `busy`.
+  - A file that stays unreadable (busy or dropped) for 24 hours of wall-clock time is marked `failed` with reason `read`, so the import can finish; the "lỗi" count shows it and the owner imports the folder again to retry. The first-failure time is kept in memory per file, so a relaunch starts the 24 hours again. That is acceptable: a restart only delays giving up.
+  - A file that waits for disk room has no limit: the owner can free space.
+  - A Mac folder file that cannot be read still fails at once.
+- **Alternatives:** pause the whole job on the first blocked file (the first version: one oversized or always-failing file stalled everything behind it, silently); give up after N attempts (counts depend on how often cycles run, wall-clock does not).
+- **Why:** found in review as the way a big import could stay "scanning" for ever with no reason shown.
+- **Review later:** no.
+
+### A finished import with a revoked grant asks the provider once
+
+- **Chosen:** the first export of a closed import that hits `accessRevoked` marks the row `signInRequired` and pushes the retry time of all that source's waiting exports one hour ahead in one statement; each hour one file asks again. A waiting export clears any earlier recorded error so it cannot block "last successful sync". Signing in again clears the retry times of that source's exports, so they run in the next cycle. An import that is offline is probed once per cooldown (30 s; 10 min when only signing in helps), not on every pass.
+- **Why:** otherwise every file of a 20,000-file import refreshed the token and failed the same way every hour.
+
+### Loopback callback size
+
+- **Chosen:** the redirect's request line may be up to 256 KiB, enough for the 5,000 picked ids the app accepts (about 35 bytes each). A longer one gets a readable page and ends the flow at once with `selectionTooLarge`. The listener is bound to loopback only, so the larger limit costs nothing.
+
+### Not supported: going back to 0.2.0 after a cloud import
+
+- 0.2.0 cannot decode the new source kinds, so its cycles fail while such a row exists. There is no downgrade path and no migration marks the database as newer.
+
+### Backup sign-out and imports of the same account
+
+- Signing out of the Google backup revokes the app's grant at Google for that account; imports from the same account share the revocation and wait for a new sign-in. Imports from another Google account, and the Dropbox copies, keep their own grant until the owner removes the app's access at the provider or uses Start over (which deletes the tokens locally, without revoking).
 
 ## Tokens and privacy
 
