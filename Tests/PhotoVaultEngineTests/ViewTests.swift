@@ -176,6 +176,24 @@ import Testing
         #expect(paths.allSatisfy { $0.split(separator: "/").count == 5 }, "country / area / day / file: \(paths)")
     }
 
+    /// The backed-up file stays when a photo leaves Photos, so every view keeps pointing at it.
+    @Test func aPhotoDeletedFromPhotosKeepsItsShortcutsInEveryView() async throws {
+        let h = try await harness()
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
+        var snapshot = h.snapshot("vn", daysAgo: 3, location: daLat)
+        snapshot.isFavorite = true
+        await h.add(snapshot, recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        let before = await shortcutPaths(h)
+        #expect(before.count == 3, "\(before)")
+
+        await h.fakePhotos.delete(localId: snapshot.localId)
+        _ = await h.run()
+        await h.settle()
+        #expect(await shortcutPaths(h) == before)
+    }
+
     @Test func t39SwitchingViewsOffAndOnAndRebuildingAfterTheOwnerDeletedAFolder() async throws {
         let h = try await harness()
         try await h.update { $0.viewByDeviceEnabled = false; $0.viewByPlaceEnabled = false }

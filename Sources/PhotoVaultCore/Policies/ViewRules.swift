@@ -56,7 +56,8 @@ public enum ViewRules {
     }
 
     private static func placePath(_ asset: AssetRecord, day: ArchiveDay, context: ViewContext) -> ViewPath? {
-        guard asset.placement?.category == .camera, asset.deletedAt == nil,
+        // A photo deleted from Photos keeps its backup, so it keeps its place like in every other view.
+        guard asset.placement?.category == .camera,
               context.includeHidden || !asset.isHidden,
               let cell = asset.geoCell ?? asset.location.map(GeoCell.init),
               let english = context.englishGeocodes[cell],
