@@ -25,6 +25,7 @@ private struct SettingsTabContent: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 NoticeBanner()
+                SettingsIssuesBanner()
                 switch tab {
                 case .general: GeneralTab()
                 case .content: ContentTab()
@@ -69,5 +70,18 @@ struct SettingsNote: View {
 
     var body: some View {
         Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Shown on every tab while a field is invalid: the other changes are saved, that field is not.
+private struct SettingsIssuesBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if !model.settingsIssues.isEmpty {
+            Banner(.warning, title: "Một số thay đổi chưa được lưu",
+                   message: model.settingsIssues.map(\.message).joined(separator: " ")
+                       + " Các thay đổi khác đã được lưu.")
+        }
     }
 }

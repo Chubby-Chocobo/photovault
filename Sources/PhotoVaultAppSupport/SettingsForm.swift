@@ -63,6 +63,26 @@ public enum SettingsValidator {
         return issues
     }
 
+    /// What can be saved from an edited copy: every valid change, with the fields behind each issue
+    /// kept at their saved values. One field being typed into must not hold back an unrelated toggle.
+    public static func savable(_ candidate: GlobalSettings, persisted: GlobalSettings) -> GlobalSettings {
+        var result = candidate
+        for issue in validate(candidate) {
+            switch issue {
+            case .criticalNotBelowLow:
+                result.criticalWatermarkBytes = persisted.criticalWatermarkBytes
+                result.lowWatermarkBytes = persisted.lowWatermarkBytes
+            case .dayThresholdOutOfRange: result.dayFolderThreshold = persisted.dayFolderThreshold
+            case .rateNotPositive: result.backfillBytesPerHour = persisted.backfillBytesPerHour
+            case .stagingNotPositive: result.stagingSoftLimitBytes = persisted.stagingSoftLimitBytes
+            case .integrityIntervalOutOfRange: result.integrityCheckIntervalDays = persisted.integrityCheckIntervalDays
+            case .unsupportedPlaceLanguage: result.placeNameLanguage = persisted.placeNameLanguage
+            case .invalidHomeCountry: result.homeCountryCode = persisted.homeCountryCode
+            }
+        }
+        return validate(result).isEmpty ? result : persisted
+    }
+
     /// True when the change affects which assets go where, so the engine must recompute (FR-19).
     /// Pure operating knobs (rate, watermarks, power, network, integrity interval, launch at login) do not.
     public static func needsEngineRecompute(from old: GlobalSettings, to new: GlobalSettings) -> Bool {

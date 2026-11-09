@@ -182,3 +182,35 @@ struct DestinationRulesEditorTests {
         #expect(RuleEditor.changeLines(old: .everything, new: new, oldScope: .full, newScope: .full, settings: settings).isEmpty)
     }
 }
+
+@Suite struct SettingsSavableTests {
+    @Test func aValidToggleIsSavedWhileAnotherFieldIsInvalid() {
+        let persisted = GlobalSettings()
+        var edited = persisted
+        edited.integrityCheckIntervalDays = 0
+        edited.sidecarJsonEnabled = false
+        let saved = SettingsValidator.savable(edited, persisted: persisted)
+        #expect(saved.sidecarJsonEnabled == false)
+        #expect(saved.integrityCheckIntervalDays == persisted.integrityCheckIntervalDays)
+        #expect(SettingsValidator.validate(saved).isEmpty)
+    }
+
+    @Test func bothWatermarksStayTogetherWhenTheirOrderIsWrong() {
+        let persisted = GlobalSettings()
+        var edited = persisted
+        edited.lowWatermarkGB = 1
+        edited.criticalWatermarkGB = 5
+        edited.homeCountryCode = "X"
+        edited.placeNamesEnabled = false
+        let saved = SettingsValidator.savable(edited, persisted: persisted)
+        #expect(saved.lowWatermarkBytes == persisted.lowWatermarkBytes && saved.criticalWatermarkBytes == persisted.criticalWatermarkBytes)
+        #expect(saved.homeCountryCode == persisted.homeCountryCode)
+        #expect(saved.placeNamesEnabled == false)
+    }
+
+    @Test func aValidEditIsSavedAsIs() {
+        var edited = GlobalSettings()
+        edited.dayFolderThreshold = 30
+        #expect(SettingsValidator.savable(edited, persisted: GlobalSettings()) == edited)
+    }
+}
