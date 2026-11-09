@@ -6,8 +6,6 @@ public struct GlobalSettings: Hashable, Codable, Sendable {
     public var includeEdited = true
     public var includeAllBurstFrames = true
     public var includeHidden = false
-    /// N in FR-40: a day with more than N `camera` assets gets its own folder.
-    public var dayFolderThreshold = 10
     /// Backfill and re-export rate (FR-05, 8.5).
     public var backfillBytesPerHour: Int64 = 20 * GiB
     public var backfillOnlyOnACPower = true
@@ -20,7 +18,6 @@ public struct GlobalSettings: Hashable, Codable, Sendable {
     public var chatAppAlbumNames: [String] = GlobalSettings.defaultChatAppAlbums
     public var photosWithoutCameraExifAreSaved = true
     public var placeNamesEnabled = true
-    public var placeNameLanguage = "vi"
     public var homeCountryCode = "VN"
     public var sidecarJsonEnabled = true
     public var sidecarXmpEnabled = true

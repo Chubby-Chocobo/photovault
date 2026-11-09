@@ -19,9 +19,8 @@ public struct PlaceNamingInput: Sendable {
     public var includeHidden: Bool
     /// Cached geocodes keyed by cell, locale `en` (identity keys).
     public var englishGeocodes: [GeoCell: GeoPlace]
-    /// Cached geocodes in the owner's display language (names).
-    public var displayGeocodes: [GeoCell: GeoPlace]
-    public var displayLocale: String
+    /// Cached geocodes in each cell's second locale (`PlaceNameRule.secondLocale`), for names.
+    public var localGeocodes: [GeoCell: GeoPlace]
     public var homeCountryCode: String
     public var day: ArchiveDay
     public var archiveTimeZone: TimeZone
@@ -29,14 +28,13 @@ public struct PlaceNamingInput: Sendable {
 
     public init(
         assets: [PlaceAsset], includeHidden: Bool, englishGeocodes: [GeoCell: GeoPlace],
-        displayGeocodes: [GeoCell: GeoPlace], displayLocale: String, homeCountryCode: String,
+        localGeocodes: [GeoCell: GeoPlace], homeCountryCode: String,
         day: ArchiveDay, archiveTimeZone: TimeZone, now: Date
     ) {
         self.assets = assets
         self.includeHidden = includeHidden
         self.englishGeocodes = englishGeocodes
-        self.displayGeocodes = displayGeocodes
-        self.displayLocale = displayLocale
+        self.localGeocodes = localGeocodes
         self.homeCountryCode = homeCountryCode
         self.day = day
         self.archiveTimeZone = archiveTimeZone
@@ -49,7 +47,7 @@ public struct PlaceNamingResult: Hashable, Sendable {
     /// `<ISO>|<administrativeArea en>` when named.
     public var placeKey: String?
     public var placeName: String?
-    /// Representative cells still missing a geocode in `en` or the display locale.
+    /// Representative cells still missing a geocode in `en` or in their second locale.
     public var cellsToGeocode: [GeoCell]
 }
 
@@ -80,8 +78,8 @@ public enum PlaceNamingPolicy {
 
         let missing = representatives.filter { cell in
             guard let english = input.englishGeocodes[cell] else { return true }
-            let usable = identity(english) != nil
-            return usable && input.displayLocale != "en" && input.displayGeocodes[cell] == nil
+            guard let identity = identity(english) else { return false }
+            return PlaceNameRule.secondLocale(country: identity.iso) != nil && input.localGeocodes[cell] == nil
         }
         if !missing.isEmpty {
             return PlaceNamingResult(state: .waitingGeocode, placeKey: nil, placeName: nil, cellsToGeocode: missing)
@@ -109,7 +107,9 @@ public enum PlaceNamingPolicy {
 
     private static func displayName(_ input: PlaceNamingInput, usable: [GeoCell], identity: PlaceIdentity) -> String {
         let english = usable.compactMap { input.englishGeocodes[$0] }
-        let display = usable.map { input.displayGeocodes[$0] ?? input.englishGeocodes[$0] ?? GeoPlace() }
+        let display = usable.compactMap { cell in
+            input.englishGeocodes[cell].map { PlaceNameRule.display(english: $0, local: input.localGeocodes[cell]) }
+        }
 
         let localities = english.map { $0.locality?.trimmingCharacters(in: .whitespaces) ?? "" }
         let sameLocality = !localities.contains("") && Set(localities).count == 1
