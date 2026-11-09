@@ -147,6 +147,7 @@ struct RemoteInventoryLoader: Sendable {
     static func dayFolder(logical: String, name: String) -> (ArchiveDay?, String?) {
         let parts = logical.split(separator: "/").map(String.init)
         guard parts.count == 2, parts[0] == "camera", let day = ArchiveDay(string: parts[1]), name.hasPrefix(parts[1]) else { return (nil, nil) }
+        guard name.count == 10 || name.dropFirst(10).hasPrefix(" ") else { return (day, nil) }
         let place = name.dropFirst(10).trimmingCharacters(in: .whitespaces)
         return (day, place.isEmpty ? nil : place)
     }

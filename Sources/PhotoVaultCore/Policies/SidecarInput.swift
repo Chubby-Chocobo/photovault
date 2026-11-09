@@ -44,7 +44,7 @@ public struct SidecarInput: Sendable {
 
     public var asset: AssetRecord
     public var albumTitles: [String]
-    /// Geocode of the asset's cell in the display language, when geocoded.
+    /// Names of the asset's cell under `PlaceNameRule` (no native name in parentheses), when geocoded.
     public var place: GeoPlace?
     public var deviceDisplayName: String?
     /// Resources of this destination only.

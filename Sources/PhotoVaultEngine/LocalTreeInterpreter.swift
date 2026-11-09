@@ -35,10 +35,6 @@ enum LocalTreeInterpreter {
             logicalPath: "\(branch)/\(day.description)", displayName: name, day: branch == "camera" ? day : nil,
             placeName: place.isEmpty ? nil : place)
     }
-
-    private static func isDigits(_ text: String, count: Int) -> Bool {
-        text.count == count && text.allSatisfy { $0.isASCII && $0.isNumber }
-    }
 }
 
 /// What a backup file name says (FR-41): `YYYY-MM-DD HH.mm.ss_<original stem>[ (n)][ (edited)].<ext>`

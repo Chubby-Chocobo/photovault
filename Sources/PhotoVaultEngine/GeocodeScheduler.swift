@@ -6,8 +6,7 @@ import PhotoVaultStore
 /// Reverse geocoding of missing grid cells (FR-84, spec 8.11) at most 20 requests per sliding
 /// minute, with exponential backoff after errors. Results are cached forever per cell for `en`
 /// (identity keys and English names) and for the cell's second locale (`PlaceNameRule`), kept under
-/// the key `local`. Cells of promoted day folders go first, then the
-/// newest cells. Only the cell centre leaves the Mac (FR-85); with place names off nothing is sent.
+/// the key `local`. The newest cells go first. Only the cell centre leaves the Mac (FR-85); with place names off nothing is sent.
 actor GeocodeScheduler {
     static let requestsPerMinute = 20
     private static let window: TimeInterval = 60

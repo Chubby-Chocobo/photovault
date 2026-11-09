@@ -29,9 +29,9 @@ public enum PlaceNameRule {
             return GeoPlace(isoCountryCode: english.isoCountryCode, country: country, administrativeArea: english.administrativeArea, locality: nil)
         }
         let inVietnam = english.isoCountryCode?.uppercased() == "VN"
-        // Abroad, an answer in Vietnamese means the geocoder ignored the requested language and used
-        // the Mac's: it is not the native name.
-        let local = !inVietnam && local.map(looksVietnamese) == true ? nil : local
+        // Abroad, an answer whose country is the Vietnamese name of that country means the geocoder
+        // ignored the requested language and used the Mac's: it is not the native name.
+        let local = !inVietnam && local.map { answeredInVietnamese($0, iso: english.isoCountryCode) } == true ? nil : local
         func name(_ english: String?, _ local: String?) -> String? {
             let english = english.flatMap(nonEmpty)
             let local = local.flatMap(nonEmpty)
@@ -48,7 +48,7 @@ public enum PlaceNameRule {
 
     /// Province- and city-level prefixes Apple puts in front of Vietnamese names. Ward and commune
     /// prefixes ("P. Cửa Nam", "X. …", "Đặc khu …") stay: the owner chose to keep them.
-    static let provincePrefixes = ["Thành phố ", "Thành Phố ", "TP. ", "TP.", "Tp. ", "TP ", "Tỉnh ", "Thủ đô "]
+    static let provincePrefixes = ["Thành phố ", "TP. ", "TP.", "TP ", "Tỉnh ", "Thủ đô "]
 
     /// "Thành phố Hà Nội" → "Hà Nội", "Tỉnh Lâm Đồng" → "Lâm Đồng"; other names unchanged.
     static func withoutProvincePrefix(_ name: String) -> String {
@@ -65,13 +65,23 @@ public enum PlaceNameRule {
         return Locale(identifier: "en_US").localizedString(forRegionCode: iso.uppercased())
     }
 
-    private static let vietnameseOnlyLetters = Set("ăắằẳẵặơớờởỡợưứừửữựđạảấầẩẫậẹẻẽếềểễệịỉọỏốồổỗộụủỵỷỹ")
-
-    private static func looksVietnamese(_ place: GeoPlace) -> Bool {
-        [place.locality, place.administrativeArea].contains { name in
+    /// True when the answer came back in Vietnamese: its country is the Vietnamese name of the
+    /// country ("Nhật Bản"), or, where that name is the same as the English one ("Philippines"), its
+    /// names use letters found only in Vietnamese.
+    private static func answeredInVietnamese(_ place: GeoPlace, iso: String?) -> Bool {
+        guard let iso, let vietnamese = Locale(identifier: "vi").localizedString(forRegionCode: iso.uppercased()) else { return false }
+        let english = englishCountryName(iso) ?? ""
+        if fold(vietnamese) != fold(english) {
+            return place.country.flatMap(nonEmpty).map { fold($0) == fold(vietnamese) } ?? false
+        }
+        return [place.locality, place.administrativeArea].contains { name in
             (name ?? "").lowercased().contains { vietnameseOnlyLetters.contains($0) }
         }
     }
+
+    /// Letters no other language written in Latin script uses: ơ, ư, the hook above, and a tone mark
+    /// on top of a circumflex or breve.
+    private static let vietnameseOnlyLetters = Set("ơớờởỡợưứừửữựảẻỉỏủỷẳẩểổởửắằẵặấầẫậếềễệốồỗộỵ")
 
     private static func nonEmpty(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)

@@ -36,9 +36,10 @@ enum LayoutResolver {
     }
 }
 
-/// The `uploading → done` transaction (spec 8.7 step 8): the job is finished and, in the same
-/// transaction, its parent is compared with the layout as it is now. A day promoted while the file
-/// was in flight leaves the file in the old folder, so a `move_job` is created.
+/// The `uploading → done` transaction: the job is finished and, in the same transaction, its parent
+/// is compared with the layout as it is now. A placement that changed while the file was in flight
+/// (a new archive day after an edit, a root change) leaves the file in the old folder, so a
+/// `move_job` is created.
 enum UploadCompletion {
     @discardableResult
     static func commit(

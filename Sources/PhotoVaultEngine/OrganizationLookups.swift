@@ -19,7 +19,9 @@ enum OrganizationLookups {
         guard settings.placeNamesEnabled, settings.includeHidden || !asset.isHidden,
               let cell = asset.geoCell ?? asset.location.map(GeoCell.init) else { return nil }
         guard let english = try GeoCacheRepository.fetch(db, cell: cell, locale: "en")?.place else { return nil }
-        let local = try GeoCacheRepository.fetch(db, cell: cell, locale: localLocaleKey)?.place
+        // Wait for the second answer, so a file's metadata is not written once in English and again
+        // in Vietnamese.
+        guard let local = try GeoCacheRepository.fetch(db, cell: cell, locale: localLocaleKey)?.place else { return nil }
         return PlaceNameRule.display(english: english, local: local, withNative: false)
     }
 

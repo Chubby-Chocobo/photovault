@@ -3,7 +3,7 @@ import GRDB
 import PhotoVaultCore
 import PhotoVaultStore
 
-/// Day folders (spec 8.7 as changed by issue #12): every camera day has its own folder from its
+/// Day folders (spec 8.7, decision 0023): every camera day has its own folder from its
 /// first asset, so the layout never depends on promotion. Promotion now only marks the day for place
 /// naming, once and for good.
 enum DayFolderPromoter {

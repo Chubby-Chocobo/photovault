@@ -5,8 +5,8 @@ import PhotoVaultCore
 /// The write a path-addressed destination (local folder, NAS) is about to make for a job: the
 /// final relative path and the SHA-256 of the content. Saved in the same transaction that moves the
 /// job to `uploading`, deleted in the transaction that completes it. Without it a crash between
-/// the write and the completion leaves a file nobody can attribute (a day folder may have been
-/// promoted, or the asset edited again, before the retry).
+/// the write and the completion leaves a file nobody can attribute (the asset may have been edited
+/// again, or its placement changed, before the retry).
 public struct UploadIntent: Sendable, Equatable {
     public var jobId: Int64
     public var destinationId: DestinationID

@@ -36,9 +36,21 @@ struct PlaceNamePrefixTests {
     }
 
     @Test func aVietnameseAnswerAbroadIsNotTakenForTheNativeName() {
+        let japan = GeoPlace(isoCountryCode: "JP", country: "Japan", administrativeArea: "Kyoto", locality: "Kyoto")
+        let inVietnamese = GeoPlace(isoCountryCode: "JP", country: "Nhật Bản", administrativeArea: "Kyoto", locality: "Kyoto")
+        #expect(PlaceNameRule.display(english: japan, local: inVietnamese).locality == "Kyoto")
         let english = GeoPlace(isoCountryCode: "PH", country: "Philippines", administrativeArea: "Metro Manila", locality: "Manila")
-        let systemLanguage = GeoPlace(isoCountryCode: "PH", country: "Phi-líp-pin", administrativeArea: "Vùng thủ đô Quốc gia", locality: "Manila")
+        let systemLanguage = GeoPlace(isoCountryCode: "PH", country: "Philippines", administrativeArea: "Vùng thủ đô Quốc gia", locality: "Manila")
         #expect(PlaceNameRule.display(english: english, local: systemLanguage).administrativeArea == "Metro Manila")
+    }
+
+    @Test func nativeNamesWithLettersVietnameseAlsoUsesAreKept() {
+        let romania = GeoPlace(isoCountryCode: "RO", country: "Romania", administrativeArea: "Bucharest", locality: "Bucharest")
+        let romanian = GeoPlace(isoCountryCode: "RO", country: "România", administrativeArea: "București", locality: "București")
+        #expect(PlaceNameRule.display(english: romania, local: romanian).locality == "Bucharest (București)")
+        let croatia = GeoPlace(isoCountryCode: "HR", country: "Croatia", administrativeArea: "Medimurje County", locality: nil)
+        let croatian = GeoPlace(isoCountryCode: "HR", country: "Hrvatska", administrativeArea: "Međimurska županija", locality: nil)
+        #expect(PlaceNameRule.display(english: croatia, local: croatian).administrativeArea == "Medimurje County (Međimurska županija)")
     }
 
     @Test func metadataFieldsGetOnePlainName() {

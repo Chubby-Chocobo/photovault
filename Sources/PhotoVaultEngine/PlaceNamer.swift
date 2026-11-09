@@ -27,14 +27,16 @@ struct PlaceNamer: Sendable {
                 let waiting = try String.fetchAll(db, sql: """
                     SELECT day FROM day_stat WHERE promoted = 1 AND place_state = 'pending' ORDER BY day
                     """)
-                let todo = (dirty + waiting).filter { !already.contains($0) }
+                // At most 100 days per transaction: every camera day is promoted, so a first sync has thousands.
+                let todo = Array(Array(Set(dirty + waiting).subtracting(already)).sorted().prefix(100))
                 let context = try env.context(db, snapshot)
                 var count = 0
                 for text in todo {
                     guard let day = ArchiveDay(string: text) else { continue }
                     if try Self.evaluate(db, day: day, context: context) { count += 1 }
                 }
-                try DirtyQueue.clear(db, .place, ids: dirty)
+                // A dirty day not evaluated now (already seen in this pass, or past the batch) keeps its mark.
+                try DirtyQueue.clear(db, .place, ids: dirty.filter(todo.contains))
                 return (todo, count)
             }
             if days.isEmpty { return changed }

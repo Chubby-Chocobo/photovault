@@ -102,7 +102,8 @@ enum ViewHold {
         guard try KeyValueRepository.int(db, key(destinationId, view, asset.assetKey)) == 1 else { return false }
         if asset.categoryProvisional { return true }
         if view == .byPlace, let cell = asset.geoCell ?? asset.location.map(GeoCell.init),
-           try GeoCacheRepository.fetch(db, cell: cell, locale: OrganizationLookups.localLocaleKey) == nil { return true }
+           try GeoCacheRepository.fetch(db, cell: cell, locale: "en") == nil
+            || GeoCacheRepository.fetch(db, cell: cell, locale: OrganizationLookups.localLocaleKey) == nil { return true }
         return false
     }
 }
