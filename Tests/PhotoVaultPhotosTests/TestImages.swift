@@ -14,14 +14,26 @@ enum TestImages {
     }
 
     /// Returns nil when the encoder is unavailable (for example HEIC on a host without it).
-    static func make(type: UTType, spec: Spec = Spec(), size: Int = 256) -> Data? {
+    /// `noise` fills the pixels with fixed pseudo-random values, so the file stays large after
+    /// compression, as a real photo does.
+    static func make(type: UTType, spec: Spec = Spec(), size: Int = 256, noise: Bool = false) -> Data? {
         guard let context = CGContext(
             data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         ) else { return nil }
-        for row in 0..<size {
-            context.setFillColor(red: CGFloat(row % 255) / 255, green: CGFloat((row * 7) % 255) / 255, blue: 0.5, alpha: 1)
-            context.fill(CGRect(x: 0, y: row, width: size, height: 1))
+        if noise, let pixels = context.data {
+            let words = context.bytesPerRow * size / 8
+            let buffer = pixels.bindMemory(to: UInt64.self, capacity: words)
+            var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+            for index in 0..<words {
+                state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                buffer[index] = state
+            }
+        } else {
+            for row in 0..<size {
+                context.setFillColor(red: CGFloat(row % 255) / 255, green: CGFloat((row * 7) % 255) / 255, blue: 0.5, alpha: 1)
+                context.fill(CGRect(x: 0, y: row, width: size, height: 1))
+            }
         }
         guard let image = context.makeImage() else { return nil }
         let data = NSMutableData()

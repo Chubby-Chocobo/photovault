@@ -97,6 +97,8 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
 /// Staged test files start with the asset's local id, so ids starting with `sony` read as another camera.
 struct StubMetadataReader: MetadataReading {
     func metadata(of file: URL, uti: String, mediaType: MediaType) -> CaptureMetadata {
+        // Staged files have no extension: without the resource's UTI a real reader finds nothing.
+        guard !uti.isEmpty else { return .empty }
         let head = (try? Data(contentsOf: file)).map { String(decoding: $0.prefix(8), as: UTF8.self) } ?? ""
         if head.hasPrefix("l:sony") || head.hasPrefix("sony") {
             return CaptureMetadata(make: "SONY", model: "ILCE-7M4", lensModel: "FE 24-70")
