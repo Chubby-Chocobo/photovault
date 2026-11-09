@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import PhotoVaultDrive
 import PhotoVaultLocal
+import PhotoVaultCore
 
 /// NSOpenPanel for NAS and external folders (FR-70) and the security-scoped bookmark of the pick.
 @MainActor
@@ -12,7 +13,7 @@ enum FolderPicker {
         var volumeName: String?
     }
 
-    static func chooseFolder(message: String, prompt: String = "Chọn thư mục") -> Pick? {
+    static func chooseFolder(message: String, prompt: String = tr(vi: "Chọn thư mục", en: "Choose")) -> Pick? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

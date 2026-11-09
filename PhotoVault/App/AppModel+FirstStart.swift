@@ -19,8 +19,8 @@ enum FirstStartError: Error {
 
     var message: String {
         switch self {
-        case .scanStalled: "Việc quét thư viện không tiến triển trong 30 phút. Kiểm tra quyền Photos rồi thử lại."
-        case .photosAccessLost: "PhotoVault mất quyền đọc thư viện Photos giữa chừng. Cấp lại quyền rồi thử lại."
+        case .scanStalled: tr(vi: "Việc quét thư viện không tiến triển trong 30 phút. Kiểm tra quyền Photos rồi thử lại.", en: "Scanning the library made no progress for 30 minutes. Check the Photos permission and try again.")
+        case .photosAccessLost: tr(vi: "PhotoVault mất quyền đọc thư viện Photos giữa chừng. Cấp lại quyền rồi thử lại.", en: "PhotoVault lost access to the Photos library partway through. Grant access again and try again.")
         }
     }
 }
@@ -67,7 +67,7 @@ extension AppModel {
         } catch {
             env.log.log(.error, category: "onboarding", "first start failed: \(type(of: error))")
             firstStart?.failure = (error as? FirstStartError)?.message
-                ?? (error is CancellationError ? "Đã huỷ." : ErrorText.message(for: error))
+                ?? (error is CancellationError ? tr(vi: "Đã huỷ.", en: "Cancelled.") : ErrorText.message(for: error))
         }
     }
 
@@ -185,7 +185,7 @@ extension AppModel {
             } catch RecoveryCommandError.notReady(let blocker) where blocker == .destinationUnavailable || blocker == .cloudIdsPending {
                 // The destination stays "recovery required": the sync cycle runs it once it can, and
                 // nothing is uploaded there before. The start itself is done.
-                showNotice(RecoveryCommandError.notReady(blocker).message + " Khôi phục sẽ tự chạy tiếp.")
+                showNotice(RecoveryCommandError.notReady(blocker).message + tr(vi: " Khôi phục sẽ tự chạy tiếp.", en: " Recovery will continue automatically."))
                 continue
             } catch RecoveryCommandError.needsOwnerDecision {
                 // The decision card in the menu bar takes over; the other destinations keep going.

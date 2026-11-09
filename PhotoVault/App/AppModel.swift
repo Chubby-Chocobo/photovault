@@ -201,7 +201,7 @@ final class AppModel {
         alert.alertStyle = .warning
         alert.messageText = failure.alertTitle
         alert.informativeText = failure.alertText
-        alert.addButton(withTitle: "Thoát")
+        alert.addButton(withTitle: tr(vi: "Thoát", en: "Quit"))
         alert.runModal()
         NSApp.terminate(nil)
     }

@@ -29,7 +29,7 @@ extension AppModel {
     /// destination row is refused.
     func pickLocalFolder() async -> PendingLocalDestination? {
         guard let env else { return nil }
-        guard let pick = FolderPicker.chooseFolder(message: "Chọn thư mục trên NAS hoặc ổ ngoài đã mount trong Finder.") else { return nil }
+        guard let pick = FolderPicker.chooseFolder(message: tr(vi: "Chọn thư mục trên NAS hoặc ổ ngoài đã mount trong Finder.", en: "Choose a folder on a NAS or external drive that is mounted in Finder.")) else { return nil }
         let existing = destinations.compactMap { record in
             record.kind == .localFolder ? record.config.displayPath.map { (name: record.displayName, path: $0) } : nil
         }
@@ -42,7 +42,7 @@ extension AppModel {
         do {
             let marker = try await probe.readMarker()
             if let marker, destinations.contains(where: { $0.id == marker.id }) {
-                showNotice("Thư mục này đã là một đích của PhotoVault.", isError: true)
+                showNotice(tr(vi: "Thư mục này đã là một đích của PhotoVault.", en: "This folder is already a PhotoVault destination."), isError: true)
                 return nil
             }
             return PendingLocalDestination(
@@ -97,7 +97,7 @@ extension AppModel {
     func addLocalDestination(_ pending: PendingLocalDestination) async -> Bool {
         guard let env else { return false }
         if pending.isReuse, hardening == nil {
-            showNotice("Dùng lại thư mục cũ cần chức năng khôi phục, chưa khả dụng trong bản build này.", isError: true)
+            showNotice(tr(vi: "Dùng lại thư mục cũ cần chức năng khôi phục, chưa khả dụng trong bản build này.", en: "Reusing an old folder needs recovery, which is not available in this build."), isError: true)
             return false
         }
         do {
@@ -105,9 +105,9 @@ extension AppModel {
             try await env.coordinator.destinationAdded(record.id)
             if pending.isReuse, let hardening {
                 let report = try await hardening.startRecovery(record.id)
-                showNotice("Đã khôi phục: ghép \(VietnameseFormat.integer(report.matchedFiles)) file từ thư mục.")
+                showNotice(tr(vi: "Đã khôi phục: ghép \(VietnameseFormat.integer(report.matchedFiles)) file từ thư mục.", en: "Recovered: matched \(L10n.plural(report.matchedFiles, one: "\(VietnameseFormat.integer(report.matchedFiles)) file", other: "\(VietnameseFormat.integer(report.matchedFiles)) files")) from the folder."))
             } else {
-                showNotice("Đã thêm “\(record.displayName)”.")
+                showNotice(tr(vi: "Đã thêm “\(record.displayName)”.", en: "Added “\(record.displayName)”."))
             }
             requestSync(.manual)
             await refresh()
@@ -133,7 +133,7 @@ extension AppModel {
             try await env.coordinator.destinationRulesChanged(id)
             requestSync(.manual)
             await refresh()
-            showNotice("Đã áp dụng cho đích.")
+            showNotice(tr(vi: "Đã áp dụng cho đích.", en: "Applied to the destination."))
         } catch {
             showError(error)
         }
@@ -147,7 +147,7 @@ extension AppModel {
             await env.coordinator.destinationRemoved(record.id)
             try await env.store.write { db in try DestinationRepository.remove(db, id: record.id) }
             await refresh()
-            showNotice("Đã xoá đích khỏi PhotoVault; file ở đích giữ nguyên.")
+            showNotice(tr(vi: "Đã xoá đích khỏi PhotoVault; file ở đích giữ nguyên.", en: "Removed the destination from PhotoVault; files at the destination are untouched."))
         } catch {
             showError(error)
         }
@@ -163,12 +163,12 @@ extension AppModel {
             return
         }
         guard let destination = await env.registry.destination(for: record.id) as? LocalFolderDestination else {
-            showNotice("Đích chưa sẵn sàng. Hãy chọn lại thư mục.", isError: true)
+            showNotice(tr(vi: "Đích chưa sẵn sàng. Hãy chọn lại thư mục.", en: "The destination is not ready. Choose the folder again."), isError: true)
             return
         }
         do {
             try await destination.testConnection()
-            showNotice("Kết nối tốt: ghi, đọc và xoá .photovault-test thành công.")
+            showNotice(tr(vi: "Kết nối tốt: ghi, đọc và xoá .photovault-test thành công.", en: "Connection is good: wrote, read and deleted .photovault-test."))
         } catch {
             showError(error)
         }
@@ -176,11 +176,11 @@ extension AppModel {
 
     /// FR-75: after a broken bookmark, pick the folder again. It must be the same destination.
     func repickFolder(for record: DestinationRecord) async {
-        guard let env, let pick = FolderPicker.chooseFolder(message: "Chọn lại thư mục của “\(record.displayName)”.") else { return }
+        guard let env, let pick = FolderPicker.chooseFolder(message: tr(vi: "Chọn lại thư mục của “\(record.displayName)”.", en: "Choose the folder of “\(record.displayName)” again.")) else { return }
         let probe = DestinationBuilder.local(id: record.id, bookmark: pick.bookmark, store: env.store, disk: env.disk, log: env.log)
         do {
             guard let marker = try await probe.readMarker(), marker.id == record.id else {
-                showNotice("Thư mục này không phải là thư mục của đích “\(record.displayName)”.", isError: true)
+                showNotice(tr(vi: "Thư mục này không phải là thư mục của đích “\(record.displayName)”.", en: "This is not the folder of the destination “\(record.displayName)”."), isError: true)
                 return
             }
             let updated = pick
@@ -193,7 +193,7 @@ extension AppModel {
             await env.registry.add(probe)
             requestSync(.manual)
             await refresh()
-            showNotice("Đã chọn lại thư mục.")
+            showNotice(tr(vi: "Đã chọn lại thư mục.", en: "Folder chosen again."))
         } catch {
             showError(error)
         }

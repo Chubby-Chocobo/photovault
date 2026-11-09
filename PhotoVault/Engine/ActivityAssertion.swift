@@ -1,4 +1,5 @@
 import Foundation
+import PhotoVaultCore
 
 /// NFR-02: keeps the Mac from idle-sleeping while a cycle runs. Counted, so overlapping cycles share one assertion.
 final class ActivityAssertion: @unchecked Sendable {
@@ -10,7 +11,7 @@ final class ActivityAssertion: @unchecked Sendable {
         lock.withLock {
             depth += 1
             if depth == 1 {
-                token = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "PhotoVault đang đồng bộ")
+                token = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: tr(vi: "PhotoVault đang đồng bộ", en: "PhotoVault is syncing"))
             }
         }
     }
