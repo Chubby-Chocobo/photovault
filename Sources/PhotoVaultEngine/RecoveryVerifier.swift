@@ -96,7 +96,9 @@ struct RecoveryVerifyStage: CycleStage {
                 }
                 try ActivityRepository.record(db, ActivityEvent(
                     at: now, kind: .missingFile, destinationId: identity.destinationId, assetKey: identity.assetKey,
-                    message: actual == nil ? "Một file đã khôi phục không còn ở đích" : "Một file đã khôi phục có nội dung khác với sidecar"))
+                    message: actual == nil
+                        ? tr(vi: "Một file đã khôi phục không còn ở đích", en: "A recovered file is no longer at the destination")
+                        : tr(vi: "Một file đã khôi phục có nội dung khác với sidecar", en: "A recovered file has different content from its sidecar")))
             }
         }
     }

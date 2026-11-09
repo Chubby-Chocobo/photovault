@@ -196,7 +196,12 @@ actor RecoveryService {
             try KeyValueRepository.set(db, Self.decisionKey + id.rawValue, 1)
             try ActivityRepository.record(db, ActivityEvent(
                 at: now, kind: .notice, destinationId: id,
-                message: "Khôi phục từ đích: tìm thấy \(stats.found) file nhưng chỉ ghép được \(stats.matched); cần owner quyết định trước khi upload"))
+                message: tr(
+                    vi: "Khôi phục từ đích: tìm thấy \(stats.found) file nhưng chỉ ghép được \(stats.matched); cần owner quyết định trước khi upload",
+                    en: L10n.plural(
+                        stats.found,
+                        one: "Recovery from the destination: found \(stats.found) file but matched only \(stats.matched); the owner must decide before uploading",
+                        other: "Recovery from the destination: found \(stats.found) files but matched only \(stats.matched); the owner must decide before uploading"))))
         }
         env.log.log(.notice, category: "recovery", "destination=\(id) needs owner decision found=\(stats.found) matched=\(stats.matched)")
     }
@@ -215,7 +220,9 @@ actor RecoveryService {
             if verify { try RecoveryVerifier.schedule(db, destinationId: id) }
             try ActivityRepository.record(db, ActivityEvent(
                 at: now, kind: .recovered, destinationId: id,
-                message: "Đã khôi phục \(stats.matched) file từ đích, \(stats.unmatched) file không ghép được (không bị đụng tới)"))
+                message: tr(
+                    vi: "Đã khôi phục \(stats.matched) file từ đích, \(stats.unmatched) file không ghép được (không bị đụng tới)",
+                    en: "Recovered \(stats.matched) \(L10n.plural(stats.matched, one: "file", other: "files")) from the destination, \(stats.unmatched) \(L10n.plural(stats.unmatched, one: "file", other: "files")) could not be matched (left untouched)")))
         }
         try await enqueueRest(id)
     }

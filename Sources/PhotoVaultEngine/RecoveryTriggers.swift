@@ -46,7 +46,9 @@ struct RecoveryTriggers: Sendable {
                 guard found else { return }
                 try DestinationRepository.setRecoveryRequired(db, id: id, true)
                 try ActivityRepository.record(db, ActivityEvent(
-                    at: now, kind: .notice, destinationId: id, message: "Đích đã có dữ liệu sao lưu; sẽ khôi phục trước khi upload"))
+                    at: now, kind: .notice, destinationId: id, message: tr(
+                        vi: "Đích đã có dữ liệu sao lưu; sẽ khôi phục trước khi upload",
+                        en: "The destination already holds backup data; it will be recovered before uploading")))
             }
             if found { env.log.log(.notice, category: "recovery", "destination=\(id) holds backup files: recovery required") }
         }

@@ -91,7 +91,12 @@ struct IntegrityChecker: Sendable {
             if summary.totalProblems > 0 {
                 try ActivityRepository.record(db, ActivityEvent(
                     at: now, kind: .missingFile, destinationId: id,
-                    message: "Kiểm tra toàn vẹn: \(summary.totalProblems) file không còn nguyên vẹn ở đích; cần xác nhận trước khi upload lại"))
+                    message: tr(
+                        vi: "Kiểm tra toàn vẹn: \(summary.totalProblems) file không còn nguyên vẹn ở đích; cần xác nhận trước khi upload lại",
+                        en: L10n.plural(
+                            summary.totalProblems,
+                            one: "Integrity check: \(summary.totalProblems) file is no longer intact at the destination; confirmation is needed before uploading again",
+                            other: "Integrity check: \(summary.totalProblems) files are no longer intact at the destination; confirmation is needed before uploading again"))))
             }
         }
         env.log.log(.info, category: "integrity", "destination=\(id) checked=\(report.checked) problems=\(report.totalProblems)")
