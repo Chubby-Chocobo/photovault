@@ -4,7 +4,7 @@
 # Xcode / SwiftPM
 build/
 DerivedData/
-.build/
+.build*/
 .swiftpm/
 *.xcuserstate
 xcuserdata/
@@ -17,3 +17,7 @@ Config/Secrets.xcconfig
 .env
 .env.*
 !.env.example
+Config/Local.xcconfig
+
+# Media corpus fetched by scripts/fetch-media-corpus.py
+.media-corpus/

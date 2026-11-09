@@ -1,0 +1,25 @@
+// Shared build settings for the PhotoVault app target.
+#include "Version.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.annh.photovault
+PRODUCT_NAME = PhotoVault
+MACOSX_DEPLOYMENT_TARGET = 14.0
+SWIFT_VERSION = 6.0
+SDKROOT = macosx
+INFOPLIST_FILE = Config/PhotoVault-Info.plist
+GENERATE_INFOPLIST_FILE = NO
+CODE_SIGN_ENTITLEMENTS = Config/PhotoVault.entitlements
+ENABLE_HARDENED_RUNTIME = YES
+CODE_SIGN_STYLE = Automatic
+COMBINE_HIDPI_IMAGES = YES
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
+
+// OAuth client of type "Desktop app" (README: Google Cloud setup). Real values live in the
+// gitignored Secrets.xcconfig; copy Secrets.xcconfig.example.
+GOOGLE_CLIENT_ID =
+GOOGLE_CLIENT_SECRET =
+
+#include? "Secrets.xcconfig"
+// Personal Team signing (DEVELOPMENT_TEAM); copy Local.xcconfig.example.
+#include? "Local.xcconfig"

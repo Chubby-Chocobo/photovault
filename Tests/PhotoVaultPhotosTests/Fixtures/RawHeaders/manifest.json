@@ -1,0 +1,132 @@
+[
+  {
+    "file": "apple-dng-iphone6s.dng",
+    "source": "Apple / iPhone 6s Plus / IMG_0853.DNG",
+    "make": "Apple",
+    "model": "iPhone 6s Plus"
+  },
+  {
+    "file": "apple-proraw.dng",
+    "source": "Apple / iPhone 12 Pro / IMG_1361.DNG",
+    "make": "Apple",
+    "model": "iPhone 12 Pro"
+  },
+  {
+    "file": "canon-cr2.cr2",
+    "source": "Canon / EOS 100D / IMG_3721.CR2",
+    "make": "Canon",
+    "model": "Canon EOS 100D"
+  },
+  {
+    "file": "dji-dng.dng",
+    "source": "DJI / FC220 / DJI_0004.DNG",
+    "make": "DJI",
+    "model": "FC220"
+  },
+  {
+    "file": "epson-erf.erf",
+    "source": "Epson / R-D1 / _EPS0672.ERF",
+    "make": "SEIKO EPSON CORP.",
+    "model": "R-D1"
+  },
+  {
+    "file": "hasselblad-3fr.3fr",
+    "source": "Hasselblad / CFV-50c / 20200215_BERLIN_OldNew_WestHafen_B0000420.3FR",
+    "make": "Hasselblad",
+    "model": "CFV-50c/Flash Sync"
+  },
+  {
+    "file": "hasselblad-fff.fff",
+    "source": "Hasselblad / X1D II 50C / x1d-II-sample-02.fff",
+    "make": "Hasselblad",
+    "model": "Hasselblad X1DM2-50c"
+  },
+  {
+    "file": "kodak-dcr.dcr",
+    "source": "Kodak / DCS760C / 86L57188.DCR",
+    "make": "Kodak",
+    "model": "DCS760C"
+  },
+  {
+    "file": "leica-dng.dng",
+    "source": "Leica / M10 / f5381888.dng",
+    "make": "Leica Camera AG",
+    "model": "LEICA M10"
+  },
+  {
+    "file": "leica-rwl.rwl",
+    "source": "Leica / V-LUX (Typ 114) / ./Leica_-_V-LUX_(typ114)_-_1:1.RWL",
+    "make": "LEICA",
+    "model": "V-LUX (Typ 114)"
+  },
+  {
+    "file": "minolta-mrw.mrw",
+    "source": "Minolta / DiMAGE 7 / RAW_MINOLTA_DIMAGE7.MRW",
+    "make": "Minolta Co., Ltd.",
+    "model": "DiMAGE 7",
+    "fallback": false,
+    "note": "MRW is not TIFF-structured and has no Exif preview in its header, so only ImageIO names the camera."
+  },
+  {
+    "file": "nikon-nef.nef",
+    "source": "Nikon / Z 6 / DSC_0757.NEF",
+    "make": "NIKON CORPORATION",
+    "model": "NIKON Z 6"
+  },
+  {
+    "file": "nikon-nef-z9-lossless.nef",
+    "source": "Nikon / Z 9 / Nikon_-_NIKON_Z_9_-_14bit_compressed_(Lossless).NEF",
+    "make": "NIKON CORPORATION",
+    "model": "NIKON Z 9"
+  },
+  {
+    "file": "nikon-nrw.nrw",
+    "source": "Nikon / Coolpix P7800 / DSCN2039.NRW",
+    "make": "NIKON",
+    "model": "COOLPIX P7800"
+  },
+  {
+    "file": "olympus-orf.orf",
+    "source": "OLYMPUS / E-M5 Mark III / PB290154.ORF",
+    "make": "OLYMPUS CORPORATION",
+    "model": "E-M5MarkIII"
+  },
+  {
+    "file": "om-system-orf.orf",
+    "source": "OM Digital Solutions / OM-5MarkII / OM_System_OM-5_2_regular.ORF",
+    "make": "OM Digital Solutions",
+    "model": "OM-5MarkII"
+  },
+  {
+    "file": "panasonic-rw2.rw2",
+    "source": "Panasonic / DC-S5 / dc-s5_6k4k.RW2",
+    "make": "Panasonic",
+    "model": "DC-S5"
+  },
+  {
+    "file": "pentax-pef.pef",
+    "source": "PENTAX / PENTAX K-r / IMGP4424.PEF",
+    "make": "PENTAX",
+    "model": "PENTAX K-r"
+  },
+  {
+    "file": "samsung-srw.srw",
+    "source": "Samsung / NX1 / 2016-07-23-142101_sam_9364.srw",
+    "make": "SAMSUNG",
+    "model": "NX1",
+    "imageIOLacksMake": true,
+    "note": "ImageIO reports the model but no make; the reader takes the make from the file's TIFF directory."
+  },
+  {
+    "file": "sony-arw.arw",
+    "source": "Sony / ILCE-6400 / DSC00087.ARW",
+    "make": "SONY",
+    "model": "ILCE-6400"
+  },
+  {
+    "file": "sony-arw-7m4.arw",
+    "source": "Sony / ILCE-7M4 / ILCE-7M4_DSC06681_APS-C-Raw-Compressed.ARW",
+    "make": "SONY",
+    "model": "ILCE-7M4"
+  }
+]

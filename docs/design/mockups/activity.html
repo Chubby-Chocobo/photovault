@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hoạt động gần đây — PhotoVault mockup</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="mockup-theme.css">
+  <style>
+    /* Deep links from menu bar / settings land on a prompt and highlight it */
+    .alert:target { box-shadow: 0 0 0 3px var(--accent), var(--shadow-window); }
+    .alert { scroll-margin-top: 40px; text-align: left; width: auto; }
+    .alert .app-icon { margin: 0 0 10px; }
+  </style>
+</head>
+<!--
+  FR-63 recent activity window (~680x480): last 500 events of type
+  rename · move · missing file · status change · restore. Filter + search.
+  Below: owner prompts (NSAlert/sheet style) the app raises and never answers by itself:
+  root trashed/missing (FR-47), folder trashed, integrity missing + reupload confirm (FR-47, 8.3),
+  new root (FR-08), "Sắp xếp lại" preview count (8.7), reuse NAS (FR-74).
+-->
+<body class="mac" x-data="activity()">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 16l5-5 4 4"/><path d="M16 15V9m0 0l-2.5 2.5M16 9l2.5 2.5"/></symbol>
+  <symbol id="e-rename" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="e-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m-2-2l2 2-2 2"/></symbol>
+  <symbol id="e-missing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v4M12 18h.01"/></symbol>
+  <symbol id="e-status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="e-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+</svg>
+
+<main class="mx-auto px-4 pt-10 flex flex-col items-center gap-10">
+
+  <!-- ===== Recent activity window ===== -->
+  <section class="window w-full max-w-[680px]" style="height:480px" aria-label="Hoạt động gần đây">
+    <div class="titlebar"><div class="traffic"><i></i><i></i><i></i></div>Hoạt động gần đây <span class="anno ml-2">FR-63</span></div>
+    <div class="flex flex-wrap items-center gap-2 px-3 pb-2">
+      <div class="seg" role="group" aria-label="Lọc theo loại">
+        <template x-for="f in filters" :key="f.id">
+          <button :aria-pressed="filter === f.id" @click="filter = f.id" x-text="f.label"></button>
+        </template>
+      </div>
+      <span class="flex-1"></span>
+      <label class="relative">
+        <svg width="12" height="12" class="absolute left-2 top-1.5 t-2" aria-hidden="true"><use href="#i-search"/></svg>
+        <input class="field w-44" style="padding-left:24px" placeholder="Tìm" x-model="q" aria-label="Tìm sự kiện">
+      </label>
+    </div>
+
+    <div class="content flex-1 min-h-0 overflow-y-auto" style="border-top:1px solid var(--separator)">
+      <template x-for="day in grouped" :key="day.label">
+        <section>
+          <h2 class="sticky top-0 px-4 py-1 small font-semibold t-2" style="background:var(--content-bg)" x-text="day.label"></h2>
+          <ul>
+            <template x-for="e in day.items" :key="e.id">
+              <li class="flex gap-3 px-4 py-2.5" style="border-top:1px solid var(--separator)">
+                <span class="w-7 h-7 rounded-md flex-none flex items-center justify-center" :style="`background:${types[e.type].bg};color:${types[e.type].fg}`">
+                  <svg width="15" height="15"><use :href="'#e-' + e.type"/></svg>
+                </span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-baseline gap-2">
+                    <span class="font-medium flex-1" x-text="e.title"></span>
+                    <time class="small t-2 num flex-none" x-text="e.time"></time>
+                  </div>
+                  <div class="small t-2 mono break-words" x-show="e.detail" x-text="e.detail"></div>
+                  <div class="flex flex-wrap items-center gap-1 mt-1">
+                    <template x-for="d in e.dests"><span class="chip" x-text="d"></span></template>
+                    <a class="small ml-1" x-show="e.link" :href="e.link" x-text="e.linkText"></a>
+                    <span class="anno" x-show="e.code" x-text="e.code"></span>
+                  </div>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </section>
+      </template>
+      <p class="p-6 text-center t-2" x-show="!grouped.length">Không có sự kiện khớp bộ lọc.</p>
+    </div>
+    <div class="small t-2 px-4 py-1.5 num" style="border-top:1px solid var(--separator)">
+      <span x-text="'Hiển thị ' + shown + ' sự kiện'"></span> · PhotoVault giữ 500 sự kiện gần nhất
+    </div>
+  </section>
+
+  <!-- ===== Owner prompts ===== -->
+  <section id="prompts" class="w-full max-w-[980px]" aria-labelledby="prompts-h">
+    <div class="mock-panel mb-4">
+      <h2 id="prompts-h" class="h2">Hộp thoại cần owner quyết định</h2>
+      <p class="small mt-1 opacity-80">PhotoVault dừng lại và hỏi trong các trường hợp này; không bao giờ tự xoá hay tự tạo lại thư mục gốc. Trong app chúng hiện dạng sheet trên cửa sổ hoặc thẻ trong popover menu bar.</p>
+    </div>
+    <div class="grid gap-5 md:grid-cols-2 lg:grid-cols-3 items-start">
+
+      <article class="alert" id="prompt-root-trashed" role="alertdialog" aria-labelledby="p1">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p1" class="title">Thư mục gốc “Camera Uploads” đang ở Thùng rác</h3>
+        <p class="small t-2 mt-1">PhotoVault đã tạm dừng Google Drive và sẽ không tự tạo lại thư mục gốc. NAS và ổ ngoài vẫn chạy.</p>
+        <div class="stack">
+          <button class="btn primary" @click="say('Khôi phục giúp tôi: trashed=false cho thư mục gốc, Drive chạy lại')">Khôi phục giúp tôi</button>
+          <button class="btn" @click="say('Tôi đã khôi phục: kiểm tra lại root rồi chạy tiếp')">Tôi đã khôi phục</button>
+          <a class="btn" href="#prompt-new-root">Upload lại vào thư mục mới…</a>
+        </div>
+        <div class="mt-2"><span class="anno">FR-47</span> <span class="anno">paused(rootTrashed)</span></div>
+      </article>
+
+      <article class="alert" id="prompt-root-missing" role="alertdialog" aria-labelledby="p2">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p2" class="title">Không tìm thấy thư mục gốc “Camera Uploads”</h3>
+        <p class="small t-2 mt-1">Thư mục đã bị xoá khỏi Drive hoặc không còn truy cập được. PhotoVault đã tạm dừng Google Drive và sẽ không tự tạo lại.</p>
+        <div class="stack">
+          <button class="btn primary" @click="say('Tôi đã khôi phục: files.get root lần nữa')">Tôi đã khôi phục</button>
+          <a class="btn" href="#prompt-new-root">Upload lại vào thư mục mới…</a>
+        </div>
+        <div class="mt-2"><span class="anno">FR-47</span> <span class="anno">paused(rootMissing)</span></div>
+      </article>
+
+      <article class="alert" id="prompt-folder-trashed" role="alertdialog" aria-labelledby="p3">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p3" class="title">Thư mục “2025/07” trên Drive đang ở Thùng rác</h3>
+        <p class="small t-2 mt-1">Thư mục này chứa 1.204 file backup. PhotoVault đã tạm dừng Google Drive cho tới khi bạn quyết định.</p>
+        <div class="stack">
+          <button class="btn primary" @click="say('Khôi phục giúp tôi: trashed=false cho item do PhotoVault tạo trong nhánh này')">Khôi phục giúp tôi</button>
+          <button class="btn" @click="say('Tôi đã khôi phục: kiểm tra lại chuỗi thư mục cha')">Tôi đã khôi phục</button>
+        </div>
+        <div class="mt-2"><span class="anno">FR-47</span> <span class="anno">paused(folderTrashed)</span></div>
+      </article>
+
+      <article class="alert" id="prompt-integrity" role="alertdialog" aria-labelledby="p4">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p4" class="title">Kiểm tra toàn vẹn: thiếu 27 file trên Synology NAS</h3>
+        <p class="small t-2 mt-1">27 file PhotoVault đã ghi không còn trong <span class="mono">/Volumes/photo/PhotoVault</span> (chủ yếu ở <span class="mono">2025/07/</span>). PhotoVault chưa upload lại; bạn quyết định.</p>
+        <ul class="small mono t-2 mt-2 space-y-0.5" x-show="showList" x-cloak>
+          <li>2025/07/2025-07-14 08.02.11_DSC04410.ARW</li>
+          <li>2025/07/2025-07-14 08.02.11_DSC04410.json</li>
+          <li>2025/07/2025-07-14 09.40.57_IMG_2201.HEIC</li>
+          <li class="t-3">… và 24 file khác</li>
+        </ul>
+        <div class="stack">
+          <a class="btn primary" href="#prompt-reupload">Upload lại 27 file…</a>
+          <button class="btn" @click="showList = !showList" x-text="showList ? 'Ẩn danh sách' : 'Xem danh sách'"></button>
+          <button class="btn" @click="say('Để sau: 27 job giữ trạng thái missingRemote')">Để sau</button>
+        </div>
+        <div class="mt-2"><span class="anno">FR-47 / FR-76</span> <span class="anno">done → missingRemote</span></div>
+      </article>
+
+      <article class="alert" id="prompt-reupload" role="alertdialog" aria-labelledby="p5">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p5" class="title">Upload lại 27 file lên Synology NAS?</h3>
+        <p class="small t-2 mt-1">File được ghi lại đúng chỗ và đúng tên cũ. PhotoVault export lại từ Photos, tính vào giới hạn 20 GB/giờ. Không đụng tới file nào khác.</p>
+        <div class="stack">
+          <button class="btn primary" @click="say('27 job: missingRemote → pending (reupload); giữ remote_name')">Upload lại</button>
+          <button class="btn" @click="say('Huỷ: giữ missingRemote')">Huỷ</button>
+        </div>
+        <div class="mt-2"><span class="anno">8.3 missingRemote → pending</span></div>
+      </article>
+
+      <article class="alert" id="prompt-new-root" role="alertdialog" aria-labelledby="p6">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p6" class="title">Upload lại vào thư mục mới?</h3>
+        <p class="small t-2 mt-1">PhotoVault tạo thư mục gốc mới, đặt lại trạng thái đích Drive và upload lại <span class="num">48.210</span> asset (export lại từ Photos, tối đa 20 GB/giờ). Thư mục cũ không bị đụng tới.</p>
+        <label class="block mt-3 small t-2">Tên thư mục mới
+          <input class="field w-full mt-1" x-model="newRoot" :class="!newRoot.trim() && 'invalid'"></label>
+        <div class="stack">
+          <button class="btn primary" :disabled="!newRoot.trim()" @click="say('Tạo “' + newRoot + '” rồi chạy lại đích Drive (FR-08)')">Tạo và upload lại</button>
+          <button class="btn" @click="say('Huỷ')">Huỷ</button>
+        </div>
+        <div class="mt-2"><span class="anno">FR-08</span> <span class="anno">FR-47</span></div>
+      </article>
+
+      <article class="alert" id="prompt-reorg" role="alertdialog" aria-labelledby="p7">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p7" class="title">Sắp xếp lại theo ngưỡng 8 ảnh?</h3>
+        <p class="small t-2 mt-1">PhotoVault sẽ chuyển <strong class="num">2.952 file</strong> (bản gốc, bản chỉnh sửa, sidecar) của <span class="num">123</span> ngày vào thư mục ngày ở mọi đích. Thư mục ngày đã có giữ nguyên, không gộp ngược.</p>
+        <div class="stack">
+          <button class="btn primary" @click="say('Sắp xếp lại: xếp hàng move_job cho 123 ngày')">Sắp xếp lại</button>
+          <button class="btn" @click="say('Huỷ')">Huỷ</button>
+        </div>
+        <div class="mt-2"><span class="anno">8.7 bước 6</span> <a class="small" href="settings.html#organization">Settings › Sắp xếp</a></div>
+      </article>
+
+      <article class="alert" id="prompt-reuse-nas" role="alertdialog" aria-labelledby="p8">
+        <div class="app-icon"><svg><use href="#i-pv"/></svg></div>
+        <h3 id="p8" class="title">Thư mục này đã từng là đích PhotoVault</h3>
+        <p class="small t-2 mt-1"><span class="mono">/Volumes/photo/PhotoVault</span> có <span class="mono">.photovault/destination.json</span> (tạo 02/05/2025). Dùng lại thì PhotoVault khôi phục trạng thái từ thư mục trước khi ghi, không ghi trùng.</p>
+        <div class="stack">
+          <button class="btn primary" @click="say('Dùng lại → FR-51 khôi phục từ đích')">Dùng lại và khôi phục</button>
+          <button class="btn" @click="say('Chọn thư mục khác…')">Chọn thư mục khác…</button>
+        </div>
+        <div class="mt-2"><span class="anno">FR-74</span> <span class="anno">paused(recovering)</span></div>
+      </article>
+    </div>
+  </section>
+</main>
+
+<div class="toast" x-show="toast" x-transition.opacity x-text="toast" role="status" aria-live="polite" x-cloak></div>
+
+<footer class="mock-footer mock-panel" x-data="{ theme: 'auto', anno: true }"
+        x-init="$watch('theme', t => t === 'auto' ? document.documentElement.removeAttribute('data-theme') : document.documentElement.setAttribute('data-theme', t)); $watch('anno', a => document.body.classList.toggle('no-anno', !a))">
+  <div><strong>Dữ liệu mẫu</strong> — sự kiện, tên file, số lượng và đường dẫn là giả lập. <a href="index.html">← Mọi màn hình</a></div>
+  <div class="flex items-center gap-3">
+    <div class="seg" role="group" aria-label="Giao diện">
+      <button :aria-pressed="theme === 'auto'" @click="theme = 'auto'">Hệ thống</button>
+      <button :aria-pressed="theme === 'light'" @click="theme = 'light'">Sáng</button>
+      <button :aria-pressed="theme === 'dark'" @click="theme = 'dark'">Tối</button>
+    </div>
+    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="anno"> Chú thích FR</label>
+  </div>
+</footer>
+
+<script>
+  function activity() {
+    return {
+      filter: 'all',
+      q: '',
+      showList: false,
+      newRoot: 'Camera Uploads 2',
+      toast: '',
+      filters: [
+        { id: 'all', label: 'Tất cả' }, { id: 'rename', label: 'Đổi tên' }, { id: 'move', label: 'Di chuyển' },
+        { id: 'missing', label: 'File thiếu' }, { id: 'status', label: 'Trạng thái' }, { id: 'restore', label: 'Khôi phục' },
+      ],
+      types: {
+        rename: { bg: 'var(--info-bg)', fg: 'var(--accent)' },
+        move: { bg: 'rgba(127,127,127,.16)', fg: 'var(--label-2)' },
+        missing: { bg: 'var(--danger-bg)', fg: 'var(--red)' },
+        status: { bg: 'var(--warn-bg)', fg: 'var(--orange)' },
+        restore: { bg: 'rgba(40,205,65,.14)', fg: 'var(--green)' },
+      },
+      events: [
+        { id: 1, day: 'Hôm nay', time: '14:31', type: 'status', title: 'Google Drive tạm dừng: thư mục gốc vào Thùng rác', detail: 'active → paused(rootTrashed)', dests: ['Google Drive'], link: '#prompt-root-trashed', linkText: 'Quyết định…', code: 'FR-47' },
+        { id: 2, day: 'Hôm nay', time: '14:05', type: 'rename', title: 'Đặt tên địa danh cho thư mục ngày', detail: '2026/11/2026-11-08 → 2026/11/2026-11-08 Đà Lạt', dests: ['Google Drive', 'Synology NAS', 'Samsung T7'], code: 'FR-82' },
+        { id: 3, day: 'Hôm nay', time: '13:40', type: 'move', title: 'Chuyển 14 file vào thư mục ngày mới', detail: '2026/11/ → 2026/11/2026-11-08/ (11 ảnh camera > ngưỡng 10)', dests: ['Google Drive', 'Synology NAS', 'Samsung T7'], code: '8.7 promoted' },
+        { id: 4, day: 'Hôm nay', time: '11:12', type: 'missing', title: 'Kiểm tra toàn vẹn: thiếu 27 file', detail: '/Volumes/photo/PhotoVault/2025/07/…', dests: ['Synology NAS'], link: '#prompt-integrity', linkText: 'Xem và quyết định…', code: 'missingRemote' },
+        { id: 5, day: 'Hôm nay', time: '10:40', type: 'status', title: 'Synology NAS kết nối lại', detail: 'unavailable(offline) → active', dests: ['Synology NAS'], code: 'FR-75' },
+        { id: 6, day: 'Hôm nay', time: '10:05', type: 'status', title: 'Synology NAS mất kết nối', detail: 'active → unavailable(offline)', dests: ['Synology NAS'], code: 'FR-75' },
+        { id: 7, day: 'Hôm qua', time: '22:10', type: 'rename', title: 'Đổi tên nhóm thiết bị', detail: 'By device/Sony ILCE-7M4 → By device/Sony A7 IV', dests: ['Google Drive'], code: 'FR-104' },
+        { id: 8, day: 'Hôm qua', time: '21:02', type: 'restore', title: 'Khôi phục từ Drive xong: ghép 18.402 file', detail: '3 file không ghép được, giữ nguyên ở đích', dests: ['Google Drive'], code: 'FR-51' },
+        { id: 9, day: 'Hôm qua', time: '21:02', type: 'status', title: 'Google Drive chạy lại sau khi khôi phục', detail: 'paused(recovering) → active', dests: ['Google Drive'], code: '8.15' },
+        { id: 10, day: 'Hôm qua', time: '19:47', type: 'status', title: 'Google Drive bắt đầu khôi phục', detail: 'active → paused(recovering)', dests: ['Google Drive'], code: '8.15' },
+        { id: 11, day: 'Hôm qua', time: '08:00', type: 'move', title: 'Sắp xếp lại theo ngưỡng 10: chuyển 1.870 file', detail: '78 ngày được tách thư mục ngày (ngưỡng cũ 12)', dests: ['Google Drive', 'Synology NAS', 'Samsung T7'], code: '8.7 bước 6' },
+        { id: 12, day: 'Thứ 7, 07/11/2026', time: '16:20', type: 'status', title: 'Bạn tạm dừng Samsung T7', detail: 'active → paused(userPaused)', dests: ['Samsung T7'], code: 'FR-71' },
+        { id: 13, day: 'Thứ 7, 07/11/2026', time: '09:14', type: 'missing', title: 'Thư mục 2024/03 không còn trên Drive (404)', detail: '312 file đánh dấu thiếu; thư mục được tạo lại khi cần', dests: ['Google Drive'], code: 'FR-47 404' },
+        { id: 14, day: 'Thứ 7, 07/11/2026', time: '09:02', type: 'rename', title: 'Bỏ địa danh khỏi thư mục ngày', detail: '2026/11/2026-11-06 Bảo Lộc → 2026/11/2026-11-06 (ảnh mới khác tỉnh)', dests: ['Google Drive', 'Synology NAS'], code: 'FR-83' },
+      ],
+      say(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => (this.toast = ''), 2600); },
+      get filtered() {
+        const q = this.q.trim().toLowerCase();
+        return this.events.filter(e => (this.filter === 'all' || e.type === this.filter) &&
+          (!q || (e.title + ' ' + e.detail + ' ' + e.dests.join(' ')).toLowerCase().includes(q)));
+      },
+      get shown() { return this.filtered.length; },
+      get grouped() {
+        const out = [];
+        this.filtered.forEach(e => {
+          let g = out.find(x => x.label === e.day);
+          if (!g) out.push((g = { label: e.day, items: [] }));
+          g.items.push(e);
+        });
+        return out;
+      },
+    };
+  }
+</script>
+</body>
+</html>

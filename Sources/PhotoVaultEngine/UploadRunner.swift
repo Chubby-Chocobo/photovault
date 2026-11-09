@@ -1,0 +1,162 @@
+import Foundation
+import PhotoVaultCore
+import PhotoVaultStore
+
+struct UploadPassResult: Sendable, Equatable {
+    var uploaded = 0
+    var perDestination: [DestinationID: Int] = [:]
+}
+
+enum UploadOutcome: Sendable, Equatable {
+    case done(bytes: Int64)
+    /// Back to `pending` with a backoff (item error) or waiting for its staging again.
+    case requeued
+    /// Skipped for good (permanent error or a rule).
+    case skipped
+    /// A destination-level error ended the destination's pass.
+    case stopDestination
+    /// Not handled in this phase (sidecars) or not placed yet.
+    case unsupported
+}
+
+/// Asked before every job starts; the coordinator re-checks pause, network, power and waiting
+/// owner commands here, so a long pass reacts within one job.
+struct UploadGate: Sendable {
+    var mayStart: @Sendable () async -> Bool
+    static let open = UploadGate(mayStart: { true })
+}
+
+/// Step 6 of the cycle: fan-out of ready jobs to every accepting destination, at most
+/// `maxConcurrentUploadsPerDestination` at a time per destination (NFR-03). Destination state
+/// that outlives a pass (consecutive failures, backoff, folder creation) is kept here.
+actor UploadRunner {
+    let env: EngineEnvironment
+    let staging: StagingManager
+    private var ensurers: [DestinationID: FolderEnsurer] = [:]
+    private var consecutiveFailures: [DestinationID: Int] = [:]
+    private var backoffUntil: [DestinationID: Date] = [:]
+    private var activePasses: [DestinationID: Task<Int, any Error>] = [:]
+
+    init(env: EngineEnvironment, staging: StagingManager) {
+        self.env = env
+        self.staging = staging
+    }
+
+    // MARK: Destination state
+
+    func consecutive(_ id: DestinationID) -> Int { consecutiveFailures[id, default: 0] }
+
+    func noteSuccess(_ id: DestinationID) {
+        consecutiveFailures[id] = nil
+        backoffUntil[id] = nil
+    }
+
+    func noteFailure(_ id: DestinationID) { consecutiveFailures[id, default: 0] += 1 }
+
+    func backOff(_ id: DestinationID) {
+        let delay = Backoff().delay(forAttempt: max(consecutiveFailures[id, default: 1] - 1, 0))
+        backoffUntil[id] = env.clock.now.addingTimeInterval(delay)
+    }
+
+    func ensurer(for record: DestinationRecord, destination: any Destination) -> FolderEnsurer {
+        if let existing = ensurers[record.id] { return existing }
+        let created = FolderEnsurer(env: env, destination: destination, record: record)
+        ensurers[record.id] = created
+        return created
+    }
+
+    /// Forgets cached folder state of a destination (reset or root change).
+    func forget(_ id: DestinationID) {
+        ensurers[id] = nil
+        consecutiveFailures[id] = nil
+        backoffUntil[id] = nil
+    }
+
+    // MARK: Pass
+
+    /// Uploads for every destination concurrently. `maxJobsPerDestination` bounds a step-by-step run.
+    func runPass(maxJobsPerDestination: Int? = nil, gate: UploadGate = .open) async throws -> UploadPassResult {
+        let ids = await env.destinations.ids
+        var result = UploadPassResult()
+        try await withThrowingTaskGroup(of: (DestinationID, Int).self) { group in
+            for id in ids {
+                group.addTask { (id, try await self.runCancellable(id, maxJobs: maxJobsPerDestination, gate: gate)) }
+            }
+            for try await (id, count) in group {
+                result.uploaded += count
+                if count > 0 { result.perDestination[id] = count }
+            }
+        }
+        return result
+    }
+
+    /// Stops the transfers of one destination (root change, removal); the others keep running.
+    /// Their jobs stay `uploading` and are resolved by recovery.
+    func cancelUploads(of id: DestinationID) { activePasses[id]?.cancel() }
+
+    private func runCancellable(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
+        let task = Task { try await self.runDestination(id, maxJobs: maxJobs, gate: gate) }
+        activePasses[id] = task
+        defer { if activePasses[id] == task { activePasses[id] = nil } }
+        do {
+            return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        } catch is CancellationError {
+            if Task.isCancelled { throw CancellationError() }
+            return 0
+        }
+    }
+
+    private func runDestination(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
+        guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
+              let destination = await env.destinations.destination(for: id) else { return 0 }
+        if let until = backoffUntil[id], until > env.clock.now { return 0 }
+        let ensurer = ensurer(for: record, destination: destination)
+        let limit = max(1, env.tuning.maxConcurrentUploadsPerDestination)
+        var attempted = Set<Int64>()
+        var buffer: [JobRepository.ReadyJob] = []
+        var inFlight = Set<Int64>()
+        var uploaded = 0
+        var dispatched = 0
+        var stop = false
+        try await withThrowingTaskGroup(of: (Int64, UploadOutcome).self) { group in
+            while true {
+                try Task.checkCancellation()
+                while !stop, inFlight.count < limit, dispatched < (maxJobs ?? .max) {
+                    // Pause, network, power, the destination's status and waiting owner commands can
+                    // change during a pass that lasts hours: ask again before every job.
+                    guard await gate.mayStart(),
+                          let current = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }),
+                          current.acceptsUploads else {
+                        stop = true
+                        break
+                    }
+                    if buffer.isEmpty {
+                        // One ranking query per window, not per job.
+                        let now = env.clock.now
+                        let window = 200 + attempted.count
+                        buffer = try await env.store.read { db in
+                            try JobRepository.readyToUpload(db, destinationId: id, now: now, limit: window)
+                        }.filter { item in item.job.id.map { !attempted.contains($0) } ?? false }
+                    }
+                    guard !buffer.isEmpty else { break }
+                    let next = buffer.removeFirst()
+                    guard let jobId = next.job.id else { continue }
+                    attempted.insert(jobId)
+                    inFlight.insert(jobId)
+                    dispatched += 1
+                    let attempt = UploadAttempt(
+                        env: env, staging: staging, runner: self, destination: destination, record: current, ensurer: ensurer, ready: next)
+                    group.addTask { (jobId, try await attempt.run()) }
+                }
+                guard let (jobId, outcome) = try await group.next() else { break }
+                inFlight.remove(jobId)
+                switch outcome {
+                case .done: uploaded += 1
+                case .stopDestination: stop = true
+                case .requeued, .skipped, .unsupported: break
+                }
+            }
+        }
+        return uploaded
+    }
+}

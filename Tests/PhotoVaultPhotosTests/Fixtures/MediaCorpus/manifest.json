@@ -1,0 +1,365 @@
+[
+  {
+    "id": "apple-dng-iphone6s",
+    "file": "apple-dng-iphone6s.dng",
+    "url": "https://raw.pixls.us/data/Apple/iPhone%206s%20Plus/IMG_0853.DNG",
+    "sha256": "845fee4f09c832af3728778737f5ae9b99124debb821b6e2066b94aed1daa91c",
+    "size": 10227467,
+    "source": "Apple / iPhone 6s Plus / IMG_0853.DNG",
+    "expect": {
+      "isRaw": true,
+      "make": "Apple",
+      "model": "iPhone 6s Plus"
+    }
+  },
+  {
+    "id": "apple-proraw",
+    "file": "apple-proraw.dng",
+    "url": "https://raw.pixls.us/data/Apple/iPhone%2012%20Pro/IMG_1361.DNG",
+    "sha256": "e91e77a4533ed7cce551d83330676ea5c47dd5e55fb38adda7819366afdbdfc2",
+    "size": 29195592,
+    "source": "Apple / iPhone 12 Pro / IMG_1361.DNG",
+    "expect": {
+      "isRaw": true,
+      "make": "Apple",
+      "model": "iPhone 12 Pro"
+    }
+  },
+  {
+    "id": "canon-cr2",
+    "file": "canon-cr2.cr2",
+    "url": "https://raw.pixls.us/data/Canon/EOS%20100D/IMG_3721.CR2",
+    "sha256": "85e62ea5ea658684964a61696660ffccca2a0c60fc1a2a72b30e6357a095f5e7",
+    "size": 27612929,
+    "source": "Canon / EOS 100D / IMG_3721.CR2",
+    "expect": {
+      "isRaw": true,
+      "make": "Canon",
+      "model": "Canon EOS 100D"
+    }
+  },
+  {
+    "id": "canon-cr3",
+    "file": "canon-cr3.cr3",
+    "url": "https://raw.pixls.us/data/Canon/Canon%20EOS%20R5m2/APS-C_RAW.CR3",
+    "sha256": "9f88c0ff012924193b7f4497559d133dfe626766d600b5d67689156721739ead",
+    "size": 20533408,
+    "source": "Canon / Canon EOS R5m2 / APS-C_RAW.CR3",
+    "expect": {
+      "isRaw": true,
+      "make": "Canon",
+      "model": "Canon EOS R5m2"
+    }
+  },
+  {
+    "id": "canon-cr3-craw",
+    "file": "canon-cr3-craw.cr3",
+    "url": "https://raw.pixls.us/data/Canon/Canon%20EOS%20R5m2/APS-C_CRAW.CR3",
+    "sha256": "6a597497776a6abbfab8fcf12d0086ac7a3f8afea2879d61accf6bbf48d357d7",
+    "size": 7564960,
+    "source": "Canon / Canon EOS R5m2 / APS-C_CRAW.CR3",
+    "expect": {
+      "isRaw": true,
+      "make": "Canon",
+      "model": "Canon EOS R5m2"
+    }
+  },
+  {
+    "id": "canon-crw",
+    "file": "canon-crw.crw",
+    "url": "https://raw.pixls.us/data/Canon/PowerShot%20G5/105_0506.CRW",
+    "sha256": "bb084223d714871b99de4f549eaf00513e30a7080feeead700252c2008060196",
+    "size": 4894440,
+    "source": "Canon / PowerShot G5 / 105_0506.CRW",
+    "expect": {
+      "isRaw": true,
+      "make": "Canon",
+      "model": "Canon PowerShot G5",
+      "fallback": false,
+      "noCaptureDate": true
+    },
+    "note": "Neither TIFF-structured nor with an Exif preview near the start: only ImageIO names the camera. CRW predates Exif and carries no capture date ImageIO reads."
+  },
+  {
+    "id": "dji-dng",
+    "file": "dji-dng.dng",
+    "url": "https://raw.pixls.us/data/DJI/FC220/DJI_0004.DNG",
+    "sha256": "85a4fc27cca3c1358abd22898d6426dc3448060ca5143e7bd255cb5fff64392d",
+    "size": 24331468,
+    "source": "DJI / FC220 / DJI_0004.DNG",
+    "expect": {
+      "isRaw": true,
+      "make": "DJI",
+      "model": "FC220"
+    }
+  },
+  {
+    "id": "epson-erf",
+    "file": "epson-erf.erf",
+    "url": "https://raw.pixls.us/data/Epson/R-D1/_EPS0672.ERF",
+    "sha256": "09d8e533d93116294a9f3e161ed868e929454c7b946e083b644bd6bb75bcb5e4",
+    "size": 9958994,
+    "source": "Epson / R-D1 / _EPS0672.ERF",
+    "expect": {
+      "isRaw": true,
+      "make": "SEIKO EPSON CORP.",
+      "model": "R-D1"
+    }
+  },
+  {
+    "id": "fujifilm-raf",
+    "file": "fujifilm-raf.raf",
+    "url": "https://raw.pixls.us/data/FUJIFILM/X-T30%20III/DSCF0133.RAF",
+    "sha256": "1910b95422240f97781fa3296d67a56cc8f62de63144ac11cbf4267a11278042",
+    "size": 21403984,
+    "source": "FUJIFILM / X-T30 III / DSCF0133.RAF",
+    "expect": {
+      "isRaw": true,
+      "make": "FUJIFILM",
+      "model": "X-T30 III"
+    },
+    "note": "macOS 15 cannot read this camera (newer than the OS); the reader takes the camera from the embedded preview's Exif."
+  },
+  {
+    "id": "hasselblad-3fr",
+    "file": "hasselblad-3fr.3fr",
+    "url": "https://raw.pixls.us/data/Hasselblad/CFV-50c/20200215_BERLIN_OldNew_WestHafen_B0000420.3FR",
+    "sha256": "e27ff177519298fe7bae64506b975190789dc0e6ad70bea58be7c78fd094eae0",
+    "size": 72417280,
+    "source": "Hasselblad / CFV-50c / 20200215_BERLIN_OldNew_WestHafen_B0000420.3FR",
+    "expect": {
+      "isRaw": true,
+      "make": "Hasselblad",
+      "model": "CFV-50c/Flash Sync"
+    }
+  },
+  {
+    "id": "hasselblad-fff",
+    "file": "hasselblad-fff.fff",
+    "url": "https://raw.pixls.us/data/Hasselblad/X1D%20II%2050C/x1d-II-sample-02.fff",
+    "sha256": "8c2451b3478fb529b4e9bd51ed3267999ce26eb1fcb5c3b93c3ae7bc56267794",
+    "size": 78154938,
+    "source": "Hasselblad / X1D II 50C / x1d-II-sample-02.fff",
+    "expect": {
+      "isRaw": true,
+      "make": "Hasselblad",
+      "model": "Hasselblad X1DM2-50c"
+    }
+  },
+  {
+    "id": "kodak-dcr",
+    "file": "kodak-dcr.dcr",
+    "url": "https://raw.pixls.us/data/Kodak/DCS760C/86L57188.DCR",
+    "sha256": "d0e6bd0a3339daff884e73a08fed8e75b20fe05bba438fc185e3f0bd019d0da8",
+    "size": 7547392,
+    "source": "Kodak / DCS760C / 86L57188.DCR",
+    "expect": {
+      "isRaw": true,
+      "make": "Kodak",
+      "model": "DCS760C"
+    }
+  },
+  {
+    "id": "leica-dng",
+    "file": "leica-dng.dng",
+    "url": "https://raw.pixls.us/data/Leica/M10/f5381888.dng",
+    "sha256": "26be5e06dfb53a2938dab3ca8f06024533a9c0dd0c652938f39eb48bc325f95e",
+    "size": 34209792,
+    "source": "Leica / M10 / f5381888.dng",
+    "expect": {
+      "isRaw": true,
+      "make": "Leica Camera AG",
+      "model": "LEICA M10"
+    }
+  },
+  {
+    "id": "leica-rwl",
+    "file": "leica-rwl.rwl",
+    "url": "https://raw.pixls.us/data/Leica/V-LUX%20%28Typ%20114%29/./Leica_-_V-LUX_%28typ114%29_-_1%3A1.RWL",
+    "sha256": "7a5fd52fe776c74ca9ed216092e5cd8c1e11d4169a473a08a14b4af694ceea12",
+    "size": 16405504,
+    "source": "Leica / V-LUX (Typ 114) / ./Leica_-_V-LUX_(typ114)_-_1:1.RWL",
+    "expect": {
+      "isRaw": true,
+      "make": "LEICA",
+      "model": "V-LUX (Typ 114)"
+    }
+  },
+  {
+    "id": "minolta-mrw",
+    "file": "minolta-mrw.mrw",
+    "url": "https://raw.pixls.us/data/Minolta/DiMAGE%207/RAW_MINOLTA_DIMAGE7.MRW",
+    "sha256": "4c5d4274bebb548f5f7b3001770903bc4023e7bfe4aeeebbd9d6fc08e81b03bb",
+    "size": 9990272,
+    "source": "Minolta / DiMAGE 7 / RAW_MINOLTA_DIMAGE7.MRW",
+    "expect": {
+      "isRaw": true,
+      "make": "Minolta Co., Ltd.",
+      "model": "DiMAGE 7",
+      "fallback": false
+    },
+    "note": "MRW is not TIFF-structured: only ImageIO names the camera."
+  },
+  {
+    "id": "nikon-nef",
+    "file": "nikon-nef.nef",
+    "url": "https://raw.pixls.us/data/Nikon/Z%206/DSC_0757.NEF",
+    "sha256": "f0ab08da469ee205f2bc08efd9005778c64cdcb064893cee03768e32e5da1a36",
+    "size": 13507425,
+    "source": "Nikon / Z 6 / DSC_0757.NEF",
+    "expect": {
+      "isRaw": true,
+      "make": "NIKON CORPORATION",
+      "model": "NIKON Z 6"
+    }
+  },
+  {
+    "id": "nikon-nef-z9-lossless",
+    "file": "nikon-nef-z9-lossless.nef",
+    "url": "https://raw.pixls.us/data/Nikon/Z%209/Nikon_-_NIKON_Z_9_-_14bit_compressed_%28Lossless%29.NEF",
+    "sha256": "99d0fe24a38f0f7623aeab21440d266a5ac09f9665cf5283f590337e84323c38",
+    "size": 57580695,
+    "source": "Nikon / Z 9 / Nikon_-_NIKON_Z_9_-_14bit_compressed_(Lossless).NEF",
+    "expect": {
+      "isRaw": true,
+      "make": "NIKON CORPORATION",
+      "model": "NIKON Z 9"
+    }
+  },
+  {
+    "id": "nikon-nrw",
+    "file": "nikon-nrw.nrw",
+    "url": "https://raw.pixls.us/data/Nikon/Coolpix%20P7800/DSCN2039.NRW",
+    "sha256": "27ac09537dd0f75523864dcf221278e2db354d490534bc13b6eabdc031060e51",
+    "size": 26992101,
+    "source": "Nikon / Coolpix P7800 / DSCN2039.NRW",
+    "expect": {
+      "isRaw": true,
+      "make": "NIKON",
+      "model": "COOLPIX P7800"
+    }
+  },
+  {
+    "id": "olympus-orf",
+    "file": "olympus-orf.orf",
+    "url": "https://raw.pixls.us/data/OLYMPUS/E-M5%20Mark%20III/PB290154.ORF",
+    "sha256": "24de6ac3bd5e668ee22fd0dbf2e344608949eb85f7342f28470ce709c9d51226",
+    "size": 17803258,
+    "source": "OLYMPUS / E-M5 Mark III / PB290154.ORF",
+    "expect": {
+      "isRaw": true,
+      "make": "OLYMPUS CORPORATION",
+      "model": "E-M5MarkIII"
+    }
+  },
+  {
+    "id": "om-system-orf",
+    "file": "om-system-orf.orf",
+    "url": "https://raw.pixls.us/data/OM%20Digital%20Solutions/OM-5MarkII/OM_System_OM-5_2_regular.ORF",
+    "sha256": "c6fe861982ddc18464cf6858d2700f6813cc3a17956bcb12d1179212c999c76a",
+    "size": 19236259,
+    "source": "OM Digital Solutions / OM-5MarkII / OM_System_OM-5_2_regular.ORF",
+    "expect": {
+      "isRaw": true,
+      "make": "OM Digital Solutions",
+      "model": "OM-5MarkII"
+    }
+  },
+  {
+    "id": "panasonic-rw2",
+    "file": "panasonic-rw2.rw2",
+    "url": "https://raw.pixls.us/data/Panasonic/DC-S5/dc-s5_6k4k.RW2",
+    "sha256": "350f4ad0839383b3e7bcb0feb2dda827fc81e97ab59917df2a1d824bb979234d",
+    "size": 35998720,
+    "source": "Panasonic / DC-S5 / dc-s5_6k4k.RW2",
+    "expect": {
+      "isRaw": true,
+      "make": "Panasonic",
+      "model": "DC-S5"
+    }
+  },
+  {
+    "id": "pentax-pef",
+    "file": "pentax-pef.pef",
+    "url": "https://raw.pixls.us/data/PENTAX/PENTAX%20K-r/IMGP4424.PEF",
+    "sha256": "dd0d7b76d89039995d253adddcfb44d131414fad2179610d9ea4d8d4bb876b7b",
+    "size": 13339548,
+    "source": "PENTAX / PENTAX K-r / IMGP4424.PEF",
+    "expect": {
+      "isRaw": true,
+      "make": "PENTAX",
+      "model": "PENTAX K-r"
+    }
+  },
+  {
+    "id": "phaseone-iiq",
+    "file": "phaseone-iiq.iiq",
+    "url": "https://raw.pixls.us/data/Phase%20One/IQ3%20100MP/Phase_One_IQ3_100MP_IIQ_S.IIQ",
+    "sha256": "2dd56f2a7a57a7fc2123301009c1a7a10be002ed84a18470fc4d37e41760a66d",
+    "size": 69103237,
+    "source": "Phase One / IQ3 100MP / Phase_One_IQ3_100MP_IIQ_S.IIQ",
+    "expect": {
+      "isRaw": true,
+      "make": "Phase One A/S",
+      "model": "IQ3 100MP",
+      "fallback": false
+    },
+    "note": "The camera block is not near the start: only ImageIO names the camera."
+  },
+  {
+    "id": "samsung-srw",
+    "file": "samsung-srw.srw",
+    "url": "https://raw.pixls.us/data/Samsung/NX1/2016-07-23-142101_sam_9364.srw",
+    "sha256": "ec57f83c23094766b723ba9446cdf79388c527934d6689c1ac5b1b6ab3ea8378",
+    "size": 36896768,
+    "source": "Samsung / NX1 / 2016-07-23-142101_sam_9364.srw",
+    "expect": {
+      "isRaw": true,
+      "make": "SAMSUNG",
+      "model": "NX1"
+    },
+    "note": "ImageIO reports the model but no make; the reader takes the make from the file's TIFF directory."
+  },
+  {
+    "id": "sigma-x3f",
+    "file": "sigma-x3f.x3f",
+    "url": "https://raw.pixls.us/data/Sigma/DP0%20Quattro/_SDI0263.X3F",
+    "sha256": "9e3095dd20237d35117faaaf1c66e22d0c271ab931f60775b3538519b49f54aa",
+    "size": 57197852,
+    "source": "Sigma / DP0 Quattro / _SDI0263.X3F",
+    "expect": {
+      "isRaw": false,
+      "make": null,
+      "model": null,
+      "unsupported": true,
+      "fallback": false
+    },
+    "note": "macOS has no UTI for X3F, so it is not RAW to the app and ImageIO cannot read it."
+  },
+  {
+    "id": "sony-arw",
+    "file": "sony-arw.arw",
+    "url": "https://raw.pixls.us/data/Sony/ILCE-6400/DSC00087.ARW",
+    "sha256": "8a37c80fc47c6026efa2e55279220e79460e2f470b1aa48b440f8f2d47873aa6",
+    "size": 24763136,
+    "source": "Sony / ILCE-6400 / DSC00087.ARW",
+    "expect": {
+      "isRaw": true,
+      "make": "SONY",
+      "model": "ILCE-6400"
+    }
+  },
+  {
+    "id": "sony-arw-7m4",
+    "file": "sony-arw-7m4.arw",
+    "url": "https://raw.pixls.us/data/Sony/ILCE-7M4/ILCE-7M4_DSC06681_APS-C-Raw-Compressed.ARW",
+    "sha256": "639a6d4db881f1359e3ea7e1137b314e59417d24e6d4d862b7202111a2c823b2",
+    "size": 19636224,
+    "source": "Sony / ILCE-7M4 / ILCE-7M4_DSC06681_APS-C-Raw-Compressed.ARW",
+    "expect": {
+      "isRaw": true,
+      "make": "SONY",
+      "model": "ILCE-7M4"
+    }
+  }
+]
