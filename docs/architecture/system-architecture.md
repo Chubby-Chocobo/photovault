@@ -49,8 +49,8 @@ Edges are the dependencies declared in [Package.swift](../../Package.swift). The
 | Module | Responsibility | Key types |
 |---|---|---|
 | `PhotoVaultCore` | Models, persisted entities, protocols (`Destination`, `PhotosSource`, `ReverseGeocoding`, `Clock`, `LogSink`), error classes, job state machine, eligibility, naming, layout, classification, sidecar builders, policies (backoff, token bucket, disk guard, place naming, view diff). No I/O. | `JobTransitions`, `Eligibility`, `CategoryClassifier`, `NameSanitizer`, `SidecarBuilder`, `TokenBucket`, `DiskGuardPolicy` |
-| `PhotoVaultStore` | GRDB `DatabasePool` in WAL mode, migration `v1`, repositories as stateless functions over `Database`, rolling `VACUUM INTO` backups. | `Store`, `Schema`, `JobRepository`, `DatabaseBackup` |
-| `PhotoVaultPhotos` | PhotoKit adapter, streaming export with inline MD5 and SHA-256, header-only camera classification, ImageIO and AVFoundation metadata, `CLGeocoder` adapter. | `PhotoKitSource`, `StreamingFileWriter`, `HeaderClassifier`, `ImageIOMetadataReader`, `CLGeocoderReverseGeocoder` |
+| `PhotoVaultStore` | GRDB `DatabasePool` in WAL mode, migrations `v1` to `v4`, repositories as stateless functions over `Database`, rolling `VACUUM INTO` backups. | `Store`, `Schema`, `JobRepository`, `DatabaseBackup` |
+| `PhotoVaultPhotos` | PhotoKit adapter (a request that delivers no data for 15 minutes is abandoned), streaming export with inline MD5 and SHA-256, header-only camera classification, ImageIO and AVFoundation metadata, `CLGeocoder` adapter. | `PhotoKitSource`, `StreamingFileWriter`, `HeaderClassifier`, `ImageIOMetadataReader`, `CLGeocoderReverseGeocoder` |
 | `PhotoVaultDrive` | OAuth 2.0 PKCE with a loopback redirect, refresh token in the Keychain, Drive v3 REST client, resumable upload, `GoogleDriveDestination`. | `GoogleAuthSession`, `OAuthClient`, `DriveAPI`, `ResumableUploader`, `GoogleDriveDestination` |
 | `PhotoVaultLocal` | `LocalFolderDestination`: fd-relative writes, atomic no-overwrite placement, per-folder locks, `destination.json` marker. | `LocalFolderDestination`, `AtomicFileWriter`, `FolderLockManager`, `DestinationMarker` |
 | `PhotoVaultEngine` | `SyncCoordinator` runs the sync cycle; change tracking, scan, classify, export, staging, upload fan-out, edit gate, sidecars, views, moves, place naming, startup and destination recovery, integrity checks, instance lock. | `SyncCoordinator`, `EngineEnvironment`, `ExportWorker`, `UploadRunner`, `StartupRecovery` |
@@ -90,8 +90,8 @@ flowchart LR
 | 7. Sidecars and views | `SidecarStage`, `ViewStage`, `DescriptionStage`, step `.sidecarsAndViews` | Sidecar jobs are created by `SidecarPlanner` inside the eligibility transactions. A Drive shortcut is created when its target job is `done`. |
 | 8. MoveWorker | `MoveStage`, step `.moves`, wraps `MoveWorker.runPass()` | Day-folder promotion and renames. |
 | 9. PlaceNamer | `PlaceNamerStage`, step `.placeNamer`, `PlaceNamer` and `GeocodeScheduler` | At most 20 geocoder requests per minute. |
-| 10. FR-53 and checks | `CloudIdBackfillStage`, `RecoveryVerifyStage`, `IntegrityStage`, step `.cloudIds` | Cloud-ID backfill in batches of at most 500. Integrity check every 7 days. |
-| 11. UI | `recordSuccess()`, then `publish()`: `SnapshotBuilder` builds an `EngineSnapshot`, delivered by `snapshots()` as an `AsyncStream` | The app observes snapshots. |
+| 10. FR-53 and checks | `CloudIdBackfillStage`, `RecoveryVerifyStage`, `IntegrityStage`, step `.cloudIds` | Cloud-ID backfill in batches of at most 500. Integrity check every `integrityCheckIntervalDays` days (Settings, default 7). |
+| 11. UI | `recordSuccess()`, then `publish()`: `SnapshotBuilder` builds an `EngineSnapshot`, delivered by `snapshots()` as an `AsyncStream` | `last_successful_sync_at` is set when the cycle uploaded something, or when no job was pending or uploading at an active destination. A cycle that could not upload what was waiting does not count. The app observes snapshots and, while the overall state is `syncing`, also re-reads the snapshot every 10 seconds. |
 
 Staging is released after each round (`releaseUnneeded`, `expireIdle`), so uploads free space for more exports within the same cycle.
 
@@ -160,6 +160,7 @@ The rule is "write the database before the side effect". Each step below is pers
 | Local atomic write | `AtomicFileWriter` writes `.photovault/tmp/<UUID>.part`, syncs and reads back, then places it without overwrite. Orphan sweep removes only names matching the `.part` pattern. | `LocalWriteTests.atomicWriteLeavesNoTempFiles`, `LocalRecoveryTests.crashingAtEveryStepLeavesNoPartFileNoDuplicateAndNoSplitFolder` |
 | Single engine per container | `InstanceLock` takes an exclusive, non-blocking `flock` on `photovault.lock`. The kernel releases it when the process dies. | `InstanceLockTests.t41SecondInstanceIsRefused`, `lockIsReleasedWhenTheHolderGoesAway` |
 | Database backups | `DatabaseBackup`: `VACUUM INTO` every 24 hours and before a migration, newest 7 kept | `DatabaseBackupTests.keepsSevenNewest`, `backsUpBeforePendingMigration` |
+| Corrupt database at launch | `DatabaseBackup.restoreNewest` (called from `AppEnvironment`, FR-52): the newest backup that passes `PRAGMA integrity_check` replaces the file, and every destination is marked `recovery_required`. The damaged database, `-wal` and `-shm` files are moved aside as `<name>.corrupt-<time>`. Only SQLite corruption or not-a-database errors trigger it. | `DatabaseBackupTests.restoreNewestMarksEveryDestinationRecoveryRequired`, `theCorruptFileIsKeptAsideNotDeleted`, `onlyDamagedFilesCountAsCorruption` |
 | Planned path before a local write | Destinations without reserved IDs: an `upload_intent` row (planned relative path + content SHA-256) is written in the same transaction as `startUpload` and deleted on completion; `StartupRecovery` probes and hashes that exact path | `PathAddressedCrashTests.aDayPromotedBetweenTheCrashAndTheRetryDoesNotLeaveACopyBehind`, `anEditedFileWrittenBeforeTheCrashIsReplacedByTheNewerEditNotSkipped` |
 | Owner commands vs. the cycle | `ExclusiveLane`: owner commands (integrity check, recovery, root changes, retries, resort, view rebuild, reconciliation…) wait for the cycle's next pass boundary; the cycle re-checks pause, network, power and destination status at every boundary and before every upload | `ExclusiveLaneTests`, `IntegrityRobustnessTests` |
 | Database durability (power loss included) | `DatabasePool`, WAL journal, `PRAGMA synchronous = FULL`, `fullfsync = ON`, `checkpoint_fullfsync = ON` on every connection | `DurabilityTests.everyConnectionIsFullySynchronous`, `SchemaAndAssetTests.fileDatabaseUsesWal` |
@@ -180,7 +181,7 @@ Lost database: `RecoveryService` rebuilds state from the destination. It runs on
 | `probe(remoteId:)` | Look up one item (nil when missing) |
 | `replaceContent(remoteId:_:)` | Replace the content of an existing file in place (refresh and checksum repair) |
 | `move(remoteId:name:from:to:)`, `renameFolder(_:newName:)` | Moves and renames |
-| `list(under:)` | Stream remote items for recovery and integrity |
+| `list(under:)` | Stream remote items for recovery and integrity. Drive also streams trashed items, with `trashed` set. |
 | `quota()` | Storage quota when available |
 
 Extensions:
@@ -212,7 +213,7 @@ Both destination implementations pass `DestinationConformanceSuite` in `PhotoVau
 
 ### Database (`photovault.sqlite`)
 
-Schema: migrations `v1` and `v2-upload-intent` in [Schema.swift](../../Sources/PhotoVaultStore/Schema.swift). A shipped migration is final; later changes are new migrations. Columns differ slightly from spec 8.2. The migration is the source of truth. Extra columns include `asset.asset_key_hash`, `asset.creation_day`, `resource.next_export_attempt_at`, `resource.too_large_for_disk`, `upload_job.uploading_gen`, and `remote_folder.created`.
+Schema: migrations `v1`, `v2-upload-intent`, `v3-snapshot-counters` and `v4-provisional-index` in [Schema.swift](../../Sources/PhotoVaultStore/Schema.swift). The v3 and v4 DDL is in [SchemaSnapshotCounters.swift](../../Sources/PhotoVaultStore/SchemaSnapshotCounters.swift). The v3 triggers on `upload_job` keep the snapshot counters (`job_count`, `backfill_asset`, `job_bytes`, `snapshot_counter`) current, so a status read touches a few small rows. A shipped migration is final; later changes are new migrations. Columns differ slightly from spec 8.2. The migration is the source of truth. Extra columns include `asset.asset_key_hash`, `asset.creation_day`, `resource.next_export_attempt_at`, `resource.too_large_for_disk`, `upload_job.uploading_gen`, and `remote_folder.created`.
 
 | Table | Holds |
 |---|---|
@@ -232,7 +233,7 @@ Schema: migrations `v1` and `v2-upload-intent` in [Schema.swift](../../Sources/P
 | `view_folder_group` | Folder groups for views |
 | `shortcut` | Drive shortcut per destination, view and asset, with its state |
 | `activity` | Newest 500 owner-visible events. Session references never reach this table. |
-| `kv` | Change token, baseline token, scan state and cursor, archive timezone, schema version, last successful sync time, Mac disk-full timestamp |
+| `kv` | Change token, baseline token, scan state and cursor, archive timezone, schema version, last successful sync time (`last_successful_sync_at`), Mac disk-full timestamp (`mac_disk_full_since`, written by `ResourceGuard` at the first pass below the critical watermark and cleared once the disk is above it) |
 
 ### Files outside the database
 
@@ -282,7 +283,7 @@ Other facts:
 5. `DestinationRepository.fetchAll`. Creates `GoogleDriveDestination` when a Drive row exists, and one `LocalFolderDestination` per local row with a valid bookmark. The `DestinationRegistry` holds them.
 6. `EngineEnvironment` with the Photos source (`PhotoKitSource`), `ImageIOMetadataReader`, `UTTypeResolver`, `VolumeDiskSpaceProvider`, `SystemMonitor`, `CLGeocoderReverseGeocoder`, and `LocalContentReader`. Then `SyncCoordinator(env:)`.
 
-`AppEnvironment` is passed to `AppModel`, which owns the scheduler, the Photos change observer (debounced by `TriggerDebouncer`), the power and workspace monitors, and the UI state.
+`AppEnvironment` is passed to `AppModel`, which owns the scheduler, the Photos change observer (debounced by `TriggerDebouncer`), the power and workspace monitors, and the UI state. `SyncScheduler` runs the 60-minute background activity, a 5-minute re-check of unavailable local folders, and a 15-minute re-check while the Mac disk state is not OK.
 
 ## Logging and redaction
 

@@ -16,11 +16,12 @@ Status meanings:
 Final run on the branch head after the review fixes (2026-11-09):
 
 ```text
-swift test --scratch-path .build-main
-✔ Test run with 733 tests in 119 suites passed after 18.578 seconds.
+swift test --scratch-path .build-docs
+✔ Test run with 806 tests in 135 suites passed after 19.791 seconds.
 ```
 
-- Tests: 733 in 119 suites, all passing. The unsigned app build (`xcodebuild … CODE_SIGNING_ALLOWED=NO`) also succeeds.
+- Tests: 806 in 135 suites, all passing (2026-11-09, after the audit fixes). The unsigned app build (`xcodebuild … CODE_SIGNING_ALLOWED=NO`) was not re-run for this update.
+- Tests added by the audit fixes are in these suites: `SettingsFormTests`, `DestinationRulesEditorTests`, `SettingsSavableTests`, `JobTransitionsTests`, `DriveQueryTests`, `DriveAPIRequestTests`, `ResumableFlowTests`, `ClassifyPassWalkTests`, `DeletedAssetAndClockTests`, `DirtyQueueSweepTests`, `EditGateTests`, `EngineQueriesApplyTests`, `ExportPassFailureTests`, `IntegrityRootStateTests`, `LastSuccessfulSyncTests`, `PlaceRefreshTests`, `RecoveryTriggerTests`, `ResourceGuardTests`, `SettingsStoreTests`, `UploadResumeParentTests`, `ViewRepairTests`, `LocalResilienceTests`, `ImageIOMetadataReaderTests`, `UTTypeResolverTests`, `PhotosErrorMapperTests`, `StalledRequestGuardTests`, `DatabaseBackupTests`, `PlacementTests`, `DayStatTests`, `SnapshotCounterTests`.
 - An earlier snapshot taken while the Drive fixes were half applied showed 3 loopback OAuth failures; they do not reproduce on the final tree (`OAuthPrimitivesTests` 8 of 8 pass on their own and in the full run).
 - Two timing-sensitive tests were made deterministic: `AuthSessionTests` no longer shares one fake clock between parallel tests, and `TriggerDebouncerTests` polls for the expected fire instead of fixed sleeps.
 - Per-target counts: [codebase-summary.md](./architecture/codebase-summary.md#test-targets).
