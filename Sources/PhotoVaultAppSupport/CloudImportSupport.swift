@@ -57,6 +57,16 @@ public enum CloudImportText {
     }
 
     /// Case-insensitive; an import with no recorded account accepts any.
+    /// The provider did not say who signed in (its account call failed), so nothing can be compared yet.
+    public static func accountUnknown(expected: String?, signedIn: String?) -> Bool {
+        let known = { (value: String?) in !(value?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) }
+        return known(expected) && !known(signedIn)
+    }
+
+    public static var accountUnverifiedNotice: String {
+        tr(vi: "Chưa kiểm tra được tài khoản vừa đăng nhập. Hãy thử lại.", en: "The signed-in account could not be checked. Try again.")
+    }
+
     public static func isSameAccount(expected: String?, signedIn: String?) -> Bool {
         guard let expected = expected?.trimmingCharacters(in: .whitespaces), !expected.isEmpty else { return true }
         guard let signedIn = signedIn?.trimmingCharacters(in: .whitespaces), !signedIn.isEmpty else { return false }

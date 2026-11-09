@@ -76,6 +76,9 @@ import Testing
         #expect(CloudImportText.isSameAccount(expected: "Me@Example.com", signedIn: "me@example.COM"))
         #expect(!CloudImportText.isSameAccount(expected: "me@example.com", signedIn: "you@example.com"))
         #expect(!CloudImportText.isSameAccount(expected: "me@example.com", signedIn: nil))
+        #expect(CloudImportText.accountUnknown(expected: "me@example.com", signedIn: nil))
+        #expect(!CloudImportText.accountUnknown(expected: "me@example.com", signedIn: "you@example.com"))
+        #expect(!CloudImportText.accountUnknown(expected: nil, signedIn: nil))
         #expect(CloudImportText.isSameAccount(expected: nil, signedIn: "any@example.com"))
         vi { #expect(CloudImportText.wrongAccountNotice(expected: "me@example.com") == "Hãy đăng nhập đúng tài khoản me@example.com") }
         en { #expect(CloudImportText.wrongAccountNotice(expected: "me@example.com") == "Sign in with the account me@example.com") }

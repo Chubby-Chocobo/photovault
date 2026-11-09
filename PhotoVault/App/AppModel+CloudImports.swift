@@ -123,6 +123,7 @@ extension AppModel {
         case .googleDrive:
             runCloudFlow { [self] in
                 let picked = try await env.cloud.pickerFlow().run()
+                if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
                 var config = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config } ?? SourceConfig()
@@ -139,6 +140,7 @@ extension AppModel {
         case .dropbox:
             runCloudFlow { [self] in
                 let signIn = try await env.cloud.dropboxAuth().signIn()
+                if CloudImportText.accountUnknown(expected: item.account, signedIn: signIn.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: signIn.email) else { return refuseOtherAccount(item) }
                 try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.importGrant(id)).store(signIn)
                 // A job whose token was missing at launch has no adapter yet.
