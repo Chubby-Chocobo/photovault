@@ -63,7 +63,9 @@
     "file": "minolta-mrw.mrw",
     "source": "Minolta / DiMAGE 7 / RAW_MINOLTA_DIMAGE7.MRW",
     "make": "Minolta Co., Ltd.",
-    "model": "DiMAGE 7"
+    "model": "DiMAGE 7",
+    "fallback": false,
+    "note": "MRW is not TIFF-structured and has no Exif preview in its header, so only ImageIO names the camera."
   },
   {
     "file": "nikon-nef.nef",
@@ -110,9 +112,10 @@
   {
     "file": "samsung-srw.srw",
     "source": "Samsung / NX1 / 2016-07-23-142101_sam_9364.srw",
-    "make": null,
+    "make": "SAMSUNG",
     "model": "NX1",
-    "note": "ImageIO reports the model but no make (exiftool: SAMSUNG); the model alone marks a camera."
+    "imageIOLacksMake": true,
+    "note": "ImageIO reports the model but no make; the reader takes the make from the file's TIFF directory."
   },
   {
     "file": "sony-arw.arw",

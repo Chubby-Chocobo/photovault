@@ -9,8 +9,7 @@
     "expect": {
       "isRaw": true,
       "make": "Apple",
-      "model": "iPhone 6s Plus",
-      "maxHeaderBytes": 1048576
+      "model": "iPhone 6s Plus"
     }
   },
   {
@@ -23,8 +22,7 @@
     "expect": {
       "isRaw": true,
       "make": "Apple",
-      "model": "iPhone 12 Pro",
-      "maxHeaderBytes": 1048576
+      "model": "iPhone 12 Pro"
     }
   },
   {
@@ -37,8 +35,7 @@
     "expect": {
       "isRaw": true,
       "make": "Canon",
-      "model": "Canon EOS 100D",
-      "maxHeaderBytes": 1048576
+      "model": "Canon EOS 100D"
     }
   },
   {
@@ -51,10 +48,8 @@
     "expect": {
       "isRaw": true,
       "make": "Canon",
-      "model": "Canon EOS R5m2",
-      "maxHeaderBytes": 20533408
-    },
-    "note": "Concludes only on the whole file; the download is kept as the staged copy."
+      "model": "Canon EOS R5m2"
+    }
   },
   {
     "id": "canon-cr3-craw",
@@ -66,10 +61,8 @@
     "expect": {
       "isRaw": true,
       "make": "Canon",
-      "model": "Canon EOS R5m2",
-      "maxHeaderBytes": 7564960
-    },
-    "note": "Concludes only on the whole file; the download is kept as the staged copy."
+      "model": "Canon EOS R5m2"
+    }
   },
   {
     "id": "canon-crw",
@@ -82,9 +75,10 @@
       "isRaw": true,
       "make": "Canon",
       "model": "Canon PowerShot G5",
-      "maxHeaderBytes": 4894440
+      "fallback": false,
+      "noCaptureDate": true
     },
-    "note": "Concludes only on the whole file; the download is kept as the staged copy."
+    "note": "Neither TIFF-structured nor with an Exif preview near the start: only ImageIO names the camera. CRW predates Exif and carries no capture date ImageIO reads."
   },
   {
     "id": "dji-dng",
@@ -96,8 +90,7 @@
     "expect": {
       "isRaw": true,
       "make": "DJI",
-      "model": "FC220",
-      "maxHeaderBytes": 1048576
+      "model": "FC220"
     }
   },
   {
@@ -110,8 +103,7 @@
     "expect": {
       "isRaw": true,
       "make": "SEIKO EPSON CORP.",
-      "model": "R-D1",
-      "maxHeaderBytes": 1048576
+      "model": "R-D1"
     }
   },
   {
@@ -124,9 +116,9 @@
     "expect": {
       "isRaw": true,
       "make": "FUJIFILM",
-      "model": "X-T30 III",
-      "maxHeaderBytes": 6291456
-    }
+      "model": "X-T30 III"
+    },
+    "note": "macOS 15 cannot read this camera (newer than the OS); the reader takes the camera from the embedded preview's Exif."
   },
   {
     "id": "hasselblad-3fr",
@@ -138,8 +130,7 @@
     "expect": {
       "isRaw": true,
       "make": "Hasselblad",
-      "model": "CFV-50c/Flash Sync",
-      "maxHeaderBytes": 1048576
+      "model": "CFV-50c/Flash Sync"
     }
   },
   {
@@ -152,8 +143,7 @@
     "expect": {
       "isRaw": true,
       "make": "Hasselblad",
-      "model": "Hasselblad X1DM2-50c",
-      "maxHeaderBytes": 1048576
+      "model": "Hasselblad X1DM2-50c"
     }
   },
   {
@@ -166,8 +156,7 @@
     "expect": {
       "isRaw": true,
       "make": "Kodak",
-      "model": "DCS760C",
-      "maxHeaderBytes": 1048576
+      "model": "DCS760C"
     }
   },
   {
@@ -180,8 +169,7 @@
     "expect": {
       "isRaw": true,
       "make": "Leica Camera AG",
-      "model": "LEICA M10",
-      "maxHeaderBytes": 1048576
+      "model": "LEICA M10"
     }
   },
   {
@@ -194,8 +182,7 @@
     "expect": {
       "isRaw": true,
       "make": "LEICA",
-      "model": "V-LUX (Typ 114)",
-      "maxHeaderBytes": 1048576
+      "model": "V-LUX (Typ 114)"
     }
   },
   {
@@ -209,8 +196,9 @@
       "isRaw": true,
       "make": "Minolta Co., Ltd.",
       "model": "DiMAGE 7",
-      "maxHeaderBytes": 1048576
-    }
+      "fallback": false
+    },
+    "note": "MRW is not TIFF-structured: only ImageIO names the camera."
   },
   {
     "id": "nikon-nef",
@@ -222,8 +210,7 @@
     "expect": {
       "isRaw": true,
       "make": "NIKON CORPORATION",
-      "model": "NIKON Z 6",
-      "maxHeaderBytes": 1048576
+      "model": "NIKON Z 6"
     }
   },
   {
@@ -236,8 +223,7 @@
     "expect": {
       "isRaw": true,
       "make": "NIKON CORPORATION",
-      "model": "NIKON Z 9",
-      "maxHeaderBytes": 1048576
+      "model": "NIKON Z 9"
     }
   },
   {
@@ -250,8 +236,7 @@
     "expect": {
       "isRaw": true,
       "make": "NIKON",
-      "model": "COOLPIX P7800",
-      "maxHeaderBytes": 1048576
+      "model": "COOLPIX P7800"
     }
   },
   {
@@ -264,8 +249,7 @@
     "expect": {
       "isRaw": true,
       "make": "OLYMPUS CORPORATION",
-      "model": "E-M5MarkIII",
-      "maxHeaderBytes": 1048576
+      "model": "E-M5MarkIII"
     }
   },
   {
@@ -278,8 +262,7 @@
     "expect": {
       "isRaw": true,
       "make": "OM Digital Solutions",
-      "model": "OM-5MarkII",
-      "maxHeaderBytes": 1048576
+      "model": "OM-5MarkII"
     }
   },
   {
@@ -292,8 +275,7 @@
     "expect": {
       "isRaw": true,
       "make": "Panasonic",
-      "model": "DC-S5",
-      "maxHeaderBytes": 1048576
+      "model": "DC-S5"
     }
   },
   {
@@ -306,8 +288,7 @@
     "expect": {
       "isRaw": true,
       "make": "PENTAX",
-      "model": "PENTAX K-r",
-      "maxHeaderBytes": 1048576
+      "model": "PENTAX K-r"
     }
   },
   {
@@ -321,9 +302,9 @@
       "isRaw": true,
       "make": "Phase One A/S",
       "model": "IQ3 100MP",
-      "fromCompleteFile": true
+      "fallback": false
     },
-    "note": "The header never concludes within the 32 MiB buffer; the camera is read from the complete file."
+    "note": "The camera block is not near the start: only ImageIO names the camera."
   },
   {
     "id": "samsung-srw",
@@ -334,11 +315,10 @@
     "source": "Samsung / NX1 / 2016-07-23-142101_sam_9364.srw",
     "expect": {
       "isRaw": true,
-      "make": null,
-      "model": "NX1",
-      "maxHeaderBytes": 1048576
+      "make": "SAMSUNG",
+      "model": "NX1"
     },
-    "note": "ImageIO reports the model but no make (exiftool: SAMSUNG); the model alone marks a camera."
+    "note": "ImageIO reports the model but no make; the reader takes the make from the file's TIFF directory."
   },
   {
     "id": "sigma-x3f",
@@ -351,9 +331,10 @@
       "isRaw": false,
       "make": null,
       "model": null,
-      "unsupported": true
+      "unsupported": true,
+      "fallback": false
     },
-    "note": "macOS has no UTI for X3F and ImageIO cannot read it (exiftool: SIGMA, SIGMA dp0 Quattro)."
+    "note": "macOS has no UTI for X3F, so it is not RAW to the app and ImageIO cannot read it."
   },
   {
     "id": "sony-arw",
@@ -365,8 +346,7 @@
     "expect": {
       "isRaw": true,
       "make": "SONY",
-      "model": "ILCE-6400",
-      "maxHeaderBytes": 1048576
+      "model": "ILCE-6400"
     }
   },
   {
@@ -379,8 +359,7 @@
     "expect": {
       "isRaw": true,
       "make": "SONY",
-      "model": "ILCE-7M4",
-      "maxHeaderBytes": 1048576
+      "model": "ILCE-7M4"
     }
   }
 ]
