@@ -104,19 +104,22 @@ import Testing
         #expect(try h.source(id)?.status == .completed)
     }
 
-    @Test func anOutageWhereTheProviderDoesNotAnswerFailsNothing() async throws {
+    @Test func anOutageWhereTheProviderDoesNotAnswerCountsNothingAndEndsWithEveryFile() async throws {
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg"]))
+        // The first reads fail while the probe still answers, so each group has one failure on record.
+        source.setFailure(.inspect, SourceError.busy)
         let id = try await h.startCloudImport(slow(source, h))
+        #expect(try h.importCounts(id) == [.pending: 3])
         source.setFailure(.probe, SourceError.unavailable)
-        source.setFailure(.inspect, SourceError.unavailable)
-        // A file read is attempted once before the outage reaches the probe.
         await run(h, hours: 72)
-        #expect(try h.importCounts(id)[.failed] == nil)
+        #expect(try h.importCounts(id) == [.pending: 3], "nothing is failed during the outage")
+        #expect(try h.source(id)?.status == .offline)
+
         source.setFailure(.probe, nil)
         source.setFailure(.inspect, nil)
-        await run(h, hours: 1)
-        #expect(try h.importCounts(id)[.failed] == nil)
+        await run(h, hours: 4)
+        #expect(try h.importCounts(id) == [.imported: 3])
         #expect(try h.source(id)?.status == .completed)
     }
 }

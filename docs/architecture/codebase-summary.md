@@ -55,7 +55,7 @@ Counts are tests reported by `swift test list` on 2026-11-10, after the cloud im
 | `PhotoVaultLocalTests` | 80 | Atomic writes, symlink refusal, folder safety, root state (trash, missing, offline), metadata marker, small-file reads, conformance suite |
 | `PhotoVaultEngineTests` | 423 | Sync cycle, old-layout block and root probe, factory reset, scan and change tracking, folder import (dedupe, cancel, offline, crash points), source routing, export, upload errors, crash recovery, recovery from destinations, integrity, views, sidecars, place naming, disk and power gates, instance lock |
 | `PhotoVaultAppSupportTests` | 156 | Notification policy, log redaction and rotation, status and progress text, onboarding flow, settings form, Vietnamese formatting, debouncer |
-| **Total** | **1,195** | 196 suites in the full run |
+| **Total** | **1,195** | 200 suites in the full run |
 
 The app target has no tests. Its logic is kept in packages where it can be tested; the remaining app code is UI and launch glue.
 
