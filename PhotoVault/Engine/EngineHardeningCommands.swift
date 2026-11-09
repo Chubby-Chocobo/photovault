@@ -126,6 +126,10 @@ enum RecoveryCommandError: Error, Equatable {
         case .notReady(.cloudIdsPending): tr(vi: "PhotoVault đang ghép mã iCloud của ảnh. Thử lại sau ít phút.", en: "PhotoVault is matching the iCloud IDs of the photos. Try again in a few minutes.")
         case .notReady(.destinationUnavailable): tr(vi: "Đích chưa truy cập được. Kiểm tra mạng hoặc ổ NAS.", en: "The destination can’t be reached yet. Check the network or the NAS.")
         case .notReady(.unknownDestination): tr(vi: "Không tìm thấy đích này.", en: "This destination was not found.")
+        case .notReady(.legacyLayout):
+            tr(
+                vi: "Thư mục này chứa bản sao lưu của PhotoVault 0.1.0 (bố cục cũ) nên không dùng lại được. Hãy chuyển nó vào Thùng rác hoặc chọn thư mục khác.",
+                en: "This folder holds a PhotoVault 0.1.0 backup (the old layout), so it can’t be reused. Move it to the Trash or pick another folder.")
         case .notReady(.alreadyRunning): tr(vi: "Đang khôi phục đích này.", en: "This destination is being recovered.")
         }
     }

@@ -44,6 +44,8 @@ struct RemoteInventory: Sendable {
     var shortcuts: [RemoteShortcutEntry] = []
     /// Items that are not ours or not understood; they are never touched.
     var ignored = 0
+    /// Folders of the old `YYYY/MM` layout. A root that has any is not recovered from.
+    var legacyFolders = 0
     /// Archive timezone the destination remembers (`pvArchiveTZ`, `destination.json`).
     var archiveTimezone: String?
 }
@@ -101,6 +103,7 @@ struct RemoteInventoryLoader: Sendable {
                 continue
             }
             logicalById[item.remoteId] = value
+            if LegacyRootProbe.isLegacyLogicalPath(value) { inventory.legacyFolders += 1 }
             let (day, place) = Self.dayFolder(logical: value, name: item.name)
             inventory.folders.append(RemoteFolderEntry(
                 logicalPath: value, remoteId: item.remoteId, displayName: item.name, day: day, placeName: place))
@@ -160,6 +163,7 @@ struct RemoteInventoryLoader: Sendable {
         for item in items where item.kind == .folder {
             let path = item.relativePath ?? item.remoteId
             guard let info = LocalTreeInterpreter.folder(displayPath: path) else {
+                if LegacyRootProbe.isLegacyFolder(displayPath: path) { inventory.legacyFolders += 1 }
                 inventory.ignored += 1
                 continue
             }

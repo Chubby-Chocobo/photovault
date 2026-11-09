@@ -118,6 +118,10 @@ actor RecoveryService {
 
     private func run(record: DestinationRecord, destination: any Destination) async throws -> RecoveryOutcome {
         let inventory = try await RemoteInventoryLoader(env: env, record: record, destination: destination).load()
+        if inventory.legacyFolders > 0 {
+            env.log.log(.notice, category: "recovery", "root holds the old folder layout; recovery refused")
+            return .notReady(.legacyLayout)
+        }
         let zone = try await restoreTimezone(inventory.archiveTimezone)
         var stats = RecoveryStats()
         stats.found = try await walkedFileCount(record: record, destination: destination)
