@@ -53,7 +53,8 @@ private struct OnboardingContent: View {
                     Text(tr(vi: "Thiết lập lần đầu", en: "First-time setup")).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
+            InterfaceLanguagePicker().labelsHidden().padding(.bottom, 12)
             ForEach(OnboardingStep.allCases, id: \.self) { step in
                 Button { model.jump(to: step) } label: {
                     HStack(spacing: 8) {
@@ -77,7 +78,6 @@ private struct OnboardingContent: View {
                 .accessibilityAddTraits(step == model.step ? .isSelected : [])
             }
             Spacer()
-            InterfaceLanguagePicker().labelsHidden().controlSize(.small)
         }
         .padding(16)
         .frame(width: 210)

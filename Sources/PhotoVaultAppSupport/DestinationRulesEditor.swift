@@ -10,7 +10,7 @@ public enum RuleKey: String, CaseIterable, Sendable {
         case .camera: "Camera"
         case .screenshot: tr(vi: "Ảnh chụp màn hình", en: "Screenshots")
         case .saved: tr(vi: "Lưu từ app", en: "Saved from apps")
-        case .photo: tr(vi: "Ảnh (gồm video Live Photo)", en: "Photos (including Live Photo videos)")
+        case .photo: tr(vi: "Ảnh (gồm video Live Photo)", en: "Photos (with Live video)")
         case .video: "Video"
         case .raw: "RAW"
         case .original: tr(vi: "Bản gốc", en: "Originals")

@@ -32,7 +32,11 @@ private struct OnboardingPrompt: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(tr(vi: "Chào mừng đến PhotoVault", en: "Welcome to PhotoVault")).font(.headline)
+            HStack {
+                Text(tr(vi: "Chào mừng đến PhotoVault", en: "Welcome to PhotoVault")).font(.headline)
+                Spacer(minLength: 0)
+                LanguageMenu()
+            }
             Text(tr(vi: "Hoàn tất thiết lập lần đầu để bắt đầu backup ảnh.", en: "Finish the first-time setup to start backing up photos.")).font(.callout).foregroundStyle(.secondary)
             Button(tr(vi: "Mở thiết lập…", en: "Open setup…")) { model.open(.onboarding) }.buttonStyle(.borderedProminent)
         }
@@ -75,12 +79,13 @@ private struct OverallHeader: View {
                 Text(presentation.title).font(.headline)
                 Text(presentation.subtitle).font(.caption).foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .combine)
             Spacer(minLength: 0)
+            LanguageMenu()
             Button("Sync now") { model.syncNow() }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.isPausedAll || model.snapshot?.overall == .photosUnauthorized)
         }
-        .accessibilityElement(children: .combine)
     }
 
     private var overall: OverallPresentation {
@@ -129,7 +134,7 @@ private struct CountersSection: View {
             counter(snapshot.pending, tr(vi: "Chờ", en: "Pending"), "pending")
             counter(snapshot.deferred, tr(vi: "Hoãn", en: "Deferred"), "deferred")
             counter(snapshot.skipped, tr(vi: "Bỏ qua", en: "Skipped"), "skipped")
-            counter(snapshot.missingRemote, tr(vi: "Thiếu ở đích", en: "Missing at destination"), "missingRemote", alert: true)
+            counter(snapshot.missingRemote, tr(vi: "Thiếu ở đích", en: "Missing"), "missingRemote", alert: true)
         }
     }
 

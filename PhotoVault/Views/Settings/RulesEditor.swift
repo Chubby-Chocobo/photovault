@@ -10,12 +10,14 @@ struct RulesEditor: View {
 
     var body: some View {
         SettingsSection(tr(vi: "Rule nội dung", en: "Content rules")) {
-            HStack(spacing: 4) {
-                Text(tr(vi: "Setting ở tab", en: "The setting in the"))
-                Button(tr(vi: "Nội dung", en: "Content")) { model.settingsTab = .content }.buttonStyle(.link)
-                Text(tr(vi: "là trần toàn cục: một loại chỉ tới đích này khi bật ở cả hai nơi. Ô bị khoá là loại đang tắt ở Nội dung.", en: "tab is the global limit: a kind reaches this destination only when it is on in both places. A locked box is a kind turned off in Content."))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tr(vi: "Setting ở tab Nội dung là trần toàn cục: một loại chỉ tới đích này khi bật ở cả hai nơi. Ô bị khoá là loại đang tắt ở Nội dung.",
+                        en: "The Content tab sets the global limit: a kind reaches this destination only when it is on in both places. A locked box is a kind turned off in Content."))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(tr(vi: "Mở tab Nội dung", en: "Open the Content tab")) { model.settingsTab = .content }.buttonStyle(.link)
             }
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption)
             ForEach(RuleKey.groups, id: \.title) { group in
                 HStack(alignment: .firstTextBaseline) {
                     Text(group.title).frame(width: 90, alignment: .leading).foregroundStyle(.secondary)

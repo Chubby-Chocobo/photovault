@@ -19,7 +19,7 @@ struct GeneralTab: View {
             FormRow(tr(vi: "Ngôn ngữ giao diện", en: "Interface language"),
                     detail: tr(vi: "Đổi ngay. Hoạt động đã ghi giữ nguyên ngôn ngữ lúc ghi; tên thư mục trên đích không đổi.",
                                en: "Applies at once. Activity already recorded keeps its language; folder names on destinations don’t change.")) {
-                InterfaceLanguagePicker().labelsHidden().frame(width: 160)
+                InterfaceLanguagePicker().labelsHidden().frame(width: 190)
             }
             Toggle(tr(vi: "Mở khi đăng nhập", en: "Open at login"), isOn: model.binding(\.launchAtLogin))
             FormRow(tr(vi: "Thông báo", en: "Notifications"), detail: tr(vi: "Mỗi loại × mỗi đích tối đa 1 lần / 12 giờ", en: "Each kind, per destination, at most once every 12 hours")) {
