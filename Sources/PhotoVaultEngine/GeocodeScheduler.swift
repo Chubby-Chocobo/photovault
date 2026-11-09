@@ -11,9 +11,13 @@ actor GeocodeScheduler {
     static let requestsPerMinute = 20
     private static let window: TimeInterval = 60
     /// Consecutive results with a country but no province before the structured fields are
-    /// considered lost and the names fall back to the country.
-    private static let lostFieldThreshold = 3
+    /// considered lost and the names fall back to the country. Water cells (a bay, a lake, a boat
+    /// trip) answer with a country and no province, so a short run of them proves nothing; and once
+    /// any answer carried a province the fields are known to work and the fallback never starts.
+    private static let lostFieldThreshold = 10
     private static let countryOnlyKey = "place_country_only"
+    /// Set when an `en` answer carried a province since the last refresh.
+    private static let provinceSeenKey = "geo_province_seen"
     /// Answers fetched before this moment are asked for again (the owner's "Làm mới địa danh").
     private static let refreshSinceKey = "geo_refresh_since"
 
@@ -22,6 +26,7 @@ actor GeocodeScheduler {
     private var failures = 0
     private var blockedUntil: Date?
     private var noProvinceStreak = 0
+    private var provinceSeen: Bool?
 
     init(env: EngineEnvironment) { self.env = env }
 
@@ -109,14 +114,39 @@ actor GeocodeScheduler {
         if locale == "en" {
             if hasProvince {
                 noProvinceStreak = 0
+                try await noteProvinceSeen()
             } else if place.isoCountryCode != nil, place.country != nil {
                 noProvinceStreak += 1
             }
         }
-        let countryOnly = try await env.store.read { db in try KeyValueRepository.int(db, Self.countryOnlyKey) } == 1
-        if !countryOnly, noProvinceStreak >= Self.lostFieldThreshold { try await enterCountryOnly() }
-        guard noProvinceStreak >= Self.lostFieldThreshold || countryOnly, !hasProvince, let country = place.country else { return place }
+        let (countryOnly, seen) = try await env.store.read { db in
+            (try KeyValueRepository.int(db, Self.countryOnlyKey) == 1, try KeyValueRepository.int(db, Self.provinceSeenKey) == 1)
+        }
+        let fieldsLost = !seen && noProvinceStreak >= Self.lostFieldThreshold
+        if !countryOnly, fieldsLost { try await enterCountryOnly() }
+        guard fieldsLost || countryOnly, !hasProvince, let country = place.country else { return place }
         return GeoPlace(isoCountryCode: place.isoCountryCode, country: nil, administrativeArea: country, locality: nil)
+    }
+
+    /// A province arrived: the structured fields work. A country-only fallback started earlier is
+    /// undone; the cells it rewrote are asked again and keep their own (often empty) province.
+    private func noteProvinceSeen() async throws {
+        guard provinceSeen != true else { return }
+        provinceSeen = true
+        let now = env.clock.now
+        try await env.store.write { db in
+            try KeyValueRepository.set(db, Self.provinceSeenKey, 1)
+            guard try KeyValueRepository.int(db, Self.countryOnlyKey) == 1 else { return }
+            try KeyValueRepository.set(db, Self.countryOnlyKey, nil)
+            // Rewritten answers are the only ones with a province and no country.
+            try db.execute(sql: """
+                DELETE FROM geo_cache WHERE geo_cell IN (
+                    SELECT geo_cell FROM geo_cache WHERE country IS NULL AND administrative_area IS NOT NULL)
+                """)
+            for day in try OrganizationQueries.promotedDays(db) { try DirtyQueue.mark(db, [.place], id: day.description) }
+            try ActivityRepository.record(db, ActivityEvent(
+                at: now, kind: .notice, message: "Apple đã trả về tỉnh/thành; địa danh dùng lại tên tỉnh"))
+        }
     }
 
     private func enterCountryOnly() async throws {
@@ -180,7 +210,9 @@ actor GeocodeScheduler {
         try await env.store.write { db in
             try KeyValueRepository.set(db, Self.refreshSinceKey, now)
             try KeyValueRepository.set(db, Self.countryOnlyKey, nil)
+            try KeyValueRepository.set(db, Self.provinceSeenKey, nil)
         }
         noProvinceStreak = 0
+        provinceSeen = nil
     }
 }
