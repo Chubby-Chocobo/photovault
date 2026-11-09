@@ -97,6 +97,13 @@ extension AppModel {
                 env.log.log(.notice, category: "onboarding", "forgot the Drive destination of an unfinished start")
             }
         }
+        if let nas = plan.nas, var local = localRecords.first(where: { $0.id == nas.destinationId }),
+           local.scope != nas.scope || local.rules != nas.rules {
+            local.scope = nas.scope
+            local.rules = nas.rules
+            let record = local
+            try await env.store.write { db in try DestinationRepository.save(db, record) }
+        }
         for local in localRecords where local.id != plan.nas?.destinationId {
             await env.coordinator.destinationRemoved(local.id)
             try await env.store.write { db in try DestinationRepository.remove(db, id: local.id) }
