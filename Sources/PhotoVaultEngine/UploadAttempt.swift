@@ -107,11 +107,28 @@ struct UploadAttempt: Sendable {
             content: StagedContent(file: URL(fileURLWithPath: path), size: size, md5: md5, sha256: sha256))
     }
 
+    /// Retries `.transient` destination errors inside the pass, as the upload itself does: a dropped
+    /// connection while creating a folder or reserving an id costs the job no attempt.
+    private func retryingTransient<T: Sendable>(_ body: () async throws -> T) async throws -> T {
+        var tries = 0
+        while true {
+            do {
+                return try await body()
+            } catch let error as DestinationError {
+                guard case .transient = error, tries < env.tuning.transientRetries else { throw error }
+                try await env.tuning.sleep(Backoff().delay(forAttempt: tries))
+                tries += 1
+            }
+        }
+    }
+
     func transfer(generation: Int, plan: UploadPlan, description: String?, content staged: StagedContent) async throws -> UploadOutcome {
-        let parent = try await ensurer.ensure(plan.chain)
+        let ensurer = ensurer
+        let parent = try await retryingTransient { try await ensurer.ensure(plan.chain) }
         var job = ready.job
         if destination.capabilities.reservesIds, job.remoteId == nil {
-            guard let reserved = try await destination.reserveIds(count: 1, kind: .files).first else {
+            let destination = destination
+            guard let reserved = try await retryingTransient({ try await destination.reserveIds(count: 1, kind: .files) }).first else {
                 throw DestinationError.itemRejected(reason: "no file id reserved")
             }
             try env.reach(.afterFileIdReserved)
