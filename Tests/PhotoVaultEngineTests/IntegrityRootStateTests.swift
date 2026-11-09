@@ -93,6 +93,20 @@ import Testing
         #expect(try h.jobs(.missingRemote).isEmpty)
     }
 
+    @Test func untrashingRestoresOnlyFoldersOfTheCurrentRoot() async throws {
+        let h = try await driveLife()
+        await h.drive.setListsWholeAccount(true)
+        let schema = [AppPropertyKey.schema: AppPropertyCodec.schemaVersion]
+        await h.drive.put(.init(id: "old-root", name: "Old", parentId: "", kind: .folder, appProperties: schema, trashed: true))
+        await h.drive.put(.init(id: "old-month", name: "01", parentId: "old-root", kind: .folder, appProperties: schema, trashed: true))
+        let month = try #require(await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == "camera/2026/10" })
+        await h.drive.externallyTrash(month.id)
+        try await h.coordinator.untrashAppItems(.googleDrive)
+        #expect(await h.drive.items[month.id]?.trashed == false)
+        #expect(await h.drive.items["old-root"]?.trashed == true)
+        #expect(await h.drive.items["old-month"]?.trashed == true)
+    }
+
     @Test func healingLeavesFilesThatAreReallyGoneMissing() async throws {
         let h = try await driveLife()
         await h.drive.externallyTrash("root")
