@@ -53,6 +53,6 @@ struct ImportsCard: View {
     private func statusText(_ item: ImportSnapshot) -> String {
         if let reason = waitingReason(item) { return reason }
         let line = ImportProgressText.progressLine(item)
-        return line.isEmpty || item.status == .offline ? ImportProgressText.statusLabel(item) : line
+        return line.isEmpty || item.status == .offline || ImportProgressText.waitsForDisk(item) ? ImportProgressText.statusLabel(item) : line
     }
 }

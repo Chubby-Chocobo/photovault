@@ -19,8 +19,8 @@ public enum ImportProgressText {
     public static func statusLabel(_ item: ImportSnapshot) -> String {
         if waitsForDisk(item) {
             return tr(
-                vi: "Một số tệp đang chờ chỗ trống trên ổ đĩa; chúng sẽ được đọc khi đủ chỗ",
-                en: "Some files are waiting for free disk space; they will be read when there is room")
+                vi: "Một số file đang chờ ổ Mac có chỗ trống; sẽ được đọc khi đủ chỗ",
+                en: "Some files are waiting for free space on the Mac disk; they will be read when there is room")
         }
         guard item.status == .offline, item.kind == .googleDrive || item.kind == .dropbox else { return statusLabel(item.status) }
         return CloudImportText.needsSignIn(item)

@@ -79,7 +79,7 @@ public struct GooglePickerFlow: Sendable {
         do { code = try await server.awaitCode() } catch let error as LoopbackError {
             switch error {
             case .timeout: throw PickerError.timedOut
-            case .cancelled, .authorizationDenied: throw PickerError.cancelled
+            case .cancelled, .authorizationDenied("access_denied"): throw PickerError.cancelled
             case .requestTooLarge: throw PickerError.selectionTooLarge
             default: throw DestinationError.itemRejected(reason: "picker redirect \(error)")
             }

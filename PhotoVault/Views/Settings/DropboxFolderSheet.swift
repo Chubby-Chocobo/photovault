@@ -22,21 +22,32 @@ final class DropboxBrowserModel {
 
     var currentPath: String { trail.last?.path ?? "" }
 
+    /// Counts loads so a slow answer for a folder the owner has already left cannot replace the list.
+    @ObservationIgnored private var generation = 0
+
     func load() async {
         guard let client else { return }
+        generation += 1
+        let mine = generation
+        let path = currentPath
         loading = true
         failure = nil
-        defer { loading = false }
+        defer { if mine == generation { loading = false } }
         do {
             // Who is signed in must be known before anything can be imported.
             if email == nil { email = try await client.currentAccountEmail() }
-            folders = try await client.listFolders(path: currentPath).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            let found = try await client.listFolders(path: path).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            guard mine == generation else { return }
+            folders = found
         } catch SourceError.accessRevoked {
+            guard mine == generation else { return }
             folders = []
             failure = .signInRequired
         } catch is CancellationError {
+            guard mine == generation else { return }
             folders = []
         } catch {
+            guard mine == generation else { return }
             folders = []
             failure = .other
         }

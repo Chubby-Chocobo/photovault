@@ -102,8 +102,8 @@ import Testing
         let waiting = snapshot(kind: .dropbox, status: .scanning, reason: "diskFull")
         #expect(ImportProgressText.waitsForDisk(waiting))
         #expect(!ImportProgressText.waitsForDisk(snapshot(kind: .dropbox, status: .scanning)))
-        vi { #expect(ImportProgressText.statusLabel(waiting).contains("chỗ trống")) }
-        en { #expect(ImportProgressText.statusLabel(waiting).contains("free disk space")) }
+        vi { #expect(ImportProgressText.statusLabel(waiting).contains("file") && ImportProgressText.statusLabel(waiting).contains("ổ Mac")) }
+        en { #expect(ImportProgressText.statusLabel(waiting).contains("free space on the Mac disk")) }
     }
 
     @Test func registrationKeepsCloudRowsOnlyWithGrant() {

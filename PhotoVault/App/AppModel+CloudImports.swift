@@ -23,15 +23,18 @@ extension AppModel {
                 env.log.log(.info, category: "import", "google import not started: account unknown")
                 return showNotice(CloudImportText.accountUnverifiedStartNotice, isError: true)
             }
+            // The owner may have pressed Cancel while the token was being exchanged.
+            try Task.checkCancellation()
             let id = SourceID.folder()
             try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
-            let folderName = await source.singlePickedFolderName()
-            let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
-            let config = SourceConfig(
-                account: email, remoteItems: picked.pickedIds,
-                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
             do {
+                let folderName = await source.singlePickedFolderName()
+                let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
+                let config = SourceConfig(
+                    account: email, remoteItems: picked.pickedIds,
+                    sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
+                try Task.checkCancellation()
                 try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
             } catch {
                 try? DriveImportAuth.removeGrant(for: id, from: env.cloud.keychain)
@@ -65,6 +68,7 @@ extension AppModel {
     private func signInDropbox(_ env: AppEnvironment) async -> Bool {
         let stored: Bool? = await trackedFlow { [self] in
             let signIn = try await env.cloud.dropboxAuth().signIn()
+            try Task.checkCancellation()
             try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.dropbox).store(signIn)
             dropboxSignedIn = true
             env.log.log(.info, category: "import", "dropbox account signed in")
@@ -131,6 +135,7 @@ extension AppModel {
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
                 var config = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config } ?? SourceConfig()
                 let merged = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: picked.pickedIds)
+                try Task.checkCancellation()
                 try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
                 config.remoteItems = merged
                 config.account = config.account ?? picked.email
@@ -145,6 +150,7 @@ extension AppModel {
                 let signIn = try await env.cloud.dropboxAuth().signIn()
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: signIn.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: signIn.email) else { return refuseOtherAccount(item) }
+                try Task.checkCancellation()
                 try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.importGrant(id)).store(signIn)
                 // A job whose token was missing at launch has no adapter yet.
                 let root = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config.remoteItems?.first } ?? ""
@@ -179,7 +185,8 @@ extension AppModel {
             cloudFlowCancel = nil
         }
         do { return try await task.value } catch {
-            reportCloudFlowError(error)
+            // Pressing Cancel is quiet, whatever error the cancelled step ended with.
+            if !task.isCancelled { reportCloudFlowError(error) }
             return nil
         }
     }
@@ -206,6 +213,7 @@ extension AppModel {
     /// Cancel and timeout are the owner's own doing: quiet or a short notice, never an error banner.
     func reportCloudFlowError(_ error: any Error) {
         if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+        if case SourceError.cancelled = error { return }
         if let picker = error as? PickerError {
             switch picker {
             case .cancelled: return
@@ -222,6 +230,7 @@ extension AppModel {
             case .timedOut: showNotice(Self.signInTimedOut)
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
             case .denied: return // The owner pressed Cancel on Dropbox's page.
+            case .failed: showNotice(tr(vi: "Đăng nhập Dropbox không thành công. Hãy thử lại.", en: "Dropbox sign-in did not work. Try again."), isError: true)
             case .portInUse:
                 showNotice(tr(
                     vi: "Một ứng dụng khác đang dùng cổng đăng nhập Dropbox. Đóng nó rồi thử lại.",

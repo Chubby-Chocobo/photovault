@@ -7,8 +7,10 @@ public enum DropboxAuthError: Error, Equatable, Sendable {
     case browserUnavailable
     case cancelled
     case timedOut
-    /// The owner refused, or the redirect was not the one we started.
+    /// The owner refused on Dropbox's page.
     case denied
+    /// The redirect carried another error, or was not the one we started.
+    case failed
     case malformedResponse
     /// The fixed redirect port is taken by another program.
     case portInUse
@@ -77,7 +79,8 @@ public struct DropboxAuth: Sendable {
             switch error {
             case .timeout: throw DropboxAuthError.timedOut
             case .cancelled: throw DropboxAuthError.cancelled
-            default: throw DropboxAuthError.denied
+            case .authorizationDenied("access_denied"): throw DropboxAuthError.denied
+            default: throw DropboxAuthError.failed
             }
         }
         do {

@@ -153,6 +153,17 @@ private func components(_ url: URL) -> [String: String] {
         #expect(transport.requests.isEmpty)
     }
 
+    @Test func anotherErrorFromDropboxIsNotMistakenForTheOwnersCancel() async throws {
+        let transport = StubTransport { _ in StubResponse(status: 500) }
+        let failed = DropboxAuth(appKey: "K", transport: transport, openURL: { url in
+            let state = components(url)["state"] ?? ""
+            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:53694/oauth2/callback?error=invalid_scope&state=\(state)")!) }
+            return true
+        }, port: 53_694)
+        await #expect(throws: DropboxAuthError.failed) { try await failed.signIn() }
+        #expect(transport.requests.isEmpty)
+    }
+
     @Test func fixedPortServerBindsLoopback() async throws {
         let server = try LoopbackRedirectServer(expectedState: "st", port: DropboxAuth.redirectPort)
         let port = try await server.start()

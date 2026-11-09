@@ -11,6 +11,8 @@ extension AppModel {
     func factoryReset() async {
         guard let env, !factoryResetInProgress else { return }
         factoryResetInProgress = true
+        // A sign-in still open in the browser must not store a token after the sweep below.
+        cancelCloudFlow()
         showNotice(tr(vi: "Đang đặt lại PhotoVault…", en: "Resetting PhotoVault…"))
         let wasPaused = isPausedAll
         await env.coordinator.pauseAll()
