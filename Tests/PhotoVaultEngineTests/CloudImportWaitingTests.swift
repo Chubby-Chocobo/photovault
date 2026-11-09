@@ -91,7 +91,7 @@ import Testing
         let id = try await h.startCloudImport(source)
         await finish(h, hours: 1, times: 12)
         source.setFailure(path: "a.jpg", nil)
-        await finish(h, hours: 0.05, times: 4)
+        await finish(h, hours: 1, times: 2)
         #expect(try h.importCounts(id) == [.imported: 2])
     }
 

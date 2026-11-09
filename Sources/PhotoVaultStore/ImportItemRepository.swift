@@ -20,11 +20,19 @@ public enum ImportItemRepository {
 
     /// Pending items of up to `limit` whole groups, ordered by group then path. A group is never split.
     /// Groups named in `excluding` are left out, so a group that cannot be read now does not hide the others.
-    public static func nextGroups(_ db: Database, sourceId: SourceID, limit: Int, excluding: Set<String> = []) throws -> [[ImportItem]] {
+    /// With `only`, just those groups are considered.
+    public static func nextGroups(
+        _ db: Database, sourceId: SourceID, limit: Int, excluding: Set<String> = [], only: Set<String>? = nil
+    ) throws -> [[ImportItem]] {
         let skipped = excluding.sorted()
-        let marks = skipped.isEmpty ? "" : "AND group_key NOT IN (\(Array(repeating: "?", count: skipped.count).joined(separator: ", ")))"
+        let wanted = only?.sorted() ?? []
+        func marks(_ count: Int) -> String { Array(repeating: "?", count: count).joined(separator: ", ") }
+        var filter = skipped.isEmpty ? "" : "AND group_key NOT IN (\(marks(skipped.count)))"
+        if only != nil { filter += wanted.isEmpty ? " AND 0" : " AND group_key IN (\(marks(wanted.count)))" }
+        let marks = filter
         var values: [any DatabaseValueConvertible] = [sourceId.rawValue, sourceId.rawValue]
         values += skipped
+        values += wanted
         values.append(limit)
         let arguments = StatementArguments(values.map(\.databaseValue))
         let rows = try Row.fetchAll(db, sql: """

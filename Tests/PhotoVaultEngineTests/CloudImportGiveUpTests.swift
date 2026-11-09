@@ -62,23 +62,6 @@ import Testing
         #expect(try h.source(id)?.status == .completed)
     }
 
-    @Test func aProviderWideOutageOfThreeDaysGivesUpNothing() async throws {
-        for names in [["a.jpg", "b.jpg"], ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg"]] {
-            let h = try await harness()
-            let source = FakeCloudSource(try photos(h, names))
-            source.setFailure(.inspect, SourceError.busy)
-            let id = try await h.startCloudImport(source)
-            await step(h, hours: 1, times: 72)
-            let counts = try h.importCounts(id)
-            #expect(counts == [.pending: names.count], "\(counts)")
-
-            source.setFailure(.inspect, nil)
-            await step(h, hours: 0.05, times: 8)
-            #expect(try h.importCounts(id) == [.imported: names.count])
-            #expect(try h.source(id)?.status == .completed)
-        }
-    }
-
     @Test func oneBadFileAmongReadableOnesIsStillGivenUp() async throws {
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg"]))

@@ -96,3 +96,20 @@ final class CountingContentSource: ContentSource, @unchecked Sendable {
         return try await inner.exportResource(locator, to: destination, control: control)
     }
 }
+
+/// Each read takes a little time on the harness clock, as a real download does.
+final class SlowCloudSource: FolderImportSource, @unchecked Sendable {
+    private let inner: FakeCloudSource
+    private let tick: @Sendable () -> Void
+    init(_ inner: FakeCloudSource, tick: @escaping @Sendable () -> Void) { self.inner = inner; self.tick = tick }
+    var id: SourceID { inner.id }
+    func probe() async throws { try await inner.probe() }
+    func listFiles() async throws -> [FolderFileEntry] { try await inner.listFiles() }
+    func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
+        tick()
+        return try await inner.inspect(relativePath: relativePath, uti: uti, mediaType: mediaType, control: control)
+    }
+    func exportResource(_ locator: ResourceLocator, to destination: URL, control: ExportControl) async throws -> ExportedFile {
+        try await inner.exportResource(locator, to: destination, control: control)
+    }
+}

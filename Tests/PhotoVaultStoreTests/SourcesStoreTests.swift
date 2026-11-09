@@ -142,6 +142,19 @@ extension AssetRepository {
         }
     }
 
+    @Test func onlyTheNamedGroupsAreConsidered() async throws {
+        let store = try Store.inMemory()
+        try await store.write { db in
+            try ImportItemRepository.insertIgnoring(db, [item("a.jpg"), item("b.jpg"), item("c.jpg"), item("d.jpg")])
+            func key(_ path: String) -> String { FolderItemGrouper.groupKey(relativePath: path) }
+            let only = try ImportItemRepository.nextGroups(db, sourceId: source, limit: 10, only: [key("b.jpg"), key("d.jpg")])
+            #expect(only.map { $0.map(\.relativePath) } == [["b.jpg"], ["d.jpg"]])
+            let limited = try ImportItemRepository.nextGroups(db, sourceId: source, limit: 1, excluding: [key("b.jpg")], only: [key("b.jpg"), key("d.jpg")])
+            #expect(limited.map { $0.map(\.relativePath) } == [["d.jpg"]])
+            #expect(try ImportItemRepository.nextGroups(db, sourceId: source, limit: 10, only: []).isEmpty)
+        }
+    }
+
     @Test func cancelPendingLeavesFinishedItems() async throws {
         let store = try Store.inMemory()
         try await store.write { db in
