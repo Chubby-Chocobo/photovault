@@ -15,16 +15,20 @@ struct ScopePicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            option(.full, "Toàn bộ thư viện", "Mọi ảnh và video hiện có, mới nhất trước.", count: totalCount)
-            option(.since, "Từ một ngày", nil, count: sinceCount) {
+            option(
+                .full, tr(vi: "Toàn bộ thư viện", en: "Entire library"),
+                tr(vi: "Mọi ảnh và video hiện có, mới nhất trước.", en: "All existing photos and videos, newest first."), count: totalCount)
+            option(.since, tr(vi: "Từ một ngày", en: "From a date"), nil, count: sinceCount) {
                 HStack {
-                    Text("Từ")
-                    DatePicker("Ngày bắt đầu", selection: $sinceDate, in: ...Date(), displayedComponents: .date)
+                    Text(tr(vi: "Từ", en: "From"))
+                    DatePicker(tr(vi: "Ngày bắt đầu", en: "Start date"), selection: $sinceDate, in: ...Date(), displayedComponents: .date)
                         .labelsHidden()
                         .onChange(of: sinceDate) { _, _ in select(.since) }
                 }
             }
-            option(.newOnly, "Chỉ ảnh mới", "Không backup ảnh đang có.", count: showCounts ? 0 : nil)
+            option(
+                .newOnly, tr(vi: "Chỉ ảnh mới", en: "New photos only"),
+                tr(vi: "Không backup ảnh đang có.", en: "Existing photos are not backed up."), count: showCounts ? 0 : nil)
             Banner(.info, title: SyncModeChoice.newPhotoNote)
         }
         .onAppear {
@@ -75,7 +79,9 @@ struct ScopePicker: View {
                     extra()
                 }
                 Spacer(minLength: 0)
-                if showCounts, let count { Text("\(VietnameseFormat.integer(count)) asset").monospacedDigit().foregroundStyle(.secondary) }
+                if showCounts, let count { Text(tr(
+                        vi: "\(VietnameseFormat.integer(count)) asset",
+                        en: L10n.plural(count, one: "1 asset", other: "\(VietnameseFormat.integer(count)) assets"))).monospacedDigit().foregroundStyle(.secondary) }
             }
             .contentShape(Rectangle())
         }

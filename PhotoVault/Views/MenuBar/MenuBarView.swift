@@ -11,7 +11,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 10) {
             switch model.phase {
             case .launching:
-                ProgressView("Đang khởi động…").frame(maxWidth: .infinity)
+                ProgressView(tr(vi: "Đang khởi động…", en: "Starting…")).frame(maxWidth: .infinity)
             case .needsOnboarding:
                 OnboardingPrompt()
             case .running:
@@ -31,9 +31,9 @@ private struct OnboardingPrompt: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Chào mừng đến PhotoVault").font(.headline)
-            Text("Hoàn tất thiết lập lần đầu để bắt đầu backup ảnh.").font(.callout).foregroundStyle(.secondary)
-            Button("Mở thiết lập…") { model.open(.onboarding) }.buttonStyle(.borderedProminent)
+            Text(tr(vi: "Chào mừng đến PhotoVault", en: "Welcome to PhotoVault")).font(.headline)
+            Text(tr(vi: "Hoàn tất thiết lập lần đầu để bắt đầu backup ảnh.", en: "Finish the first-time setup to start backing up photos.")).font(.callout).foregroundStyle(.secondary)
+            Button(tr(vi: "Mở thiết lập…", en: "Open setup…")) { model.open(.onboarding) }.buttonStyle(.borderedProminent)
         }
     }
 }
@@ -84,7 +84,7 @@ private struct OverallHeader: View {
 
     private var overall: OverallPresentation {
         guard let snapshot = model.snapshot else {
-            return OverallPresentation(title: "Đang kiểm tra…", subtitle: "", tone: .ok, isWorking: false)
+            return OverallPresentation(title: tr(vi: "Đang kiểm tra…", en: "Checking…"), subtitle: "", tone: .ok, isWorking: false)
         }
         return OverallStatusText.make(snapshot: snapshot, disk: model.diskState, settings: model.persistedSettings, now: Date())
     }
@@ -99,13 +99,14 @@ private struct BackfillSection: View {
                 HStack {
                     Text("Backfill").font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text("\(VietnameseFormat.integer(snapshot.backfillDoneAssets)) / \(VietnameseFormat.integer(snapshot.backfillTotalAssets)) asset")
+                    Text("\(VietnameseFormat.integer(snapshot.backfillDoneAssets)) / \(VietnameseFormat.integer(snapshot.backfillTotalAssets)) "
+                        + tr(vi: "asset", en: L10n.plural(snapshot.backfillTotalAssets, one: "asset", other: "assets")))
                         .font(.caption).monospacedDigit()
                 }
                 ProgressBar(fraction: ProgressText.fraction(done: snapshot.backfillDoneAssets, total: snapshot.backfillTotalAssets))
-                    .accessibilityLabel("Tiến độ backfill")
+                    .accessibilityLabel(tr(vi: "Tiến độ backfill", en: "Backfill progress"))
                 HStack {
-                    Text("Đã upload \(VietnameseFormat.bytes(snapshot.bytesUploaded))")
+                    Text(tr(vi: "Đã upload \(VietnameseFormat.bytes(snapshot.bytesUploaded))", en: "Uploaded \(VietnameseFormat.bytes(snapshot.bytesUploaded))"))
                     Spacer()
                     if snapshot.backfillDoneAssets < snapshot.backfillTotalAssets { Text(ProgressText.eta(seconds: snapshot.etaSeconds)) }
                 }
@@ -124,10 +125,10 @@ private struct CountersSection: View {
 
     var body: some View {
         HStack {
-            counter(snapshot.pending, "Chờ", "pending")
-            counter(snapshot.deferred, "Hoãn", "deferred")
-            counter(snapshot.skipped, "Bỏ qua", "skipped")
-            counter(snapshot.missingRemote, "Thiếu ở đích", "missingRemote", alert: true)
+            counter(snapshot.pending, tr(vi: "Chờ", en: "Pending"), "pending")
+            counter(snapshot.deferred, tr(vi: "Hoãn", en: "Deferred"), "deferred")
+            counter(snapshot.skipped, tr(vi: "Bỏ qua", en: "Skipped"), "skipped")
+            counter(snapshot.missingRemote, tr(vi: "Thiếu ở đích", en: "Missing at destination"), "missingRemote", alert: true)
         }
     }
 
