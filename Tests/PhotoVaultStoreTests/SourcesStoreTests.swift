@@ -188,7 +188,37 @@ extension AssetRepository {
         }
         let rows = [row(.scanning, bookmark: Data([1])), row(.completed, bookmark: Data([2])), row(.cancelled, bookmark: Data([3])), row(.completed, bookmark: nil)]
         try await store.write { db in for r in rows { try SourceRepository.insert(db, r) } }
-        let needed = try await store.read { db in try SourceRepository.withBookmarks(db) }
+        let needed = try await store.read { db in try SourceRepository.readableImports(db) }
         #expect(Set(needed.map(\.id)) == Set(rows.prefix(3).map(\.id)))
+    }
+}
+
+@Suite struct CloudSourceRowsTests {
+    @Test func readableImportsIncludeEveryCloudRowAndMacFoldersWithABookmark() async throws {
+        let store = try Store.inMemory()
+        func row(_ kind: SourceKind, bookmark: Data? = nil) -> SourceRecord {
+            SourceRecord(id: .folder(), kind: kind, mode: .oneTime, displayName: "x", config: SourceConfig(bookmark: bookmark), status: .completed, createdAt: t0)
+        }
+        let rows = [row(.localFolder, bookmark: Data([1])), row(.localFolder), row(.googleDrive), row(.dropbox)]
+        try await store.write { db in for r in rows { try SourceRepository.insert(db, r) } }
+        let readable = try await store.read { db in try SourceRepository.readableImports(db) }
+        #expect(Set(readable.map(\.id)) == Set([rows[0], rows[2], rows[3]].map(\.id)))
+    }
+
+    @Test func aCloudRowKeepsItsKindAndConfig() async throws {
+        let store = try Store.inMemory()
+        let record = SourceRecord(
+            id: .folder(), kind: .googleDrive, mode: .oneTime, displayName: "Trip",
+            config: SourceConfig(account: "a@b.c", remoteItems: ["1", "2"]), status: .scanning, createdAt: t0)
+        try await store.write { db in try SourceRepository.insert(db, record) }
+        let back = try await store.read { db in try SourceRepository.fetch(db, id: record.id) }
+        #expect(back == record)
+    }
+
+    @Test func aConfigWrittenBeforeCloudImportsStillDecodes() throws {
+        let old = Data(#"{"bookmark":"AQID"}"#.utf8)
+        let config = try JSONDecoder().decode(SourceConfig.self, from: old)
+        #expect(config.bookmark == Data([1, 2, 3]) && config.account == nil && config.remoteItems == nil)
+        #expect(try JSONDecoder().decode(SourceConfig.self, from: Data("{}".utf8)) == SourceConfig())
     }
 }

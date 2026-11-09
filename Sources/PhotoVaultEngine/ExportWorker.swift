@@ -273,7 +273,7 @@ actor ExportWorker {
             }
         case .destinationLevel, .transient, .verify:
             if case .destinationLevel = classification {
-                if folder != nil { try await holdSource(of: started.asset, at: now) } else { photosLost = true }
+                if folder != nil { try await holdSource(of: started.asset, at: now, reason: folder == .accessRevoked ? SourceStatusReason.signInRequired : SourceStatusReason.unavailable) } else { photosLost = true }
             }
             let delay = retryDelay
             // A folder that is away is waiting, not failing: no error is recorded against the file.

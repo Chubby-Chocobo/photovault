@@ -25,10 +25,11 @@ public enum SourceRepository {
         try Row.fetchAll(db, sql: "SELECT * FROM source ORDER BY created_at, id").map(decode)
     }
 
-    /// Sources that need an adapter when the app starts: every folder source with a bookmark, finished or not.
-    /// A finished import's files may still be read for a destination added later.
-    public static func withBookmarks(_ db: Database) throws -> [SourceRecord] {
-        try fetchAll(db).filter { $0.kind == .localFolder && $0.config.bookmark != nil }
+    /// Imports that may need an adapter when the app starts: Mac folders with a bookmark and every cloud
+    /// import, finished or not (a finished import's files may still be read for a destination added later).
+    /// The app drops cloud rows whose stored grant is gone.
+    public static func readableImports(_ db: Database) throws -> [SourceRecord] {
+        try fetchAll(db).filter { $0.kind.isImport && ($0.kind != .localFolder || $0.config.bookmark != nil) }
     }
 
     /// `finished_at` is set when the job reaches `completed` or `cancelled`, and cleared otherwise.

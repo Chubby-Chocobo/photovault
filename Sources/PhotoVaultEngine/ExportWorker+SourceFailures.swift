@@ -26,24 +26,26 @@ extension ExportWorker {
 
     /// How a folder error is handled. A folder that is away holds an open import (the import comes
     /// back by itself). For a finished or cancelled import the file is lost only when nothing can
-    /// reopen it (its row is gone or has no bookmark); otherwise the export waits, quietly, for the folder.
+    /// reopen it (its row is gone or, for a Mac folder, has no bookmark); otherwise the export waits, quietly, for the folder.
     func classifyFolderFailure(_ error: SourceError, asset: AssetRecord) async throws -> (errorClass: ErrorClass, retryDelay: TimeInterval) {
         let base = ErrorClassifier.classify(error)
         guard case .destinationLevel = base else { return (base, Self.transientRetryDelay) }
         let id = asset.sourceId
         let source = try await env.store.read { db in try SourceRepository.fetch(db, id: id) }
         if source?.status.isOpen == true { return (base, Self.transientRetryDelay) }
-        guard let source, source.config.bookmark != nil else { return (.permanent(.resourceMissing), Self.transientRetryDelay) }
+        // A revoked grant cannot be waited out; the job is skipped and can be retried after signing in.
+        if error == .accessRevoked { return (.permanent(.resourceMissing), Self.transientRetryDelay) }
+        guard let source, source.kind.isImport, source.kind != .localFolder || source.config.bookmark != nil else { return (.permanent(.resourceMissing), Self.transientRetryDelay) }
         return (base, Self.closedSourceRetry)
     }
 
     /// A folder that cannot be read holds only its own job: the source row goes `offline` (its assets
     /// leave the export candidates) and Photos exports carry on. The import stage brings it back.
-    func holdSource(of asset: AssetRecord, at now: Date) async throws {
+    func holdSource(of asset: AssetRecord, at now: Date, reason: String = SourceStatusReason.unavailable) async throws {
         let id = asset.sourceId
         try await env.store.write { db in
             guard let source = try SourceRepository.fetch(db, id: id), source.status == .scanning || source.status == .importing else { return }
-            try SourceRepository.setStatus(db, id: id, status: .offline, reason: "unavailable", now: now)
+            try SourceRepository.setStatus(db, id: id, status: .offline, reason: reason, now: now)
         }
         env.log.log(.notice, category: "source", "source unavailable; holding its exports")
     }

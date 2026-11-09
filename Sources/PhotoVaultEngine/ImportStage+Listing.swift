@@ -8,6 +8,9 @@ extension ImportStage {
         let entries: [FolderFileEntry]
         do {
             entries = try await folder.listFiles()
+        } catch SourceError.accessRevoked {
+            try await holdForSignIn(source.id)
+            return true
         } catch is SourceError {
             try await hold(source.id)
             return true

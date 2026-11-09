@@ -3,6 +3,12 @@ import GRDB
 import PhotoVaultCore
 import PhotoVaultStore
 
+/// Machine reasons stored with an offline import (`source.status_reason`).
+enum SourceStatusReason {
+    static let unavailable = "unavailable"
+    static let signInRequired = "signInRequired"
+}
+
 /// When each job was last held, so a folder that comes and goes cannot keep the cycle busy.
 final class ImportHolds: @unchecked Sendable {
     /// A held job is not probed again before this much time has passed.
@@ -35,7 +41,7 @@ struct ImportStage: CycleStage {
 
     func run(trigger: SyncTrigger) async throws -> Bool {
         let open = try await env.store.read { db in
-            try SourceRepository.fetchAll(db).filter { $0.kind == .localFolder && $0.status.isOpen }
+            try SourceRepository.fetchAll(db).filter { $0.kind.isImport && $0.status.isOpen }
         }
         var changed = false
         for source in open {
@@ -74,15 +80,26 @@ struct ImportStage: CycleStage {
         do {
             try await folder.probe()
             return true
+        } catch SourceError.accessRevoked {
+            if source.status != .offline || source.statusReason != SourceStatusReason.signInRequired { try await holdForSignIn(source.id) }
+            return false
         } catch is SourceError {
             if source.status != .offline { try await hold(source.id) }
             return false
         }
     }
 
+    /// A grant the provider no longer accepts: waiting does not help, so the job says so and stays held
+    /// until the adapter answers again (the owner signed in).
+    func holdForSignIn(_ id: SourceID) async throws {
+        holds.mark(id, at: env.clock.now)
+        try await setStatus(id, .offline, reason: SourceStatusReason.signInRequired)
+        env.log.log(.notice, category: "import", "source access revoked; import held")
+    }
+
     func hold(_ id: SourceID) async throws {
         holds.mark(id, at: env.clock.now)
-        try await setStatus(id, .offline, reason: "unavailable")
+        try await setStatus(id, .offline, reason: SourceStatusReason.unavailable)
         env.log.log(.notice, category: "import", "source unavailable; import held")
     }
 
