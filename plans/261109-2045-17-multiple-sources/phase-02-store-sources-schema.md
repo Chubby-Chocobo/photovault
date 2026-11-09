@@ -1,7 +1,7 @@
 ---
 phase: 02
 title: "Store: sources schema"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 0.5-1h
