@@ -91,7 +91,7 @@ struct AppEnvironment: Sendable {
         let store: Store
         let settings: SettingsStore
         do {
-            store = try Store.open(at: layout.database, backups: backups)
+            store = try Self.openStore(at: layout.database, backups: backups, log: log)
             settings = try SettingsStore(store: store)
         } catch {
             log.log(.fault, category: "launch", "database could not be opened: \(type(of: error))")
@@ -173,3 +173,18 @@ enum DestinationBuilder {
 }
 
 extension DestinationRecord: @retroactive Identifiable {}
+
+extension AppEnvironment {
+    /// Opens the database; when the file is corrupt, swaps in the newest good backup (FR-52) and every
+    /// destination then recovers from what it holds (FR-51). Other failures are not "fixed" this way.
+    private static func openStore(at url: URL, backups: DatabaseBackup, log: AppLogSink) throws -> Store {
+        do {
+            return try Store.open(at: url, backups: backups)
+        } catch where DatabaseBackup.isCorruption(error) {
+            log.log(.fault, category: "launch", "database is corrupt; restoring the newest backup")
+            guard let restored = try backups.restoreNewest(to: url) else { throw error }
+            log.log(.notice, category: "launch", "database restored from backup; destinations will recover")
+            return restored
+        }
+    }
+}
