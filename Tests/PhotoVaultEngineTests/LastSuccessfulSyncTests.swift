@@ -22,6 +22,18 @@ import Testing
         #expect(try lastSync(h) == nil)
     }
 
+    /// iCloud does not deliver the original for days: nothing is uploaded and the owner must be told.
+    @Test func exportsThatKeepFailingAreNotASuccess() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("p", daysAgo: 1), recordChange: false)
+        await h.fakePhotos.failExports(of: "p", times: 1_000)
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        #expect(try h.jobs(.done).isEmpty)
+        #expect(try lastSync(h) == nil)
+    }
+
     /// On battery with "backfill only on AC power", nothing is exported or uploaded, by the owner's rule.
     @Test func workHeldByTheOwnersRulesIsNotAFailure() async throws {
         let h = try await Harness()

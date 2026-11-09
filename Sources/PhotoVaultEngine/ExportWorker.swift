@@ -270,6 +270,7 @@ actor ExportWorker {
             if case .destinationLevel = classification { photosLost = true }
             try await env.store.write { db in
                 try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(Self.transientRetryDelay))
+                try ResourceRepository.noteExportError(db, key: key, type: type, message: message)
             }
         case .itemLevel:
             let delay = Backoff().delay(forAttempt: started.resource.exportAttempts)
