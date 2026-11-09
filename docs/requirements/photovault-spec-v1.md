@@ -28,11 +28,11 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 5. Không upload trùng, kể cả khi mất DB hoặc library bị rebuild. Chịu được crash, sleep, mất mạng, NAS bị ngắt.
 6. Không làm đầy ổ Mac.
 7. Phát hiện backup bị mất; không im lặng.
-8. Quyền tối thiểu: Photos (không Full Disk Access), `drive.file`, chỉ thư mục do owner chọn.
-9. Nhiều nguồn, cùng một cách tổ chức: Photos là nguồn chính, liên tục; có thể nhập một lần từ một thư mục trên Mac, và các nguồn khác sẽ thêm sau (sửa đổi 2026-11-09, issue #17, quyết định 0024).
+8. Quyền tối thiểu: Photos (không Full Disk Access), `drive.file`, Dropbox chỉ đọc, chỉ thư mục hoặc file do owner chọn.
+9. Nhiều nguồn, cùng một cách tổ chức: Photos là nguồn chính, liên tục; có thể nhập một lần từ một thư mục trên Mac, Google Drive hoặc Dropbox (sửa đổi 2026-11-10, quyết định 0026); nguồn liên tục khác sẽ thêm sau (sửa đổi 2026-11-09, issue #17, quyết định 0024).
 **Phi mục tiêu:**
 - **Không bao giờ xoá dữ liệu backup** ở bất kỳ đích nào. Không sync hai chiều. Không sửa Photos library.
-- Không làm: Google Photos, S3, OneDrive, mã hoá phía client, backend, telemetry, phân phối. (Dropbox và nhiều tài khoản Google: chuyển sang "để sau", §15; sửa đổi 2026-11-09, issue #17, quyết định 0024.)
+- Không làm: Google Photos, S3, OneDrive, mã hoá phía client, backend, telemetry, phân phối. (Nguồn liên tục từ Dropbox và nhiều tài khoản Google: chuyển sang "để sau", §15; sửa đổi 2026-11-09, issue #17, quyết định 0024. Nhập một lần từ Dropbox và Google Drive: quyết định 0026.)
 - Không hỗ trợ nhiều library Photos.
 ## 3. Thuật ngữ
  
@@ -358,7 +358,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Thành viên: asset `camera` có GPS và ô đã geocode ra quốc gia + tỉnh.
 - Khoá = `isoCountryCode` + `administrativeArea` ở locale **`en`**; tên hiển thị theo FR-82 (tên nước tiếng Anh).
 - Kết quả geocode cố định; nút "Làm mới địa danh" xoá cache rồi geocode lại.
-### 4.13 Nguồn & nhập một lần (sửa đổi 2026-11-09, issue #17, quyết định 0024)
+### 4.13 Nguồn & nhập một lần (sửa đổi 2026-11-09, issue #17, quyết định 0024; bổ sung 2026-11-10, quyết định 0026)
 
 **FR-110 Danh sách nguồn:** Settings › Nguồn có "Nguồn liên tục" (Photos, luôn đứng đầu) và "Nhập một lần" (các import job: đang chạy trước, đã xong sau). Photos vẫn cần quyền và baseline trước khi một import chạy.
 **FR-111 Nhập từ thư mục:** owner chọn thư mục bằng `NSOpenPanel`; app giữ security-scoped bookmark chỉ-đọc, duyệt đệ quy, bỏ file ẩn, package (kể cả `.photoslibrary`) và symlink, không bao giờ ghi vào thư mục. Chỉ nhận ảnh và video (RAW gồm trong đó).
@@ -367,6 +367,11 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 **FR-114 Không trùng:** file là trùng khi khoá `x:` đã có hoặc khi một asset đang sống có resource cùng SHA-256. Khi chưa có hash, chỉ với asset Photos chưa export và chỉ khi ngày của file lấy từ EXIF/metadata video (không phải ngày file): cùng giây chụp, cùng tên gốc (không phân biệt hoa thường) và cùng kích thước ảnh (hai chiều theo thứ tự nào cũng được) hoặc thời lượng (±0,5 giây). Không bao giờ bỏ một file khác nội dung vì đoán. File trùng chỉ được đếm. Asset nhập là "mới đến" (`inserted_at` = lúc nhập, job `incremental`).
 **FR-115 Huỷ:** ngừng nhập; file chưa quyết định → `cancelled`; asset của job có job chưa xong bị coi như đã xoá (job pending/deferred bị huỷ, file đã upload giữ nguyên). Nhập lại cùng thư mục sẽ nhặt lại phần thiếu.
 **FR-116 Tiến độ và tóm tắt:** Settings và menu bar hiện: đọc (đã xử lý / tìm thấy) và upload (job xong / job của import, mọi đích), số trùng, bỏ qua, lỗi. Khi xong có đúng một dòng trong Hoạt động gần đây (chỉ số, không tên) và một thông báo macOS (có thể nêu tên thư mục). Thư mục không truy cập được (ổ rút ra) giữ riêng job đó ở `offline` và tự tiếp tục; Photos không bị ảnh hưởng.
+**FR-119 Nhập từ Google Drive (quyết định 0026):** Settings › Nguồn › Nhập ảnh… › Từ Google Drive… mở luồng Google Picker trên trình duyệt: đăng nhập bằng tài khoản Google owner chọn (có thể khác tài khoản đích), đăng nhập qua loopback `127.0.0.1`, cùng client Desktop với đăng nhập Drive, scope `drive.file` duy nhất. Owner chọn file và/hoặc thư mục. App liệt kê file đã chọn và phần con của thư mục mà Google cho đọc (đệ quy). Bỏ qua Google Docs, shortcut, file trong thùng rác và file có `appProperties` khoá `pv…` (do app tải lên). Tên trùng trong cùng thư mục nhận đường dẫn khác nhau. Chỉ đọc: không ghi gì vào Drive của owner.
+**FR-120 Nhập từ Dropbox (quyết định 0026):** owner đăng nhập Dropbox một lần (PKCE, redirect `http://localhost:53682/oauth2/callback`, chỉ `files.metadata.read`, `files.content.read`, `account_info.read`), rồi chọn thư mục hoặc toàn bộ Dropbox trong trình duyệt thư mục của app (chỉ hiện thư mục). Liệt kê đệ quy theo cursor, tải file stream xuống đĩa. Không có App key trong build thì mục Dropbox bị tắt kèm gợi ý, không crash.
+**FR-121 Mất quyền (quyết định 0026):** token bị thu hồi (`invalid_grant`, hoặc 401 vẫn lỗi sau một lần làm mới) → import đang mở chuyển `offline` với lý do "cần đăng nhập lại" và giữ job; hành động đăng nhập lại chạy lại luồng bắt đầu. Import đã đóng: job bị bỏ qua (`resourceMissing`) để owner thử lại. Lỗi mạng không phải mất quyền: import đang mở giữ `offline` và tự tiếp tục (FR-116).
+**FR-122 Token (quyết định 0026):** mỗi import cloud giữ refresh token riêng trong Keychain (`import-<sourceId>`) và được đăng ký lại khi khởi động nếu token còn. Tài khoản Dropbox dùng để duyệt thư mục được lưu riêng. Đăng xuất hoặc đổi tài khoản không làm hỏng import đã xong. Bắt đầu lại (FR-117) xoá mọi token này.
+**FR-123 Riêng tư nhập cloud (quyết định 0026):** log và Hoạt động gần đây không có tên file, đường dẫn, id thư mục hay email. Email và tên thư mục chỉ hiện trong Settings, thẻ menu bar và thông báo hoàn tất.
 
 ## 5. NFR
  
@@ -408,7 +413,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 3. Gặp `localIdentifier` lạ (library rebuild, đăng xuất iCloud) → tra cloud ID → **gắn lại** vào asset cũ; không có thì là asset mới.
 4. FR-53 bổ sung cloud ID cho asset `l:`.
 5. [VERIFY M0-2] cloud ID có ổn định qua rebuild/đăng xuất iCloud không; độ dài.
-6. File nhập từ thư mục (FR-111) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Nguồn liên tục khác (để sau) sẽ dùng `s:<sourceId>/<itemId>`.
+6. File nhập từ thư mục (FR-111), Google Drive (FR-119) hoặc Dropbox (FR-120) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Nguồn liên tục khác (để sau) sẽ dùng `s:<sourceId>/<itemId>`.
 **Placement** (`placement_category`, `placement_day` hoặc `unknown`, `name_stem`):
 - Chốt ngay khi có category chính thức, trước khi export bất kỳ resource nào để upload.
 - Dùng cho mọi file của asset ở mọi đích.
@@ -595,7 +600,7 @@ Tiền đề: scan `complete` + FR-53 xong.
  
 - Không backend/analytics/crash reporter.
 - Token chỉ ở Keychain; revoke khi đăng xuất.
-- Quyền: Photos, network, notification, thư mục do owner chọn. **Không** Full Disk Access, **không** đọc trực tiếp `Photos Library.photoslibrary`.
+- Quyền: Photos, network, notification, thư mục do owner chọn; file Google Drive do owner chọn trong Picker (`drive.file`); Dropbox chỉ đọc. **Không** Full Disk Access, **không** đọc trực tiếp `Photos Library.photoslibrary`.
 - Toạ độ làm tròn ~1 km gửi Apple (tắt được).
 - Sidecar chứa vị trí/album → nhắc owner cân nhắc rule theo đích.
 - Hidden mặc định không upload. Không mã hoá phía client (README nói rõ).
@@ -710,7 +715,7 @@ Tiền đề: scan `complete` + FR-53 xong.
  
 - S3-compatible với layout stable `YYYY/MM` (không move), multipart + resume, key không có quyền xoá, Object Lock.
 - OneDrive, WebDAV, Immich.
-- Nguồn liên tục ngoài Photos (Dropbox, Flickr, Drive của tài khoản Google khác) và nhập một lần từ Google Drive hoặc cloud khác; Google Takeout và Photos Picker cho tài khoản Google khác (quyết định 0024, issue #17).
+- Nguồn liên tục ngoài Photos (Dropbox, Flickr, Drive của tài khoản Google khác); Google Takeout và Photos Picker cho tài khoản Google khác (quyết định 0024, issue #17). Nhập một lần từ Google Drive và Dropbox đã làm (quyết định 0026).
 - Mã hoá phía client.
 - View `By lens`, `Albums`.
 - Layout gom sự kiện/chuyến đi.

@@ -1,6 +1,6 @@
 # PhotoVault
 
-Personal macOS menu-bar app. It backs up the Photos library (originals and edits) to one Google Drive folder and to any number of local or NAS folders. It never deletes backup data and never changes the Photos library. Photos is the main, ongoing source; Settings › Nguồn (Sources) can also import a folder of photos from this Mac once, and the imported files get the same folder layout, names and sidecars as Photos assets ([decision 0024](docs/decisions/0024-multiple-sources-and-folder-import.md)).
+Personal macOS menu-bar app. It backs up the Photos library (originals and edits) to one Google Drive folder and to any number of local or NAS folders. It never deletes backup data and never changes the Photos library. Photos is the main, ongoing source; Settings › Nguồn (Sources) can also import a folder once: a folder on this Mac, or a folder on Google Drive or Dropbox. The imported files get the same folder layout, names and sidecars as Photos assets ([decision 0024](docs/decisions/0024-multiple-sources-and-folder-import.md), [decision 0026](docs/decisions/0026-cloud-folder-imports.md)).
 
 > **Status:** the engine, the core packages, the menu bar, onboarding and Settings are in the repo. Of the M0 spikes, M0-1b and M0-5 ran on 2026-11-09 and M0-6 ran too (its 24-hour repeat is still due); M0-1, M0-2, M0-3 and M0-4 are pending an owner run, so several defaults are unverified. See [docs/spikes/README.md](docs/spikes/README.md).
 
@@ -24,6 +24,7 @@ Other references: the full spec is [docs/requirements/photovault-spec-v1.md](doc
 - macOS 14 or later (`MACOSX_DEPLOYMENT_TARGET = 14.0`).
 - Xcode 26 with Swift 6.1 or later (`swift-tools-version:6.1`).
 - A Google account for Drive (a personal Gmail account works).
+- A Dropbox account and a Dropbox app, only if you use the Dropbox import (see [Dropbox setup](#dropbox-setup)).
 - An Apple ID, for a free Personal Team (only needed to run the signed app).
 
 ## Build and test
@@ -52,14 +53,15 @@ Do this once, in your own Google account. The app cannot do it for you.
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project.
 2. APIs & Services → Library → **Google Drive API** → Enable.
-3. APIs & Services → OAuth consent screen:
+3. APIs & Services → Library → **Google Picker API** → Enable. It is used only for the one-time import from Google Drive. It needs no API key.
+4. APIs & Services → OAuth consent screen:
    - User type **External**. Fill in the app name and your e-mail address.
-   - Add the scopes `https://www.googleapis.com/auth/drive.file`, `openid` and `email`. `drive.file` gives access only to files the app creates.
+   - Add the scopes `https://www.googleapis.com/auth/drive.file`, `openid` and `email`. `drive.file` gives access only to files the app creates, and to files you pick in the Picker.
    - Branding: home page `https://photovault.annh.dev`, privacy policy `https://photovault.annh.dev/privacy`, terms of service `https://photovault.annh.dev/terms`, authorized domain `annh.dev` (see [Website](#website)).
-4. On the same screen, click **Publish app** so the status shows **In production**. In *Testing* mode, refresh tokens expire after 7 days, and the backups would stop each week.
-5. When you sign in, Google shows an "unverified app" screen. This is expected for a personal app. Click **Advanced**, then continue to the app.
-6. APIs & Services → Credentials → **Create credentials** → **OAuth client ID** → application type **Desktop app**. Copy the client ID and the client secret.
-7. In the repo, copy the template and fill in the two values:
+5. On the same screen, click **Publish app** so the status shows **In production**. In *Testing* mode, refresh tokens expire after 7 days, and the backups would stop each week.
+6. When you sign in, Google shows an "unverified app" screen. This is expected for a personal app. Click **Advanced**, then continue to the app.
+7. APIs & Services → Credentials → **Create credentials** → **OAuth client ID** → application type **Desktop app**. Copy the client ID and the client secret.
+8. In the repo, copy the template and fill in the two Google values:
 
    ```sh
    cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
@@ -68,6 +70,22 @@ Do this once, in your own Google account. The app cannot do it for you.
    `Config/Secrets.xcconfig` is gitignored.
 
 The build writes the two values into the app's `Info.plist` (`PVGoogleClientID`, `PVGoogleClientSecret`). The client secret of a Desktop client is not treated as confidential (see the note in `Sources/PhotoVaultDrive/OAuthClient.swift`). Do not reuse this OAuth client for other apps.
+
+## Dropbox setup
+
+Needed only for the Dropbox import. Do this once, in your own Dropbox account.
+
+1. Go to [dropbox.com/developers/apps](https://www.dropbox.com/developers/apps) and click **Create app**.
+2. Choose **Scoped access** and the access type **Full Dropbox**. Full Dropbox is needed to reach a folder such as `/Camera Uploads`. The app only reads.
+3. On the **Permissions** tab, tick `files.metadata.read`, `files.content.read` and `account_info.read`, then **Submit**. Do this before the first sign-in: Dropbox grants only the permissions that are enabled when you sign in.
+4. On the **Settings** tab, under **OAuth 2** → **Redirect URIs**, add exactly `http://localhost:53682/oauth2/callback`, then **Add**.
+5. Copy the **App key** (not the app secret) into `Config/Secrets.xcconfig`, which you copied from `Config/Secrets.xcconfig.example`:
+
+   ```
+   DROPBOX_APP_KEY = your-app-key
+   ```
+
+Without an App key, the Dropbox item in Settings is disabled and shows a hint. The app uses PKCE, so no secret is needed.
 
 ## Signing
 
@@ -166,13 +184,14 @@ Keep `privacy.html` true to what the app does: when the app starts using new Goo
 
 ## Privacy
 
-- The app has no server, no analytics and no crash reporter. It connects only to Google (sign-in, Drive) and to Apple's reverse geocoder (`CLGeocoder`).
+- The app has no server, no analytics and no crash reporter. It connects only to Google (sign-in, Drive, and the Drive Picker), to Dropbox (only if you use the Dropbox import) and to Apple's reverse geocoder (`CLGeocoder`).
 - **Place names:** the geocoder receives the centre of a grid cell of about 1 km (0.01°), not your photo's coordinates. Deleted photos are never sent, and hidden photos are sent only when Hidden upload is on. You can turn place names off in Settings.
 - **Sidecars contain location and album names.** The JSON sidecar holds the exact latitude and longitude (6 decimals), album names, the camera, and the place. Use per-destination rules to switch sidecars off for a destination you do not trust. The format is in [sidecar-schema.md](docs/sidecar-schema.md).
 - **No client-side encryption.** Files in Drive and on the NAS are stored as plain files. Google encrypts data at rest on its side; the app adds no encryption of its own.
 - **Hidden photos are not uploaded** by default.
-- **Tokens** are stored only in the macOS Keychain on this Mac, in the data-protection keychain, which is not synced.
-- **Permissions:** Photos (read), network, and the folders you pick. The app does not ask for Full Disk Access and does not read `Photos Library.photoslibrary` directly.
+- **Tokens** are stored only in the macOS Keychain on this Mac, in the data-protection keychain, which is not synced. That includes the Dropbox account and one token per Drive or Dropbox import.
+- **Dropbox and Google Drive imports** read only what you choose: the folder you pick in Dropbox, or the files and folders you pick in Google's Picker (`drive.file`). Nothing is written back to either service.
+- **Permissions:** Photos (read), network, and the folders you pick. Dropbox access is read-only. The app does not ask for Full Disk Access and does not read `Photos Library.photoslibrary` directly.
 
 ## Using the app
 
@@ -193,6 +212,9 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 - **digiKam** looks for `file.ext.xmp`. The app writes `<stem>.xmp`, so digiKam does not find it by default.
 - **RAW and JPEG share one sidecar pair** (`<stem>.json` and `<stem>.xmp`).
 - **Drive views add shortcuts.** Shortcuts count toward My Drive's item limit (the limit is [VERIFY] in M0-3). The app trashes only shortcuts it created; backup files are never touched.
+- **Drive folder contents may be hidden.** Under `drive.file`, Google may not return what is inside a folder you picked. The import then has only the files you picked. Whether the folder grant reaches its children is still unconfirmed ([decision 0026](docs/decisions/0026-cloud-folder-imports.md)).
+- **The Drive Picker sign-in is not yet confirmed end to end** on a real account ([decision 0026](docs/decisions/0026-cloud-folder-imports.md)).
+- **Cloud imports download each file twice:** once to read its date and hash, and once for the backup. A large Drive or Dropbox import uses twice the download traffic.
 - **Imports use file metadata.** Screenshots are recognised by the EXIF marker iOS and macOS write; screen recordings and screenshots from other tools go to `Camera Uploads`. A Live Photo pair is joined only when both files carry Apple's content identifier.
 - **Backfill is slow by design.** It runs at 20 GB per hour on power, and Photos downloads each original first (spec §8.5).
 
@@ -201,16 +223,27 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 Settings › **Nguồn** (Sources) › **Nhập ảnh…** (Import photos…) › **Từ thư mục trên Mac…** (From a folder on this Mac…) picks a folder. PhotoVault reads it recursively, groups RAW+JPEG and Live Photo pairs, reads the dates and places inside the files, skips what is already backed up, and then backs the rest up like any other photo. The folder is only read: nothing in it is changed or deleted. Progress shows in Settings and in the menu bar; **Huỷ** (Cancel) stops a job (files already uploaded stay), and a notification and one line in Recent activity report the result.
 
 - **Photos access is still required.** An import runs in the same cycle as Photos, so it waits until setup is done and Photos is allowed.
-- **Only folders on this Mac** (internal, external or a mounted share). Google Drive, Dropbox, Flickr and another Google account come later.
+- **Continuous sources come later.** Flickr, Dropbox and another Google account cannot be backed up continuously yet. Google Drive and Dropbox folders can be imported once, as described below.
 - **Keep the folder and its disk connected until the job completes.** An unplugged disk pauses that job only and it continues when the disk is back.
 - **Duplicates are matched by content, or by capture second + name + size.** A photo that is already in Photos or already exported is not uploaded twice. A photo added to Photos after it was imported is uploaded again.
 - **Files that only had a file date** (no EXIF or QuickTime date) use the earlier of the file's creation and modification dates for the day folder.
+
+### From Google Drive or Dropbox
+
+Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or **Từ Dropbox…** starts the import. The row and the menu bar card show the account email.
+
+- **Google Drive:** a short sheet explains what to pick. The browser then opens Google's Picker. Sign in with the Google account that holds the photos; it can differ from your backup account. Pick photos, videos and/or folders. The app can read only what you pick (`drive.file`).
+  - Tip: a picked folder may not give access to the photos inside it. To be sure, open the folder in the Picker and select the photos (⌘A).
+  - If the import finds no files, it says so and suggests the same.
+- **Dropbox:** sign in once in the browser, then choose a folder in PhotoVault's folder browser, or the whole Dropbox. Needs the App key ([Dropbox setup](#dropbox-setup)).
+- **Cần đăng nhập lại** (sign in again): Google or Dropbox revoked the access, or refused the token. An open import shows this and waits. Use the sign-in action on that import to continue. A finished import skips its missing files; import the same folder again to pick them up.
+- Read-only: nothing in Drive or Dropbox is changed or deleted.
 
 ## Start over (factory reset)
 
 Settings → **Nâng cao** (Advanced) → **Đặt lại từ đầu…** (Start over…) returns PhotoVault to first-time setup.
 1. Before resetting, move the old backup folder on Drive (and on the NAS, if you use one) to the Trash yourself. The app never deletes backup data. If the old folder is still there and was written by 0.2.0 or later (the current layout), onboarding offers to reuse it; a folder from 0.1.0 is never offered (see [Upgrading from 0.1.0](#upgrading-from-010)).
-2. On confirm, PhotoVault signs out of Google and relaunches. The refresh token is removed from the Keychain, and revoked at Google when Google can be reached.
+2. On confirm, PhotoVault signs out of Google and relaunches. The refresh token is removed from the Keychain, and revoked at Google when Google can be reached. The Dropbox account and the token of each Drive or Dropbox import are removed from the Keychain too.
 3. Before opening anything, the new process deletes the database, staging files, database snapshots, logs and the notification history.
 4. Two things are kept: the interface language, and `drive-daily-cap.json`. Google counts the 750 GB a day per account, not per database. If you then sign in with a different Google account, it starts from the old account's count for the rest of that 24 hours.
 5. Onboarding then creates a new root and syncs into it. If the reset is cut short, for example by a crash, it finishes at the next launch.
