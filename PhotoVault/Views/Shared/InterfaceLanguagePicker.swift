@@ -54,7 +54,8 @@ struct LanguageMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(tr(vi: "Ngôn ngữ giao diện · Language", en: "Interface language · Ngôn ngữ"))
+        // Both languages on purpose: the tooltip must make sense to someone who reads neither the current one.
+        .help("Ngôn ngữ giao diện · Interface language") // l10n: verbatim
         .accessibilityLabel(tr(vi: "Ngôn ngữ giao diện", en: "Interface language"))
     }
 }
