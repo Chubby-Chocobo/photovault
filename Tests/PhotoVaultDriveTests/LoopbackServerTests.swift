@@ -136,12 +136,14 @@ private enum RawSocket {
     }
 
     @Test func idleConnectionIsClosedAfterTheConnectionTimeout() async throws {
-        let server = try LoopbackRedirectServer(expectedState: "st", connectionTimeout: 0.3)
+        let server = try LoopbackRedirectServer(expectedState: "st", connectionTimeout: 1)
         let port = try await server.start()
         defer { server.cancel() }
         let fd = try #require(RawSocket.connect(host: "127.0.0.1", port: port))
         defer { close(fd) }
-        try await Task.sleep(for: .milliseconds(100))
+        // A busy machine accepts the connection late: wait for it instead of a fixed pause.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while server.openConnectionCount == 0, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         #expect(server.openConnectionCount == 1)
         let (data, closed) = RawSocket.readAll(fd)
         #expect(closed && data.isEmpty)
