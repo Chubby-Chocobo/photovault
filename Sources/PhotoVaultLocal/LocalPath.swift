@@ -9,16 +9,30 @@ enum LocalPath {
     static let markerName = "destination.json"
     static let connectionTestName = ".photovault-test"
 
-    static func validate(name: String) throws {
-        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.utf8.contains(0), name.utf8.count <= 255 else {
+    /// Longest name the app creates (bytes); the filesystem's own limit applies to names it only reads.
+    static let createdNameLimit = 255
+    /// Capacity of `dirent.d_name`: the longest name `readdir` can hand back for an owner's file.
+    static let existingNameLimit = 1023
+
+    /// For names the app creates or renames to.
+    static func validate(name: String) throws { try validate(name: name, limit: createdNameLimit) }
+
+    /// For names that already exist on disk (listing, probing, reading): owners may use names longer
+    /// than the app would ever write.
+    static func validateExisting(name: String) throws { try validate(name: name, limit: existingNameLimit) }
+
+    private static func validate(name: String, limit: Int) throws {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.utf8.contains(0), name.utf8.count <= limit else {
             throw DestinationError.itemRejected(reason: "invalid name")
         }
     }
 
+    /// Components of a path that addresses existing entries; whatever is created is checked again
+    /// with `validate(name:)` where the entry is made.
     static func components(_ path: String) throws -> [String] {
         if path.isEmpty { return [] }
         let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        for part in parts { try validate(name: part) }
+        for part in parts { try validateExisting(name: part) }
         return parts
     }
 

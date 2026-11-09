@@ -11,23 +11,61 @@ struct LocalFileOps: Sendable {
     let renameMemo: ExclusiveRenameMemo
     /// Test seam: runs after the new content is staged and before it is put in place.
     var afterStaging: (@Sendable () -> Void)?
+    /// Test seam: receives the identity of every directory flushed after a namespace change.
+    var onDirectorySync: (@Sendable (String) -> Void)?
 
     init(access: any RootAccess, writer: AtomicFileWriter, log: any LogSink,
-         renameMemo: ExclusiveRenameMemo = .volumes, afterStaging: (@Sendable () -> Void)? = nil) {
+         renameMemo: ExclusiveRenameMemo = .volumes, afterStaging: (@Sendable () -> Void)? = nil,
+         onDirectorySync: (@Sendable (String) -> Void)? = nil) {
         self.access = access
         self.writer = writer
         self.log = log
         self.renameMemo = renameMemo
         self.afterStaging = afterStaging
+        self.onDirectorySync = onDirectorySync
+    }
+
+    /// Flushes a directory so a rename or new entry in it survives power loss before success is reported.
+    func flush(_ dir: DirectoryHandle) {
+        dir.sync()
+        onDirectorySync?(dir.identity)
+    }
+
+    /// Opens the root, retrying once with a fresh bookmark resolution when the cached path is gone: the
+    /// owner may have renamed or moved the folder, which the bookmark follows.
+    func withRoot<T>(_ body: (DirectoryHandle) throws -> T) throws -> T {
+        do {
+            return try withResolvedRoot(body)
+        } catch let failure as RootOpenFailure {
+            guard access.invalidateResolvedRoot() else { throw failure.underlying }
+            do {
+                return try withResolvedRoot(body)
+            } catch let again as RootOpenFailure {
+                throw again.underlying
+            }
+        }
+    }
+
+    /// The root could not be opened (the operation itself has not started, so repeating it is safe).
+    private struct RootOpenFailure: Error { let underlying: DestinationError }
+
+    private func withResolvedRoot<T>(_ body: (DirectoryHandle) throws -> T) throws -> T {
+        try access.withRoot { url in
+            let root: DirectoryHandle
+            do {
+                root = try DirectoryHandle.openRoot(url)
+            } catch DestinationError.rootMissing {
+                throw RootOpenFailure(underlying: .rootMissing)
+            } catch DestinationError.offline {
+                throw RootOpenFailure(underlying: .offline)
+            }
+            return try body(root)
+        }
     }
 
     /// Before staging: a volume known to lack exclusive rename needs the write-locked path from the start.
     func requireFallbackIfNeeded(_ volume: VolumeKey, allowFallback: Bool) throws {
         if !allowFallback, renameMemo.isUnsupported(volume) { throw ExclusiveRenameUnsupported() }
-    }
-
-    func withRoot<T>(_ body: (DirectoryHandle) throws -> T) throws -> T {
-        try access.withRoot { url in try body(try DirectoryHandle.openRoot(url)) }
     }
 
     func userDirectory(_ root: DirectoryHandle, _ path: String, create: Bool = false) throws -> DirectoryHandle {
@@ -62,11 +100,13 @@ struct LocalFileOps: Sendable {
         try LocalPath.requireUserPath(path)
         return try withRoot { root in
             let parent = try parentDirectory(root, request.parent)
-            if let st = try parent.status(request.name) {
+            let existing = try parent.status(request.name)
+            if let st = existing {
                 if st.isSymlink { throw DestinationError.itemRejected(reason: "symlink") }
                 guard st.isDirectory else { throw DestinationError.foreignFile }
             }
             _ = try parent.openChild(request.name, create: true)
+            if existing == nil { flush(parent) }
             return RemoteFolderRef(logicalPath: request.logicalPath, remoteId: path, displayPath: path)
         }
     }
@@ -88,6 +128,7 @@ struct LocalFileOps: Sendable {
             if old.isSymlink { throw DestinationError.itemRejected(reason: "symlink") }
             guard old.isDirectory else { throw DestinationError.foreignFile }
             try parent.renameExclusive(oldName, to: newName, in: parent, allowCheckThenRename: true, memo: renameMemo)
+            flush(parent)
             return renamed
         }
     }
@@ -103,34 +144,54 @@ struct LocalFileOps: Sendable {
             do { parent = try root.openDirectory(parentPath) } catch DestinationError.notFound { return nil }
             guard let st = try parent.status(name) else { return nil }
             if st.isSymlink { throw DestinationError.itemRejected(reason: "symlink") }
+            guard st.isRegular || st.isDirectory else { throw DestinationError.itemRejected(reason: "not a regular file") }
             return try item(st, path: path)
         }
     }
 
     /// Depth-first walk of the tree below `path` (the whole root when empty). Skips `.photovault`, never
     /// follows symlinks, and skips mount points.
-    func walk(under path: String, yield: @Sendable (RemoteItem) -> Void) throws {
+    /// An entry that cannot be described (a name the app cannot address, a refused symlink or other
+    /// volume) is skipped; any other failure aborts, so a short listing is never reported as complete.
+    func walk(under path: String, isCancelled: @Sendable () -> Bool = { false }, yield: @Sendable (RemoteItem) -> Void) throws {
         try withRoot { root in
             let start = path.isEmpty ? root : try userDirectory(root, path)
-            try walkDirectory(start, path: path, yield: yield)
+            var skipped = 0
+            try walkDirectory(start, path: path, isCancelled: isCancelled, skipped: &skipped, yield: yield)
+            if skipped > 0 { log.log(.info, category: "local", "skipped \(skipped) unreadable entries while listing") }
         }
     }
 
-    private func walkDirectory(_ dir: DirectoryHandle, path: String, yield: @Sendable (RemoteItem) -> Void) throws {
+    private func walkDirectory(_ dir: DirectoryHandle, path: String, isCancelled: @Sendable () -> Bool, skipped: inout Int,
+                               yield: @Sendable (RemoteItem) -> Void) throws {
         for name in try dir.entries().sorted() {
-            if Task.isCancelled { return }
+            if isCancelled() { return }
             if path.isEmpty, name == LocalPath.reservedDirectory || name == LocalPath.connectionTestName { continue }
-            guard let st = try dir.status(name) else { continue }
-            let child = LocalPath.join(path, name)
-            if st.isDirectory {
-                let handle: DirectoryHandle
-                do { handle = try dir.openChild(name, create: false) } catch DestinationError.itemRejected { continue }
-                yield(try item(st, path: child))
-                try walkDirectory(handle, path: child, yield: yield)
-            } else if st.isRegular {
-                yield(try item(st, path: child))
+            let described: (item: RemoteItem, handle: DirectoryHandle?)?
+            do {
+                described = try describe(name, in: dir, path: path)
+            } catch DestinationError.itemRejected {
+                skipped += 1
+                continue
+            }
+            guard let described else { continue }
+            yield(described.item)
+            if let handle = described.handle {
+                try walkDirectory(handle, path: described.item.remoteId, isCancelled: isCancelled, skipped: &skipped, yield: yield)
             }
         }
+    }
+
+    /// The item for one directory entry plus a handle when it is a folder; nil for entries the walk ignores
+    /// (vanished, special files).
+    private func describe(_ name: String, in dir: DirectoryHandle, path: String) throws -> (item: RemoteItem, handle: DirectoryHandle?)? {
+        guard let st = try dir.status(name) else { return nil }
+        let child = LocalPath.join(path, name)
+        if st.isDirectory {
+            let handle = try dir.openChild(name, create: false)
+            return (try item(st, path: child), handle)
+        }
+        return st.isRegular ? (try item(st, path: child), nil) : nil
     }
 
     /// SHA-256 of a regular file, nil when it does not exist. Used by the engine for verification.

@@ -66,7 +66,7 @@ extension LocalFileOps {
                 }
                 do {
                     try tmp.renameExclusive(part!, to: target, in: parent, allowCheckThenRename: allowFallback, memo: renameMemo)
-                    parent.sync()
+                    flush(parent)
                     return result(parentPath, target, hash: expected, size: request.content.size)
                 } catch DestinationError.foreignFile {
                     continue  // lost a race for the name: look at what is there now
@@ -100,7 +100,7 @@ extension LocalFileOps {
             // Staging can take minutes: look at the file again right before it is replaced (caller holds the write lock).
             guard try currentHash(parent, name) == prior else { throw DestinationError.foreignModified }
             try tmp.renameReplacing(part, to: name, in: parent)
-            parent.sync()
+            flush(parent)
             return result(parentPath, name, hash: expected, size: request.content.size)
         }
     }
@@ -118,13 +118,18 @@ extension LocalFileOps {
             try requireFallbackIfNeeded(destination.volume, allowFallback: allowFallback)
             guard let st = try source.status(sourceName) else {
                 // A previous attempt may already have moved it.
-                if let moved = try destination.status(name), moved.isRegular { return try item(moved, path: target) }
+                if let moved = try destination.status(name), moved.isRegular {
+                    flush(destination)
+                    return try item(moved, path: target)
+                }
                 throw DestinationError.notFound
             }
             if st.isSymlink { throw DestinationError.itemRejected(reason: "symlink") }
             guard st.isRegular else { throw DestinationError.itemRejected(reason: "not a regular file") }
             try source.renameExclusive(sourceName, to: name, in: destination, allowCheckThenRename: allowFallback, memo: renameMemo)
             guard let placed = try destination.status(name) else { throw DestinationError.notFound }
+            flush(destination)
+            if source.identity != destination.identity { flush(source) }
             return try item(placed, path: target)
         }
     }

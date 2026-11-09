@@ -24,14 +24,16 @@ public actor LocalFolderDestination: Destination {
     }
 
     init(id: DestinationID, root: any RootAccess, disk: (any DiskSpaceProvider)? = nil, log: any LogSink = NullLogSink(),
-         renameMemo: ExclusiveRenameMemo, afterStaging: (@Sendable () -> Void)? = nil) {
+         renameMemo: ExclusiveRenameMemo, afterStaging: (@Sendable () -> Void)? = nil,
+         onDirectorySync: (@Sendable (String) -> Void)? = nil) {
         self.id = id
         self.metadataQueue = BlockingQueue(label: "photovault.local.meta.\(id.rawValue)", concurrent: true)
         self.queue = BlockingQueue(label: "photovault.local.\(id.rawValue)")
         self.access = root
         self.disk = disk
         self.log = log
-        self.ops = LocalFileOps(access: root, writer: AtomicFileWriter(), log: log, renameMemo: renameMemo, afterStaging: afterStaging)
+        self.ops = LocalFileOps(access: root, writer: AtomicFileWriter(), log: log, renameMemo: renameMemo, afterStaging: afterStaging,
+                          onDirectorySync: onDirectorySync)
     }
 
     /// Runs file work under the folder read lock; when the filesystem lacks an exclusive rename, repeats
@@ -143,25 +145,33 @@ public actor LocalFolderDestination: Destination {
         return try await locks.withLock(folder.remoteId, write: true, on: queue) { try ops.renameFolder(folder, newName: newName) }
     }
 
+    /// The walk runs on the metadata queue, never on the Swift concurrency pool; ending the stream stops it.
     public nonisolated func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> {
         let ops = self.ops
         let start = folder?.remoteId ?? ""
+        let queue = self.metadataQueue
         return AsyncThrowingStream { continuation in
-            let task = Task.detached {
+            let cancelled = CancellationFlag()
+            queue.submit {
                 do {
-                    try ops.walk(under: start) { continuation.yield($0) }
+                    try ops.walk(under: start, isCancelled: { cancelled.isSet }) { continuation.yield($0) }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in cancelled.set() }
         }
     }
 
     public func quota() async throws -> Quota? {
         let disk = self.disk
-        return try access.withRoot { url -> Quota in
+        let access = self.access
+        return try await metadataQueue.run { try Self.quota(access: access, disk: disk) }
+    }
+
+    private static func quota(access: any RootAccess, disk: (any DiskSpaceProvider)?) throws -> Quota {
+        try access.withRoot { url -> Quota in
             if let disk {
                 let capacity = try disk.capacity(of: url)
                 return Quota(totalBytes: capacity.total, usedBytes: capacity.total - capacity.available, availableBytes: capacity.available)
@@ -175,4 +185,12 @@ public actor LocalFolderDestination: Destination {
             }
         }
     }
+}
+
+/// Set when the consumer of a listing stops; read by the walk on its queue.
+private final class CancellationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.withLock { value } }
+    func set() { lock.withLock { value = true } }
 }
