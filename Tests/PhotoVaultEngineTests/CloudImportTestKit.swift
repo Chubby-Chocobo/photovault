@@ -20,12 +20,18 @@ final class FakeCloudSource: FolderImportSource, @unchecked Sendable {
     private let inner: LocalFolderSource
     private let lock = NSLock()
     private var revoked: Revoked = []
+    private var failures: [Int: any Error] = [:]
     var id: SourceID { inner.id }
 
     init(_ folder: ImportFolder) { inner = folder.source() }
 
     func setRevoked(_ value: Revoked) { lock.withLock { revoked = value } }
-    private func check(_ call: Revoked) throws { if lock.withLock({ revoked.contains(call) }) { throw SourceError.accessRevoked } }
+    /// Makes one call throw `error` (nil clears it); takes precedence over `setRevoked`.
+    func setFailure(_ call: Revoked, _ error: (any Error)?) { lock.withLock { failures[call.rawValue] = error } }
+    private func check(_ call: Revoked) throws {
+        if let error = lock.withLock({ failures[call.rawValue] }) { throw error }
+        if lock.withLock({ revoked.contains(call) }) { throw SourceError.accessRevoked }
+    }
 
     func probe() async throws { try check(.probe); try await inner.probe() }
     func listFiles() async throws -> [FolderFileEntry] { try check(.list); return try await inner.listFiles() }

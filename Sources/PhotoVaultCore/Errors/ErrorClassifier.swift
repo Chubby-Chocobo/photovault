@@ -59,7 +59,7 @@ public enum ErrorClassifier {
         switch error {
         case .unavailable, .accessRevoked: .destinationLevel(nil)
         case .fileMissing, .fileChanged: .permanent(.resourceMissing)
-        case .cancelled: .transient
+        case .cancelled, .busy: .transient
         case .readFailed: .itemLevel
         }
     }

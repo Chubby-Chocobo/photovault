@@ -7,11 +7,17 @@ extension ImportStage {
     func list(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {
         let entries: [FolderFileEntry]
         do {
-            entries = try await folder.listFiles()
+            entries = try await adapter { try await folder.listFiles() }
         } catch SourceError.accessRevoked {
             try await holdForSignIn(source.id)
             return true
+        } catch SourceError.busy {
+            pauseBriefly(source.id)
+            return true
         } catch is SourceError {
+            try await hold(source.id)
+            return true
+        } catch is AdapterFault {
             try await hold(source.id)
             return true
         }

@@ -40,6 +40,11 @@ public enum SourceRepository {
             arguments: [status.rawValue, reason, finished, id.rawValue])
     }
 
+    /// Changes only the machine reason of a row, for example "needs sign-in" on a finished import.
+    public static func setStatusReason(_ db: Database, id: SourceID, reason: String?) throws {
+        try db.execute(sql: "UPDATE source SET status_reason = ? WHERE id = ?", arguments: [reason, id.rawValue])
+    }
+
     public static func setListed(_ db: Database, id: SourceID, now: Date) throws {
         try db.execute(sql: "UPDATE source SET listed_at = ? WHERE id = ?", arguments: [now, id.rawValue])
     }

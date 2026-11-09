@@ -18,6 +18,7 @@ final class ImportHolds: @unchecked Sendable {
     private var heldAt: [SourceID: Date] = [:]
 
     func mark(_ id: SourceID, at date: Date) { lock.withLock { heldAt[id] = date } }
+    func clear(_ id: SourceID) { lock.withLock { heldAt[id] = nil } }
     func isCoolingDown(_ id: SourceID, now: Date) -> Bool {
         lock.withLock { heldAt[id].map { now.timeIntervalSince($0) < Self.backoff } ?? false }
     }
@@ -31,12 +32,13 @@ final class ImportHolds: @unchecked Sendable {
 struct ImportStage: CycleStage {
     let env: EngineEnvironment
     let extensions: [any JobPlanningExtension]
-    let holds = ImportHolds()
+    let holds: ImportHolds
     var step: CycleStep { .classify }
 
-    init(env: EngineEnvironment, extensions: [any JobPlanningExtension]) {
+    init(env: EngineEnvironment, extensions: [any JobPlanningExtension], holds: ImportHolds = ImportHolds()) {
         self.env = env
         self.extensions = extensions
+        self.holds = holds
     }
 
     func run(trigger: SyncTrigger) async throws -> Bool {
@@ -85,15 +87,40 @@ struct ImportStage: CycleStage {
     /// False when the folder cannot be read now; the job is then marked offline.
     func reachable(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {
         do {
-            try await folder.probe()
+            try await adapter { try await folder.probe() }
             return true
         } catch SourceError.accessRevoked {
             if source.status != .offline || source.statusReason != SourceStatusReason.signInRequired { try await holdForSignIn(source.id) }
             return false
+        } catch SourceError.busy {
+            pauseBriefly(source.id)
+            return false
         } catch is SourceError {
             if source.status != .offline { try await hold(source.id) }
             return false
+        } catch is AdapterFault {
+            if source.status != .offline { try await hold(source.id) }
+            return false
         }
+    }
+
+    /// Runs an adapter call. Anything it throws other than a `SourceError` or a cancellation counts as
+    /// "the source cannot be read now", so one misbehaving adapter cannot stop the other jobs or Photos.
+    func adapter<T>(_ call: () async throws -> T) async throws -> T {
+        do { return try await call() } catch let error as SourceError { throw error } catch is CancellationError { throw CancellationError() } catch {
+            env.log.log(.notice, category: "import", "source adapter failed unexpectedly")
+            throw AdapterFault()
+        }
+    }
+
+    /// An adapter threw something that is not a `SourceError`; the job is held like an unreachable source.
+    struct AdapterFault: Error {}
+
+    /// The provider is throttling or short of room here: the job keeps its place and tries again after the
+    /// cooldown. It is not marked offline, because nothing is wrong with the source.
+    func pauseBriefly(_ id: SourceID) {
+        holds.mark(id, at: env.clock.now)
+        env.log.log(.info, category: "import", "source busy; import pauses briefly")
     }
 
     /// A grant the provider no longer accepts: waiting does not help, so the job says so and stays held
@@ -120,6 +147,7 @@ struct ImportStage: CycleStage {
     }
 
     private func scan(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {
+        guard !holds.isCoolingDown(source.id, now: env.clock.now) else { return false }
         guard try await reachable(source, folder) else { return true }
         if source.listedAt == nil { return try await list(source, folder) }
         return try await ingestBatch(source, folder)

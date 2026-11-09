@@ -33,6 +33,24 @@ extension SyncCoordinator {
         for source in sources { await env.sources.add(source) }
     }
 
+    /// The owner signed in again: clears the hold and the "needs sign-in" mark of an import so it carries on
+    /// in the next cycle instead of after the cooldown. A held job goes back to reading its files.
+    public func resumeImportAfterSignIn(_ id: SourceID) async throws {
+        try await exclusive {
+            importHolds.clear(id)
+            let now = env.clock.now
+            try await env.store.write { db in
+                guard let source = try SourceRepository.fetch(db, id: id), source.kind.isImport else { return }
+                if source.status == .offline {
+                    try SourceRepository.setStatus(db, id: id, status: .scanning, reason: nil, now: now)
+                } else if source.statusReason != nil {
+                    try SourceRepository.setStatusReason(db, id: id, reason: nil)
+                }
+            }
+        }
+        await publish()
+    }
+
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled
     /// and what already reached a destination stays. Running the same import again brings them back.
     public func cancelImport(_ id: SourceID) async throws {

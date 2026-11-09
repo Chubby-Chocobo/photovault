@@ -31,11 +31,23 @@ extension ImportStage {
         var failed: [String: String] = [:]
         for item in group {
             let mediaType: MediaType = UTType(item.uti)?.conforms(to: .movie) == true ? .video : .image
+            // A cloud file is downloaded to scratch space first; do not start when it would eat the reserve.
+            if source.kind != .localFolder, !hasRoomToDownload(item.sizeBytes, settings: settings) {
+                pauseBriefly(source.id)
+                return false
+            }
             do {
-                inspected[item.relativePath] = try await folder.inspect(
-                    relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: ExportControl())
+                inspected[item.relativePath] = try await adapter {
+                    try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: ExportControl())
+                }
+            } catch is AdapterFault {
+                try await hold(source.id)
+                return false
             } catch let error as SourceError {
                 switch error {
+                case .busy:
+                    pauseBriefly(source.id)
+                    return false
                 case .unavailable:
                     // One file that cannot be read is that file's problem; only a folder that no longer answers holds the job.
                     guard try await reachable(source, folder) else { return false }
@@ -69,6 +81,12 @@ extension ImportStage {
         }
         try env.reach(.afterImportGroupCommit)
         return true
+    }
+
+    /// True when the scratch volume keeps its critical reserve after a download of `bytes`.
+    private func hasRoomToDownload(_ bytes: Int64, settings: SettingsSnapshot) -> Bool {
+        guard let free = try? env.disk.capacity(of: env.stagingDirectory).available else { return true }
+        return free - bytes >= settings.settings.criticalWatermarkBytes
     }
 
     // MARK: Group → assets

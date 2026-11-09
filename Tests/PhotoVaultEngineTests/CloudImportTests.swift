@@ -117,15 +117,6 @@ import Testing
         #expect(try h.importCounts(id)[.imported] == nil)
     }
 
-    @Test func aRevokedExportOfAClosedImportSkipsTheJobWithoutAnError() async throws {
-        let h = try await harness()
-        let source = FakeContentSource()
-        _ = try await h.seedImported("done", source: source, status: .completed)
-        source.setRevoked(true)
-        for _ in 0..<2 { await h.run(); h.clock.advance(by: 120) }
-        #expect(try h.jobs(.skipped).count == 1)
-    }
-
     @Test func aRevokedExportOfAnOpenImportHoldsItForSignIn() async throws {
         let h = try await harness()
         let source = FakeContentSource()

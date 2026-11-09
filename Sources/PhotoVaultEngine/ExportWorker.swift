@@ -277,7 +277,7 @@ actor ExportWorker {
             }
             let delay = retryDelay
             // A folder that is away is waiting, not failing: no error is recorded against the file.
-            let held = folder != nil && { if case .destinationLevel = classification { true } else { false } }()
+            let held = folder != nil && (folder == .busy || { if case .destinationLevel = classification { true } else { false } }())
             try await env.store.write { db in
                 try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(delay))
                 if !held { try ResourceRepository.noteExportError(db, key: key, type: type, message: message) }
