@@ -4,7 +4,7 @@ Sidecars are the `<stem>.json` and `<stem>.xmp` files written next to each backe
 
 Checked against the code on 2026-11-09. The examples below were produced by running `SidecarBuilder.buildJSON` and `buildXMP` on the input described in [Examples](#examples).
 
-**Engine wiring (as of this check):** `SidecarFactory.build` in `Sources/PhotoVaultEngine/SidecarPlanner.swift` builds the input from the database and calls `buildJSON` or `buildXMP`. For an asset imported from a folder it also passes the [`source`](#source) block. It passes no extended metadata, so the JSON carries `"extendedMetadata": "unavailable"`. `SidecarPlanner` writes the first sidecar only after every original job of the asset at that destination has finished (`done` or `skipped`), as spec FR-93 requires. The engine is still changing, so re-check this line when Phase 09 lands.
+**Engine wiring (as of this check):** `SidecarFactory.build` in `Sources/PhotoVaultEngine/SidecarPlanner.swift` builds the input from the database and calls `buildJSON` or `buildXMP`. For an asset imported from a folder it also passes the [`source`](#source) block. It passes no extended metadata, so the JSON carries `"extendedMetadata": "unavailable"`. `SidecarPlanner` writes the first sidecar only after every original job of the asset at that destination has finished (`done` or `skipped`), as spec FR-93 requires.
 
 ## Files
 

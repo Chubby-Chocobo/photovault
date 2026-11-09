@@ -54,7 +54,7 @@ Edges are the dependencies declared in [Package.swift](../../Package.swift). The
 | `PhotoVaultDrive` | OAuth 2.0 PKCE with a loopback redirect, refresh token in the Keychain, Drive v3 REST client, resumable upload, `GoogleDriveDestination`. | `GoogleAuthSession`, `OAuthClient`, `DriveAPI`, `ResumableUploader`, `GoogleDriveDestination` |
 | `PhotoVaultLocal` | `LocalFolderDestination`: fd-relative writes, atomic no-overwrite placement, per-folder locks, `destination.json` marker. `LocalFolderSource`: a folder picked for a one-time import, read through a read-only bookmark (listing, hashing, copy), never written to. | `LocalFolderDestination`, `LocalFolderSource`, `AtomicFileWriter`, `FolderLockManager`, `DestinationMarker` |
 | `PhotoVaultEngine` | `SyncCoordinator` runs the sync cycle; `SourceRegistry` maps `asset.source_id` to the adapter that reads its bytes (`ContentSource`: Photos, or a folder import); `ImportStage` runs folder imports (list, read and hash, dedupe, ingest) inside the cycle; change tracking, scan, classify, export, staging, upload fan-out, edit gate, sidecars, views, moves, place naming, startup and destination recovery, integrity checks, instance lock. | `SyncCoordinator`, `EngineEnvironment`, `ExportWorker`, `UploadRunner`, `StartupRecovery` |
-| `PhotoVaultAppSupport` | Presentation logic without AppKit or SwiftUI: status and progress text (Vietnamese), notification policy, onboarding steps, settings form, rotating file log, `LogRedactor`, `TriggerDebouncer`. | `NotificationPolicy`, `LogRedactor`, `RotatingFileLog`, `StatusText` |
+| `PhotoVaultAppSupport` | Presentation logic without AppKit or SwiftUI: status and progress text (Vietnamese and English), notification policy, onboarding steps, settings form, rotating file log, `LogRedactor`, `TriggerDebouncer`. | `NotificationPolicy`, `LogRedactor`, `RotatingFileLog`, `StatusText` |
 | `PhotoVaultTestSupport` | Fakes shared by test targets: fake Photos source, fake destination, destination conformance suite. | `FakePhotosSource`, `FakeDestination`, `DestinationConformanceSuite` |
 | PhotoVault app target | `AppEnvironment` (composition root), `AppModel` and extensions, menu bar, onboarding, settings, activity window, login item, notifications, scheduler and system monitors. The app target has no unit tests. | `AppEnvironment`, `AppModel`, `SyncScheduler` |
 
@@ -81,6 +81,7 @@ flowchart LR
 
 | Spec 8.4 step | Code | Notes |
 |---|---|---|
+| 0. Layout block | `cycle` section "0": `LegacyLayout.isBlocked` (stored once in `kv.legacy_layout`) | A database whose uploads or folders sit under `camera/YYYY[/MM]` (the first release's layout) ends the cycle at once with `blocked(.legacyLayout)`: no export, upload, move, sidecar, view or recovery write. The snapshot reports `overall = .legacyLayout`. `start()` and the commands that write jobs or moves (`settingsChanged`, `destinationAdded`, `destinationRulesChanged`, `startFolderImport`, `runReconciliation`, `rebuildViews`, `refreshOrganization`, `refreshPlaceNames`, `startRecovery`) skip or throw `EngineError.legacyLayout`. A factory reset gives a fresh database, which is not blocked. [Decision 0025](../decisions/0025-old-layout-block-and-reset.md). |
 | 1. Checks | `cycle` section "1. checks": Photos authorization, baseline taken, settings and `SystemMonitor` snapshot (network, expensive or constrained network, AC power), `DestinationHealth.refresh()`, `StartupRecovery.resolveInterrupted()`, `DeferredJobSweeper.sweep()`, `detectDataAtDestinations()`, stage `.checks` | `uploadsAllowed` gates step 6 only. Thermal state and Low Power Mode gate rate-limited export in `ResourceGuard`. |
 | 2. ChangeTracker | `Scanner.run()` (FR-10, resumable), then `ChangeTracker.process()` (FR-12). Token expiry or unavailable details go to `Reconciler.reconcile` (FR-13). Then `FinalizePass.runAfterScan()`, `RecoveryService.runPending()` when a destination needs recovery (FR-51), and stage `.changes` | Each change commits with its own token in one database-only transaction. A scan that is not complete stops incremental processing. |
 | 3. Classify | `ClassifyWorker.runPass()`, stage `.classify` (includes `ImportStage`) | Header-only read of provisional photos. Placement is fixed once the category is final. `ImportStage` lists a picked folder, reads and hashes up to `importBatchGroups` file groups per run outside transactions, and ingests each group in one transaction (dedupe by key or resource SHA-256, or by capture second + stem + size against an unexported Photos asset when the date comes from metadata; final category; placement; jobs). It sets `scanning` to `importing` when nothing is pending, and `importing` to `completed` (with one activity row) when no upload of the job is pending or running. A folder that cannot be read puts only its own job `offline`. |
@@ -235,7 +236,7 @@ Schema: migrations `v1`, `v2-upload-intent`, `v3-snapshot-counters`, `v4-provisi
 | `view_folder_group` | Folder groups for views |
 | `shortcut` | Drive shortcut per destination, view and asset, with its state |
 | `activity` | Newest 500 owner-visible events. Session references never reach this table. |
-| `kv` | Change token, baseline token, scan state and cursor, archive timezone, schema version, last successful sync time (`last_successful_sync_at`), Mac disk-full timestamp (`mac_disk_full_since`, written by `ResourceGuard` at the first pass below the critical watermark and cleared once the disk is above it) |
+| `kv` | Change token, baseline token, scan state and cursor, archive timezone, schema version, last successful sync time (`last_successful_sync_at`), the old-layout flag (`legacy_layout`, `1` or `0`), Mac disk-full timestamp (`mac_disk_full_since`, written by `ResourceGuard` at the first pass below the critical watermark and cleared once the disk is above it) |
 
 ### Files outside the database
 
@@ -266,7 +267,7 @@ What leaves the Mac:
 | Apple geocoder through `CLGeocoder` | The centre of a 0.01° grid cell (`GeoCell.center`) and the display locale ([decision 0008](../decisions/0008-geocoding-privacy.md)) | Exact coordinates, asset identifiers, hidden or deleted assets |
 | Local and NAS folders | Media bytes, sidecars, the destination marker | Anything outside the folder the owner chose; access is through a security-scoped bookmark |
 | Apple iCloud through PhotoKit | Requests for originals with `isNetworkAccessAllowed = true`. This is inbound traffic for iCloud-only originals. | Nothing is uploaded to iCloud by the app |
-| Notifications | Vietnamese texts without file names, album titles or paths | |
+| Notifications | Texts in the interface language, without file names, album titles or paths. The one exception is the import-finished notification, which names the folder the owner picked, on purpose: it only appears on this Mac, and the folder name never reaches logs or the activity list. | |
 
 Other facts:
 
@@ -279,11 +280,11 @@ Other facts:
 `AppEnvironment.make()` in [AppEnvironment.swift](../../PhotoVault/Engine/AppEnvironment.swift) builds everything once at launch:
 
 1. `ContainerLocator.resolve`. A sandboxed build (environment variable `APP_SANDBOX_CONTAINER_ID` set) uses `Application Support/PhotoVault` inside the container. An unsandboxed build is refused unless started with `--dev-container`, which uses `~/Library/Application Support/PhotoVault-dev` ([decision 0009](../decisions/0009-sandbox-container.md)).
-2. `InstanceLock.acquire`. A second instance on the same container exits with "already running".
-3. `Store.open` and `SettingsStore`. On failure the app shows an alert; the log has the details.
+2. `InstanceLock.acquire`. A second instance on the same container exits with "already running". When a factory reset is requested the new process is the relaunch of the old one, so it waits for the lock for up to 15 seconds instead.
+3. Factory reset: with the lock held and before the database opens, `FactoryReset.applyIfRequested` empties the data folder (keeping `photovault.lock`, `drive-daily-cap.json` and the language) and removes its marker last, so a crash leaves it for the next launch. Then `Store.open` and `SettingsStore`. On failure the app shows an alert; the log has the details.
 4. Google configuration from the bundle. `LoggingHTTPTransport` wraps `URLSessionTransport`. `OAuthClient` and `GoogleAuthSession` (Keychain) are created.
 5. `DestinationRepository.fetchAll`. Creates `GoogleDriveDestination` when a Drive row exists, and one `LocalFolderDestination` per local row with a valid bookmark. The `DestinationRegistry` holds them.
-6. `EngineEnvironment` with the Photos source (`PhotoKitSource`), `ImageIOMetadataReader`, `UTTypeResolver`, `VolumeDiskSpaceProvider`, `SystemMonitor`, `CLGeocoderReverseGeocoder`, and `LocalContentReader`. Then `SyncCoordinator(env:)`.
+6. `EngineEnvironment` with the Photos source (`PhotoKitSource`), `ImageIOMetadataReader`, `UTTypeResolver`, `VolumeDiskSpaceProvider`, `SystemMonitor`, `CLGeocoderReverseGeocoder`, and `LocalContentReader`. Then `SyncCoordinator(env:)`. `make` also opens the adapters of every folder import in the database, finished or not (`openFolderSources`); `AppModel.goLive` registers them with the coordinator before startup recovery, and an import started later registers its own, so a destination added later still receives the files of every finished or cancelled import.
 
 `AppEnvironment` is passed to `AppModel`, which owns the scheduler, the Photos change observer (debounced by `TriggerDebouncer`), the power and workspace monitors, and the UI state. `SyncScheduler` runs the 60-minute background activity, a 5-minute re-check of unavailable local folders, and a 15-minute re-check while the Mac disk state is not OK.
 
@@ -308,5 +309,6 @@ Other facts:
 | Backfill rate and watermarks | GB | Constants are GiB (`GlobalSettings.GiB`) | [0015](../decisions/0015-disk-guard-watermarks.md) |
 | Drive daily cap | 700 GB | 700 × 10⁹ bytes | [0016](../decisions/0016-daily-upload-cap-700gb.md) |
 | Upload state | `upload_job` columns | Adds `uploading_gen` | [0011](../decisions/0011-upload-generation-tracking.md) |
+| Folder layout | `YYYY/MM` with promoted day folders | One folder per day under `Camera Uploads`, `Screenshots` and `Saved`; a database or root in the old layout is blocked, not migrated | [0023](../decisions/0023-day-folders-and-place-name-rule.md), [0025](../decisions/0025-old-layout-block-and-reset.md) |
 
 Spec items still marked [VERIFY] run on the spec default in code. Their owner procedures are in [spikes/README.md](../spikes/README.md), and the test status is in [test-report.md](../test-report.md).
