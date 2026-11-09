@@ -18,6 +18,22 @@ import Testing
         }
     }
 
+    /// Swift counts grapheme clusters, SQLite counts code points: flags, skin tones and combining
+    /// marks must still find the names already taken, or the second insert breaks the cycle.
+    @Test(arguments: ["undated_ảnh 🇻🇳", "IMG 👍🏽", "भारत", "ภาษาไทย", "e\u{301}te"])
+    func collisionsAreFoundForMultiScalarCharacters(stem: String) throws {
+        let store = try Store.inMemory()
+        try store.write { db in
+            for id in ["1", "2", "3"] { try AssetRepository.upsert(db, makeAsset(id), timeZone: utc) }
+            let stems = try ["1", "2", "3"].map {
+                try AssetPlacementRepository.allocatePlacement(
+                    db, assetKey: .local($0), baseStem: stem, category: .camera, day: .unknown, now: t0).nameStem
+            }
+            #expect(Set(stems).count == 3)
+            #expect(stems.dropFirst().allSatisfy { $0.hasSuffix(")") })
+        }
+    }
+
     @Test func caseInsensitiveCollisionAndPlacementFixedOnce() throws {
         let store = try Store.inMemory()
         try store.write { db in
