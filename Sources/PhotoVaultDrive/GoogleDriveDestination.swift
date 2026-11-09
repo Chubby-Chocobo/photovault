@@ -149,8 +149,11 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
         return file.remoteItem
     }
 
+    /// Trashed items are listed too, with `trashed` set (Drive also sets it on everything inside a
+    /// trashed folder): finding trashed app folders and telling an owner's trash from a trashed
+    /// ancestor depend on seeing them. With a folder, only its direct children are listed.
     public nonisolated func list(under folder: RemoteFolderRef?) -> AsyncThrowingStream<RemoteItem, any Error> {
-        var query = DriveQuery.all.appCreated.notTrashed
+        var query = DriveQuery.all.appCreated
         if let folder { query = query.parent(folder.remoteId) }
         return stream(query)
     }
