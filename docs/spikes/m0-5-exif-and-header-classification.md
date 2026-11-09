@@ -1,6 +1,6 @@
 # M0-5: EXIF reading and header classification
 
-- **Status:** run 2026-11-09; NEF, CR3, DNG and Sony or DJI video samples are not in the library
+- **Status:** run 2026-11-09 (NEF and DNG added the same day); CR3 and Sony or DJI video samples are not in the library
 - **Spec refs:** FR-20 (classification by header), FR-34 (metadata from the primary resource), §8.5, §10 (M0-5), [VERIFY M0-5] at FR-20, [VERIFY] at FR-34 (AVFoundation keys)
 - **Owner time:** 2–3 hours. **Wall time:** about 2 hours.
 
@@ -45,12 +45,16 @@ Duration: 2–3 hours.
 
 Run on 2026-11-09, macOS 26.6.2, `exiftool` 13.55. Samples are identified by a hash tag, not a file name. Raw logs are outside the repo.
 
-The library holds HEIC, Sony ARW (RAW only, no JPEG twin), JPEG, PNG, Live Photos, MOV and MP4. It has no NEF, CR3 or DNG, and no Sony or DJI video small enough to fetch; those rows are skipped.
+The library holds HEIC, Sony ARW (RAW only, no JPEG twin), JPEG, PNG, Live Photos, MOV and MP4. The owner then added two NEF and two DNG files. It has no CR3, and no Sony or DJI video small enough to fetch; those rows are skipped.
+
+The column "Without hint" is what the code did before the fix: ImageIO reads an extensionless file and guesses its type.
 
 | Sample | Make and model (probe / exiftool) | Lens and date match | Header bytes read | Header answer = full-file answer | Video load time (s) |
 |---|---|---|---|---|---|
 | ARW × 3 (before the fix) | SONY ILCE-7M4 / SONY ILCE-7M4 | yes; offset no (see below) | whole file, 35–37 MB | **no: header said "no camera"** | — |
 | ARW × 3 (after the fix) | SONY ILCE-7M4 / same | yes | 1 MiB (one chunk) | yes | — |
+| NEF × 2 (Nikon D7100) | match | date yes; lens: ImageIO reads "AF-S DX Nikkor 35mm f/1.8G", exiftool keeps the Nikon lens outside `LensModel` | 1 MiB | yes; without hint ImageIO guesses `public.tiff` but still finds make and model | — |
+| DNG × 2 (DJI FC9113, drone) | match | yes | 1 MiB | yes; without hint ImageIO guesses `com.adobe.raw-image` correctly | — |
 | HEIC × 2 (iPhone 7 Plus) | match | yes | whole file (about 1.1–1.4 MB) | yes | — |
 | Live Photo still × 2 | match | yes | whole file (about 1.1 MB) | yes | — |
 | JPEG, Nikon D7000 | match | yes, offset +07:00 | 1 MiB | yes | — |
@@ -64,7 +68,7 @@ The library holds HEIC, Sony ARW (RAW only, no JPEG twin), JPEG, PNG, Live Photo
 
 Conclusions:
 
-- **Bug found and fixed: every Sony ARW was classified as a photo without a camera.** Without a type hint, ImageIO reads an ARW as a plain TIFF and returns no properties at all. This happens both in the incremental header source and on staged files, which have no extension. Under FR-20 rule 3 every RAW would have gone to `saved`. Both paths now pass the resource UTI as `kCGImageSourceTypeIdentifierHint`. With the hint, make and model are readable from the first 64 KB. Tests: `HeaderClassifierTests.theResourceTypeIsGivenToImageIO`, `ImageIOMetadataReaderTests.stagedFilesAreReadAsTheirResourceType`. Checked again on the real files: 20 of 20 header answers equal the full-file answer.
+- **Bug found and fixed: every Sony ARW was classified as a photo without a camera.** Without a type hint, ImageIO reads an ARW as a plain TIFF and returns no properties at all. This happens both in the incremental header source and on staged files, which have no extension. Under FR-20 rule 3 every RAW would have gone to `saved`. Both paths now pass the resource UTI as `kCGImageSourceTypeIdentifierHint`. With the hint, make and model are readable from the first 64 KB. Tests: `HeaderClassifierTests.theResourceTypeIsGivenToImageIO`, `ImageIOMetadataReaderTests.stagedFilesAreReadAsTheirResourceType`. Checked again on the real files: 20 of 20 header answers equal the full-file answer. Only ARW was affected: NEF keeps make and model in a standard TIFF directory, and DNG is recognised without a hint. All three now read the camera from the first 1 MiB.
 - **ImageIO does not return `OffsetTimeOriginal` for ARW**, though exiftool reads +07:00. The offset is not used for day placement, so nothing changes.
 - **PhotoKit delivered local data in 1 MiB chunks.** Classification costs one chunk for JPEG and ARW. Small HEIC files are read whole, and that read is kept as the staged file.
 - **The video metadata read is far below the 30-second timeout.**
