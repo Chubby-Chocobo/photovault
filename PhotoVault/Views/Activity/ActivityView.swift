@@ -99,6 +99,7 @@ private struct ActivityRowView: View {
         case .statusChanged: .orange
         case .recovered: .green
         case .notice: .secondary
+        case .milestone: .green
         }
     }
 }

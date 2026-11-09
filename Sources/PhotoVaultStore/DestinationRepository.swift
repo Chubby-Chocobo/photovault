@@ -52,12 +52,15 @@ public enum DestinationRepository {
     }
 
     /// Changes the status; `status_since` moves only when the status actually changes (FR-61).
+    /// Every change is also recorded in the activity list, in the same transaction (FR-63); a status
+    /// that flips back within two hours removes its row instead (`ActivityRepository.statusFlapWindow`).
     public static func setStatus(_ db: Database, id: DestinationID, status: DestinationStatus, now: Date) throws {
         guard let current = try fetch(db, id: id) else { throw StoreError.notFound("destination \(id)") }
         guard current.status != status else { return }
         try db.execute(
             sql: "UPDATE destination SET status = ?, status_reason = ?, status_since = ? WHERE id = ?",
             arguments: [status.storageName, status.reason?.rawValue, now, id.rawValue])
+        try ActivityRepository.recordStatusChange(db, id: id, from: current.status, to: status, now: now)
     }
 
     public static func setRecoveryRequired(_ db: Database, id: DestinationID, _ required: Bool) throws {
@@ -92,6 +95,7 @@ public enum DestinationRepository {
         for table in ["upload_intent", "upload_job", "remote_folder", "move_job", "shortcut"] {
             try db.execute(sql: "DELETE FROM \(table) WHERE destination_id = ?", arguments: [id.rawValue])
         }
+        try ActivityRepository.dropKeys(db, id: id)
     }
 
     static func decode(_ row: Row) throws -> DestinationRecord {

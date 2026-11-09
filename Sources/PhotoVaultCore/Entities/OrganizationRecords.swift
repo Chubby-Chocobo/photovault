@@ -197,6 +197,8 @@ public struct ViewFolderGroup: Hashable, Codable, Sendable {
 
 public enum ActivityKind: String, Codable, Sendable, CaseIterable {
     case renamed, moved, missingFile, statusChanged, recovered, notice
+    /// Routine progress: files uploaded in a sync, a backfill finished.
+    case milestone
 }
 
 /// Row of `activity` (FR-63, newest 500 kept). Never holds secrets, file names or coordinates.
