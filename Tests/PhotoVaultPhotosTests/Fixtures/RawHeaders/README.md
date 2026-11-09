@@ -1,13 +1,7 @@
 # RAW header fixtures
 
-The first 64 KiB of public sample files from [raw.pixls.us](https://raw.pixls.us/), whose contributors release them into the public domain (CC0). Each prefix holds the TIFF directories with the camera make and model.
+These are the opening bytes of real RAW files, enough to hold the TIFF or maker directories with the camera make and model. They come from [raw.pixls.us](https://raw.pixls.us/), whose contributors release their files into the public domain (CC0). `manifest.json` lists each prefix with its source and the camera that exiftool reads from the complete file.
 
-| File | Source on raw.pixls.us |
-|---|---|
-| `sony-ilce-7rm5.ARW` | Sony / ILCE-7RM5, `7RM5-LosslessCompressedLarge.ARW` |
-| `nikon-z9-lossless.NEF` | Nikon / Z 9, `Nikon - NIKON Z 9 - 14bit compressed (Lossless).NEF` |
-| `nikon-coolpix-p7800.NRW` | Nikon / Coolpix P7800, `DSCN2039.NRW` |
-| `pentax-k-r.PEF` | PENTAX / PENTAX K-r, `IMGP4424.PEF` |
-| `samsung-nx1.SRW` | Samsung / NX1, `2016-07-23-142101_sam_9364.srw` |
+Each prefix is the smallest one from which `HeaderClassifier` finds the camera when given the resource's UTI (measured on macOS 26.6), rounded up with at least 48 KiB to spare. `RawHeaderFixtureTests` feeds a prefix as one PhotoKit chunk. It fails if the camera is no longer found from these bytes, for example because the UTI hint was dropped or the classifier needs more data.
 
-These formats lose their camera when ImageIO guesses the type itself (it reads them as plain TIFF or not at all), so they guard the UTI hint in `HeaderClassifier` and `ImageIOMetadataReader`.
+To add a format, take its prefix from the full corpus (`../MediaCorpus/`) and add an entry to `manifest.json`.

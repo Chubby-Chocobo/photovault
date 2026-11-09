@@ -50,7 +50,7 @@ let package = Package(
         .testTarget(name: "PhotoVaultStoreTests", dependencies: ["PhotoVaultStore", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
         .testTarget(
             name: "PhotoVaultPhotosTests", dependencies: ["PhotoVaultPhotos", "PhotoVaultTestSupport"],
-            resources: [.copy("Fixtures/RawHeaders")], swiftSettings: strictSwift
+            resources: [.copy("Fixtures")], swiftSettings: strictSwift
         ),
         .testTarget(name: "PhotoVaultDriveTests", dependencies: ["PhotoVaultDrive", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
         .testTarget(name: "PhotoVaultLocalTests", dependencies: ["PhotoVaultLocal", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
