@@ -37,6 +37,19 @@ import Testing
         #expect(try h.source(source.id)?.statusReason == "signInRequired")
     }
 
+    @Test func aRevokedImportAsksTheProviderOnceNotOncePerFile() async throws {
+        let h = try await harness()
+        let (source, _) = try await finishedCloudImport(h, files: 30)
+        let counting = CountingContentSource(source)
+        await h.sources.add(counting)
+        source.setRevoked(true)
+        await h.run()
+        #expect(counting.calls <= h.env.tuning.maxConcurrentExports, "asked \(counting.calls) times")
+        let before = counting.calls
+        await h.run()
+        #expect(counting.calls == before, "nothing more is asked within the hour")
+    }
+
     @Test func signingInAgainLetsTheWaitingFilesRunOnTheNextCycle() async throws {
         let h = try await harness()
         let (source, _) = try await finishedCloudImport(h, files: 3)

@@ -82,3 +82,17 @@ extension Harness {
         return id
     }
 }
+
+/// Counts every export call the engine makes against one content source.
+final class CountingContentSource: ContentSource, @unchecked Sendable {
+    private let inner: FakeContentSource
+    private let lock = NSLock()
+    private var count = 0
+    init(_ inner: FakeContentSource) { self.inner = inner }
+    var id: SourceID { inner.id }
+    var calls: Int { lock.withLock { count } }
+    func exportResource(_ locator: ResourceLocator, to destination: URL, control: ExportControl) async throws -> ExportedFile {
+        lock.withLock { count += 1 }
+        return try await inner.exportResource(locator, to: destination, control: control)
+    }
+}

@@ -27,6 +27,9 @@ actor ExportWorker {
     private var queue: [Candidate] = []
     /// Set by a failure that says Photos itself is unusable; ends the running pass.
     private var photosLost = false
+    /// Sources whose exports were put off for the owner to sign in during this pass; their candidates still in
+    /// `queue` are skipped, so the provider is asked once and not once per file.
+    var signInDeferred = Set<SourceID>()
     /// A resource that failed without a reason of its own waits this long before it is picked again.
     static let transientRetryDelay: TimeInterval = 60
 
@@ -65,6 +68,7 @@ actor ExportWorker {
         try await revisitTooLarge()
         queue = []
         photosLost = false
+        signInDeferred = []
         var result = ExportPassResult()
         var inFlight = Set<String>()
         var held = Set<String>()
@@ -151,6 +155,7 @@ actor ExportWorker {
                 return (asset, resource, try EngineQueries.destinationsNeeding(db, key: key, type: type))
             }
             guard let (asset, resource, needing) = loaded, !needing.isEmpty else { return .held(candidate.id) }
+            if signInDeferred.contains(asset.sourceId) { return .held(candidate.id) }
             if let size = resource.sizeBytes, needing.allSatisfy({ ($0.rules.skipLargerThanBytes ?? .max) < size }) {
                 try await skipOversized(key: key, type: type, size: size, destinations: needing)
                 return .skippedByRule

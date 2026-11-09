@@ -177,7 +177,9 @@ final class AppModel {
         let scheduler = SyncScheduler(
             onTrigger: { [weak self] in self?.requestSync($0) },
             needsAvailabilityRecheck: { [weak self] in
-                self?.destinations.contains { record in
+                // A cloud import that is still reading may have groups waiting out a short cooldown.
+                let importWaiting = self?.snapshot?.imports.contains { $0.kind != .localFolder && $0.status == .scanning } ?? false
+                return importWaiting || self?.destinations.contains { record in
                     if record.kind == .localFolder, case .unavailable = record.status { return true }
                     return false
                 } ?? false

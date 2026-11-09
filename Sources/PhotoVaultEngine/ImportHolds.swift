@@ -17,8 +17,14 @@ final class ImportHolds: @unchecked Sendable {
     static let backoff: TimeInterval = 30
     /// A job that needs the owner to sign in is probed far less often: only signing in fixes it.
     static let signInBackoff: TimeInterval = 600
-    /// A file that stays unreadable for this long (wall clock) is given up on so the import can finish.
+    /// A group that keeps failing is given up on so the import can finish, but only once both limits are
+    /// reached: this much wall-clock time since its first failure and this many failed tries.
     static let giveUpAfter: TimeInterval = 24 * 3600
+    static let giveUpAfterTries = 10
+    /// Failures further apart than this are not one streak: time with no tries does not count.
+    static let streakGap: TimeInterval = 2 * 3600
+    /// After this many groups in a row that end busy or unreachable, the pass stops (the provider is in trouble).
+    static let troubleStreak = 3
 
     enum BlockReason: Sendable { case busy, disk }
 
@@ -28,7 +34,8 @@ final class ImportHolds: @unchecked Sendable {
     private let lock = NSLock()
     private var held: [SourceID: Hold] = [:]
     private var blocked: [SourceID: [String: Block]] = [:]
-    private var firstUnreadable: [SourceID: [String: Date]] = [:]
+    private struct Streak { var first: Date; var last: Date; var tries: Int }
+    private var failing: [SourceID: [String: Streak]] = [:]
 
     func mark(_ id: SourceID, at date: Date, wait: TimeInterval = ImportHolds.backoff) {
         lock.withLock { held[id] = Hold(at: date, wait: wait) }
@@ -63,16 +70,21 @@ final class ImportHolds: @unchecked Sendable {
         lock.withLock { blocked[id]?.contains { $0.value.reason == .disk && $0.value.until > now } ?? false }
     }
 
-    /// Notes that a file could not be read now. True once it has been unreadable for `giveUpAfter`.
-    func shouldGiveUp(_ id: SourceID, path: String, now: Date) -> Bool {
+    /// Notes that a group could not be read now. True once it has failed for `giveUpAfter` and at least
+    /// `giveUpAfterTries` times; a failure long after the previous one starts the count again.
+    func noteFailure(_ id: SourceID, group: String, now: Date) -> Bool {
         lock.withLock {
-            let first = firstUnreadable[id]?[path] ?? now
-            firstUnreadable[id, default: [:]][path] = first
-            return now.timeIntervalSince(first) >= Self.giveUpAfter
+            var streak = failing[id]?[group] ?? Streak(first: now, last: now, tries: 0)
+            if now.timeIntervalSince(streak.last) > Self.streakGap { streak = Streak(first: now, last: now, tries: 0) }
+            streak.last = now
+            streak.tries += 1
+            failing[id, default: [:]][group] = streak
+            return now.timeIntervalSince(streak.first) >= Self.giveUpAfter && streak.tries >= Self.giveUpAfterTries
         }
     }
 
-    func readable(_ id: SourceID, path: String) {
-        lock.withLock { _ = firstUnreadable[id]?.removeValue(forKey: path) }
+    /// The group was decided (committed or given up): its failures are forgotten.
+    func settled(_ id: SourceID, group: String) {
+        lock.withLock { _ = failing[id]?.removeValue(forKey: group) }
     }
 }

@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 extension ImportStage {
     /// What became of one group in this pass.
-    enum GroupOutcome { case committed, waiting, stop }
+    enum GroupOutcome { case committed, waitingForDisk, waitingForProvider, stop }
 
     func ingestBatch(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {
         let id = source.id
@@ -27,13 +27,24 @@ extension ImportStage {
         var bytes: Int64 = 0
         var progressed = false
         var waited = false
+        var troubled = 0
         loop: for group in groups {
             try Task.checkCancellation()
             switch try await process(group, source: source, folder: folder, settings: settings) {
             case .stop: return true
-            case .waiting: waited = true
+            case .waitingForDisk: waited = true
+            case .waitingForProvider:
+                waited = true
+                troubled += 1
+                // Group after group failing means the provider is in trouble: stop asking it for now.
+                if troubled >= ImportHolds.troubleStreak {
+                    pauseBriefly(id)
+                    try await showDiskWait(source)
+                    return true
+                }
             case .committed:
                 progressed = true
+                troubled = 0
                 bytes += group.reduce(0) { $0 + $1.sizeBytes }
                 if bytes >= env.tuning.importBatchBytes { break loop }
             }
@@ -62,6 +73,7 @@ extension ImportStage {
     private func process(_ group: [ImportItem], source: SourceRecord, folder: any FolderImportSource, settings: SettingsSnapshot) async throws -> GroupOutcome {
         var inspected: [String: InspectedFile] = [:]
         var failed: [String: String] = [:]
+        var givenUp = false
         let groupKey = group.first?.groupKey ?? ""
         for item in group {
             let mediaType: MediaType = UTType(item.uti)?.conforms(to: .movie) == true ? .video : .image
@@ -69,27 +81,30 @@ extension ImportStage {
             if source.kind != .localFolder, !hasRoomToDownload(item.sizeBytes, settings: settings) {
                 holds.block(source.id, group: groupKey, reason: .disk, now: env.clock.now)
                 env.log.log(.info, category: "import", "import file waits for disk room")
-                return .waiting
+                return .waitingForDisk
             }
             do {
                 inspected[item.relativePath] = try await adapter {
                     try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: ExportControl())
                 }
-                holds.readable(source.id, path: item.relativePath)
             } catch is AdapterFault {
                 try await hold(source.id)
                 return .stop
             } catch let error as SourceError {
                 switch error {
                 case .busy:
-                    if waitsForRetry(item, source: source, group: groupKey) { return .waiting }
+                    if !givenUp, waitsForRetry(source, group: groupKey) { return .waitingForProvider }
+                    givenUp = true
                     failed[item.relativePath] = "read"
                 case .unavailable:
                     // A folder that no longer answers holds the whole job.
                     guard try await reachable(source, folder) else { return .stop }
                     // A Mac file that cannot be read is that file's problem. A cloud read fails on a dropped
                     // connection all the time; the file waits and is tried again.
-                    if source.kind != .localFolder, waitsForRetry(item, source: source, group: groupKey) { return .waiting }
+                    if source.kind != .localFolder {
+                        if !givenUp, waitsForRetry(source, group: groupKey) { return .waitingForProvider }
+                        givenUp = true
+                    }
                     failed[item.relativePath] = "read"
                 case .accessRevoked:
                     try await holdForSignIn(source.id)
@@ -102,16 +117,17 @@ extension ImportStage {
         }
         try env.reach(.afterImportInspectBeforeCommit)
         try await commitGroup(group, inspected: inspected, failed: failed, source: source, settings: settings)
+        holds.settled(source.id, group: groupKey)
         return .committed
     }
 
-    /// True when the group should wait for another try. False once the file has been unreadable for a day:
-    /// it is then marked failed so the import can finish (importing the folder again brings it back).
-    private func waitsForRetry(_ item: ImportItem, source: SourceRecord, group: String) -> Bool {
+    /// True when the group should wait for another try. False once it has failed for a day and ten tries:
+    /// the files that cannot be read are then marked failed so the import can finish (importing the folder
+    /// again brings them back). The whole group is given up together, not file by file.
+    private func waitsForRetry(_ source: SourceRecord, group: String) -> Bool {
         let now = env.clock.now
-        if holds.shouldGiveUp(source.id, path: item.relativePath, now: now) {
-            holds.readable(source.id, path: item.relativePath)
-            env.log.log(.notice, category: "import", "import file unreadable for a day; marked failed")
+        if holds.noteFailure(source.id, group: group, now: now) {
+            env.log.log(.notice, category: "import", "import group unreadable for a day; marked failed")
             return false
         }
         holds.block(source.id, group: group, reason: .busy, now: now)

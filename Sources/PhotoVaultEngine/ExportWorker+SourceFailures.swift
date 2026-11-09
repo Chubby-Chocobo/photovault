@@ -49,6 +49,7 @@ extension ExportWorker {
                 // Every file of this source would ask the provider and fail the same way; ask again in an hour.
                 let retryAt = env.clock.now.addingTimeInterval(Self.closedSourceRetry)
                 try await env.store.write { db in try EngineQueries.deferExports(db, sourceId: id, until: retryAt) }
+                signInDeferred.insert(id)
             }
         }
         return (base, Self.closedSourceRetry)

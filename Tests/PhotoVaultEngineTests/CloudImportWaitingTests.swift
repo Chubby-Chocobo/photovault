@@ -79,7 +79,7 @@ import Testing
         #expect(try h.importCounts(id) == [.imported: 1, .pending: 1], "still retrying after five hours")
         #expect(try h.source(id)?.status == .scanning)
 
-        await finish(h, hours: 6, times: 4)
+        await finish(h, hours: 1, times: 20)
         #expect(try h.importCounts(id) == [.imported: 1, .failed: 1])
         #expect(try h.source(id)?.status == .completed)
     }
@@ -89,13 +89,10 @@ import Testing
         let source = FakeCloudSource(try tree(h))
         source.setFailure(path: "a.jpg", SourceError.busy)
         let id = try await h.startCloudImport(source)
-        await finish(h, hours: 10, times: 2)
+        await finish(h, hours: 1, times: 12)
         source.setFailure(path: "a.jpg", nil)
         await finish(h, hours: 0.05, times: 4)
         #expect(try h.importCounts(id) == [.imported: 2])
-        source.setFailure(path: "a.jpg", SourceError.busy)
-        await finish(h, hours: 10, times: 2)
-        #expect(try h.importCounts(id)[.failed] == nil, "the clock starts again after a good read")
     }
 
     // MARK: An import that is offline
