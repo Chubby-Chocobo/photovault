@@ -52,12 +52,16 @@ public enum DestinationRepository {
     }
 
     /// Changes the status; `status_since` moves only when the status actually changes (FR-61).
+    /// Every change is also recorded in the activity list, in the same transaction (FR-63).
     public static func setStatus(_ db: Database, id: DestinationID, status: DestinationStatus, now: Date) throws {
         guard let current = try fetch(db, id: id) else { throw StoreError.notFound("destination \(id)") }
         guard current.status != status else { return }
         try db.execute(
             sql: "UPDATE destination SET status = ?, status_reason = ?, status_since = ? WHERE id = ?",
             arguments: [status.storageName, status.reason?.rawValue, now, id.rawValue])
+        try ActivityRepository.record(db, ActivityEvent(
+            at: now, kind: .statusChanged, destinationId: id,
+            message: DestinationStatusText.change(from: current.status, to: status)))
     }
 
     public static func setRecoveryRequired(_ db: Database, id: DestinationID, _ required: Bool) throws {
