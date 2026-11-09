@@ -94,6 +94,11 @@ extension SyncCoordinator {
 
     private func cycle(_ trigger: SyncTrigger) async throws -> CycleOutcome {
         var report = CycleReport()
+        // 0. An old-layout database stays untouched: no export, upload, move, sidecar or view.
+        guard try await !isLegacyLayoutBlocked() else {
+            lastCheckBlock = .legacyLayout
+            return .blocked(.legacyLayout)
+        }
         // 1. checks
         guard env.photos.authorizationStatus().allowsReading else {
             lastCheckBlock = .photosUnauthorized

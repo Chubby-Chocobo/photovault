@@ -34,6 +34,8 @@ public struct DestinationSnapshot: Sendable, Equatable {
 public struct EngineSnapshot: Sendable, Equatable {
     public enum Overall: Sendable, Equatable {
         case idle, syncing, paused, photosUnauthorized, notBaselined, offline, needsReconciliation
+        /// The database holds a backup in the old folder layout; nothing runs until the app starts over.
+        case legacyLayout
     }
 
     public var overall: Overall
@@ -99,6 +101,8 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
 
 public enum CycleBlock: Sendable, Equatable {
     case photosUnauthorized, notBaselined
+    /// The database holds a backup in the old `YYYY/MM` layout; the cycle does nothing.
+    case legacyLayout
 }
 
 public struct CycleReport: Sendable, Equatable {

@@ -16,6 +16,9 @@ public enum ErrorText {
         if let error = error as? EngineError {
             switch error {
             case .notBaselined: return tr(vi: "PhotoVault chưa hoàn tất thiết lập ban đầu.", en: "PhotoVault hasn't finished its initial setup.")
+            case .legacyLayout: return tr(
+                vi: "Bản sao lưu này dùng bố cục thư mục cũ (0.1.0). Hãy bắt đầu lại trong Cài đặt › Nâng cao.",
+                en: "This backup uses the old folder layout (0.1.0). Start over in Settings › Advanced.")
             case .alreadyRunning: return tr(vi: "PhotoVault đang chạy.", en: "PhotoVault is already running.")
             case .unsandboxedBuild: return tr(vi: "Bản không sandbox cần chạy với --dev-container.", en: "The non-sandboxed build must run with --dev-container.")
             case .invalidState: return tr(vi: "Trạng thái hiện tại không cho phép thao tác này.", en: "The current state doesn't allow this action.")

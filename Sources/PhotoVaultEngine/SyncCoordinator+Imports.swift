@@ -10,6 +10,7 @@ extension SyncCoordinator {
     @discardableResult
     public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?) async throws -> SourceID {
         try await exclusive {
+            try await refuseLegacyLayout()
             guard baseline.isTaken else { throw EngineError.notBaselined }
             let record = SourceRecord(
                 id: source.id, kind: .localFolder, mode: .oneTime, displayName: displayName, config: SourceConfig(bookmark: bookmark),

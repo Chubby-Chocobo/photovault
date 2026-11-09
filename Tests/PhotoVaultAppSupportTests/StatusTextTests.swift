@@ -134,6 +134,13 @@ struct OverallStatusTextTests {
         #expect(idle.tone == .ok)
     }
 
+    @Test func oldLayoutBlocksEverythingElse() {
+        let result = text(snapshot(.legacyLayout, destinations: [destination("gdrive", .paused(.rootTrashed))]), disk: .critical)
+        #expect(result.title == "Cần bắt đầu lại")
+        #expect(result.tone == .red)
+        #expect(!result.isWorking)
+    }
+
     @Test func blockedStates() {
         #expect(text(snapshot(.photosUnauthorized)).tone == .red)
         #expect(text(snapshot(.notBaselined)).title == "Chưa bắt đầu")

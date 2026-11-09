@@ -11,6 +11,7 @@ extension SyncCoordinator {
     /// Throws when the scan is not complete or Photos refuses.
     public func runReconciliation() async throws {
         try await exclusive {
+            try await refuseLegacyLayout()
             try await hardening.reconciler.reconcile(reason: .requested)
             needsReconciliation = nil
         }
@@ -117,6 +118,7 @@ extension SyncCoordinator {
     public func startRecovery(_ id: DestinationID, onlyIfRequired: Bool = false) async throws -> RecoveryOutcome {
         let env = env
         let result = try await exclusive { () async throws -> (outcome: RecoveryOutcome, skipped: Bool) in
+            try await refuseLegacyLayout()
             if onlyIfRequired {
                 let required = try await env.store.read { db in try DestinationRepository.fetch(db, id: id)?.recoveryRequired ?? false }
                 if !required { return (.recovered(RecoveryStats()), true) }

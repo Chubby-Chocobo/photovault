@@ -139,4 +139,6 @@ public enum EngineError: Error, Equatable, Sendable {
     case alreadyRunning
     case unsandboxedBuild
     case invalidState(String)
+    /// The database holds a backup in the old folder layout; the app must start over first.
+    case legacyLayout
 }

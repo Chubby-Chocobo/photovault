@@ -31,6 +31,10 @@ public enum OverallStatusText {
         }
         let destinations = snapshot.destinations
         switch snapshot.overall {
+        case .legacyLayout:
+            return result(
+                tr(vi: "Cần bắt đầu lại", en: "A fresh start is needed"),
+                tr(vi: "Bản sao lưu này dùng bố cục thư mục cũ (0.1.0)", en: "This backup uses the old folder layout (0.1.0)"), .red)
         case .paused:
             return result(
                 tr(vi: "Đã tạm dừng tất cả", en: "All paused"),
