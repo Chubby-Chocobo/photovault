@@ -1,7 +1,7 @@
 ---
 phase: 02
 title: "HTML mockups of every screen"
-status: done
+status: completed
 priority: P2
 size: M
 human_effort: 2-4h
@@ -34,8 +34,8 @@ Interactive HTML mockups (Tailwind CDN + Alpine.js) that look like native macOS 
 3. Publish `index.html` as an artifact for the owner to view.
 
 ## Success Criteria
-- [ ] Every FR-60 action and every FR-01 step appears.
-- [ ] Pages render offline except CDN scripts; layouts sized for the macOS popover and Settings window.
+- [x] Every FR-60 action and every FR-01 step appears.
+- [x] Pages render offline except CDN scripts; layouts sized for the macOS popover and Settings window.
 
 ## Risk Assessment
 - Mockup and SwiftUI can drift: phase 11 references the mockup per view.

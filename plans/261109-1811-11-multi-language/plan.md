@@ -1,6 +1,6 @@
 ---
 title: "Support English and Vietnamese with an in-app language switch"
-status: in-review
+status: completed
 priority: P2
 issue: 11
 branch: feat/11-multi-language

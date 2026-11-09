@@ -1,6 +1,6 @@
 ---
 title: "Factory Reset: start over from onboarding"
-status: in-review
+status: completed
 issue: 15
 sources:
   - "tracker: github:Chubby-Chocobo/photovault#15"

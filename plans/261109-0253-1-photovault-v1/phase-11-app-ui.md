@@ -1,7 +1,7 @@
 ---
 phase: 11
 title: "App: menu bar, onboarding, Settings, notifications"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 5-8h
@@ -36,7 +36,7 @@ The SwiftUI app: composition root, `MenuBarExtra` (FR-60), onboarding (FR-01), S
 2. Build SwiftUI views per mockup; build the app with `xcodebuild`.
 
 ## Success Criteria
-- [ ] App builds; package tests green.
+- [x] App builds; package tests green.
 
 ## Risk Assessment
 - No signing identity on this machine: the app is only built unsigned here; Personal Team signing steps go to README (M0-4).
