@@ -1,0 +1,12 @@
+// Static landing page for photovault.annh.dev (Cloudflare Workers static assets, no Worker code).
+// Deploy: cd site && npx wrangler deploy
+{
+  "name": "photovault-site",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "photovault.annh.dev", "zone_name": "annh.dev", "custom_domain": true }]
+}
