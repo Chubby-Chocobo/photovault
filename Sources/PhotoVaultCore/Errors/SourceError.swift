@@ -8,6 +8,8 @@ public enum SourceError: Error, Hashable, Sendable {
     case fileMissing
     /// The file no longer has the bytes it had when it was imported.
     case fileChanged
+    /// The provider no longer accepts the stored grant (revoked, expired refresh token): the owner must sign in again.
+    case accessRevoked
     case cancelled
     case readFailed(code: Int)
 }

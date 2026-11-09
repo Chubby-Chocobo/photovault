@@ -4,8 +4,16 @@ import Foundation
 public struct SourceConfig: Hashable, Codable, Sendable {
     /// Read-only security-scoped bookmark of the picked folder.
     public var bookmark: Data?
+    /// Account the cloud import reads from (email), for display only; never logged.
+    public var account: String?
+    /// Google Drive: the picked file and folder ids. Dropbox: one root path (`""` = the whole account).
+    public var remoteItems: [String]?
 
-    public init(bookmark: Data? = nil) { self.bookmark = bookmark }
+    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil) {
+        self.bookmark = bookmark
+        self.account = account
+        self.remoteItems = remoteItems
+    }
 }
 
 /// Row of `source`: a one-time import job (or, later, a continuous source).

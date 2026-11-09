@@ -57,7 +57,7 @@ public enum ErrorClassifier {
 
     public static func classify(_ error: SourceError) -> ErrorClass {
         switch error {
-        case .unavailable: .destinationLevel(nil)
+        case .unavailable, .accessRevoked: .destinationLevel(nil)
         case .fileMissing, .fileChanged: .permanent(.resourceMissing)
         case .cancelled: .transient
         case .readFailed: .itemLevel

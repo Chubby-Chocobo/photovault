@@ -43,6 +43,13 @@ public struct SourceID: Hashable, Codable, Sendable, Comparable, CustomStringCon
 public enum SourceKind: String, Codable, Sendable, CaseIterable {
     case photos
     case localFolder
+    /// Files and folders picked in Google Drive (desktop Picker, `drive.file`).
+    case googleDrive
+    /// A folder in Dropbox, or the whole account.
+    case dropbox
+
+    /// One-time import kinds: everything except Photos.
+    public var isImport: Bool { self != .photos }
 }
 
 public enum SourceMode: String, Codable, Sendable, CaseIterable {

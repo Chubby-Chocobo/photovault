@@ -40,7 +40,7 @@ extension ImportStage {
                     // One file that cannot be read is that file's problem; only a folder that no longer answers holds the job.
                     guard try await reachable(source, folder) else { return false }
                     failed[item.relativePath] = "read"
-                case .cancelled: return false
+                case .accessRevoked, .cancelled: return false
                 case .fileMissing, .fileChanged: failed[item.relativePath] = "missing"
                 case .readFailed: failed[item.relativePath] = "read"
                 }
