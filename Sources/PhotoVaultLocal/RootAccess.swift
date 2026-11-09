@@ -45,13 +45,16 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
     private let cacheWindow: TimeInterval
     private let onRefresh: @Sendable (Data) -> Void
     private let volumes: any VolumeLookup
+    /// A refreshed bookmark keeps the access it was created with.
+    private let readOnly: Bool
     private(set) var resolveCount = 0
 
-    public convenience init(bookmark: Data, cacheWindow: TimeInterval = 30, onRefresh: @escaping @Sendable (Data) -> Void) {
-        self.init(bookmark: bookmark, cacheWindow: cacheWindow, volumes: SystemVolumeLookup(), onRefresh: onRefresh)
+    public convenience init(bookmark: Data, cacheWindow: TimeInterval = 30, readOnly: Bool = false, onRefresh: @escaping @Sendable (Data) -> Void) {
+        self.init(bookmark: bookmark, cacheWindow: cacheWindow, readOnly: readOnly, volumes: SystemVolumeLookup(), onRefresh: onRefresh)
     }
 
-    init(bookmark: Data, cacheWindow: TimeInterval = 30, volumes: any VolumeLookup, onRefresh: @escaping @Sendable (Data) -> Void) {
+    init(bookmark: Data, cacheWindow: TimeInterval = 30, readOnly: Bool = false, volumes: any VolumeLookup, onRefresh: @escaping @Sendable (Data) -> Void) {
+        self.readOnly = readOnly
         self.bookmark = bookmark
         self.volumes = volumes
         self.cacheWindow = cacheWindow
@@ -61,9 +64,11 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
     deinit { current?.url.stopAccessingSecurityScopedResource() }
 
     /// Creates the bookmark to store when the owner picks a folder.
-    public static func makeBookmark(for url: URL) throws -> Data {
+    /// `readOnly` limits the bookmark to reading (folders that are imported from, never written to).
+    public static func makeBookmark(for url: URL, readOnly: Bool = false) throws -> Data {
         do {
-            return try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: [.volumeUUIDStringKey, .volumeURLForRemountingKey, .pathKey], relativeTo: nil)
+            let options: URL.BookmarkCreationOptions = readOnly ? [.withSecurityScope, .securityScopeAllowOnlyReadAccess] : [.withSecurityScope]
+            return try url.bookmarkData(options: options, includingResourceValuesForKeys: [.volumeUUIDStringKey, .volumeURLForRemountingKey, .pathKey], relativeTo: nil)
         } catch {
             throw DestinationError.bookmarkInvalid
         }
@@ -132,7 +137,7 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
             throw DestinationError.rootTrashed
         }
         if stale {
-            guard let fresh = try? Self.makeBookmark(for: url) else {
+            guard let fresh = try? Self.makeBookmark(for: url, readOnly: readOnly) else {
                 url.stopAccessingSecurityScopedResource()
                 throw DestinationError.bookmarkInvalid
             }

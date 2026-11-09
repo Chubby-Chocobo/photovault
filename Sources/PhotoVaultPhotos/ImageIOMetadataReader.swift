@@ -7,7 +7,7 @@ import PhotoVaultCore
 /// Every failure yields empty fields, never an error.
 public struct ImageIOMetadataReader: MetadataReading {
     /// Upper bound for the blocking bridge to AVFoundation's async loaders.
-    private static let videoTimeout: DispatchTimeInterval = .seconds(30)
+    static let videoTimeout: DispatchTimeInterval = .seconds(30)
 
     public init() {}
 
