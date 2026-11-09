@@ -10,6 +10,11 @@ final class BlockingQueue: Sendable {
         queue = DispatchQueue(label: label, qos: .utility, attributes: concurrent ? .concurrent : [])
     }
 
+    /// Runs `body` without waiting for it; the caller owns reporting its outcome.
+    func submit(_ body: @escaping @Sendable () -> Void) {
+        queue.async(execute: body)
+    }
+
     func run<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { continuation.resume(with: Result { try body() }) }

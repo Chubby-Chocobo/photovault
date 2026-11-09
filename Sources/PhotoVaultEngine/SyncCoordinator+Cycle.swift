@@ -1,6 +1,7 @@
 import Foundation
 import PhotoVaultCore
 import PhotoVaultStore
+import GRDB
 
 /// The spec 8.4 cycle and the lane it shares with owner commands.
 ///
@@ -162,6 +163,9 @@ extension SyncCoordinator {
             report.exported += exported.exported
             progress += exported.exported + exported.skippedByRule
             try await runStages(.export, trigger, &report, progress: &progress)
+            // Photos access was lost or the library went away: nothing more can be exported in this
+            // cycle; what is already staged still uploads below, then the cycle ends.
+            if exported.photosUnavailable { env.log.log(.notice, category: "cycle", "photos unavailable; ending after this pass") }
             try await runStages(.editGate, trigger, &report, progress: &progress)
             if uploadsAllowed {
                 let uploaded = try await uploader.runPass(gate: gate)
@@ -173,12 +177,12 @@ extension SyncCoordinator {
             }
             try await staging.releaseUnneeded()
             try await staging.expireIdle()
-            if progress == 0 { break }
+            if progress == 0 || exported.photosUnavailable { break }
         }
 
         // 10–11
         try await runStages(.cloudIds, trigger, &report)
-        try await recordSuccess()
+        try await recordSuccess(report)
         await publish()
         return .completed(report)
     }
@@ -205,8 +209,25 @@ extension SyncCoordinator {
         }
     }
 
-    private func recordSuccess() async throws {
+    /// "Last successful sync" (FR-61) means files reached a destination, or nothing waiting at an
+    /// active destination is failing: neither its upload nor the export it waits for has a recorded
+    /// error. Work the owner's own rules hold back (battery, Low Power Mode, an expensive network, the
+    /// backfill rate) has no error and does not count against it. A single file deferred after
+    /// repeated failures is reported on its own (deferred and skipped counts), not as a stopped sync.
+    private func recordSuccess(_ report: CycleReport) async throws {
         let now = env.clock.now
-        try await env.store.write { db in try KeyValueRepository.set(db, KeyValueRepository.Key.lastSuccessfulSyncAt, now) }
+        try await env.store.write { db in
+            if report.uploaded == 0 {
+                let failing = try Int.fetchOne(db, sql: """
+                    SELECT COUNT(*) FROM upload_job j
+                    JOIN destination d ON d.id = j.destination_id
+                    LEFT JOIN resource r ON r.asset_key = j.asset_key AND r.res_type = j.res_type
+                    WHERE j.state IN ('pending', 'uploading') AND d.status = 'active'
+                      AND (j.last_error IS NOT NULL OR r.last_error IS NOT NULL)
+                    """) ?? 0
+                guard failing == 0 else { return }
+            }
+            try KeyValueRepository.set(db, KeyValueRepository.Key.lastSuccessfulSyncAt, now)
+        }
     }
 }

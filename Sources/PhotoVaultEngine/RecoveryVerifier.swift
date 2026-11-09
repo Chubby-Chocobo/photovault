@@ -83,9 +83,12 @@ struct RecoveryVerifyStage: CycleStage {
         try await env.store.write { db in
             if let actual, expected == nil {
                 try db.execute(sql: """
-                    UPDATE upload_job SET uploaded_hash = ? WHERE destination_id = ? AND asset_key = ? AND res_type = ?
+                    UPDATE upload_job SET uploaded_hash = ? WHERE destination_id = ? AND asset_key = ? AND res_type = ? AND state = 'done'
                     """, arguments: [actual, identity.destinationId.rawValue, identity.assetKey.rawValue, identity.resType.rawValue])
             } else if actual == nil || actual != expected {
+                // Only a file still recorded as uploaded is reported; a job that moved on meanwhile
+                // (a new edit being sent) is left to its own upload.
+                guard try JobRepository.fetch(db, identity: identity)?.state == .done else { return }
                 do {
                     _ = try JobRepository.apply(db, .missingAtDestination, to: identity, now: now)
                 } catch is JobTransitionError {

@@ -46,7 +46,9 @@ struct DriveHTTP: Sendable {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             return try await transport.send(request, body: body)
-        } catch let error as URLError where error.code != .cancelled {
+        } catch let error as URLError {
+            // A transfer stopped by task cancellation is a cancellation, not a failed attempt.
+            if error.code == .cancelled { throw CancellationError() }
             throw DriveTransportError.map(error)
         }
     }

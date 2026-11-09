@@ -213,7 +213,7 @@ final class Harness: @unchecked Sendable {
         }
     }
 
-    func update(_ change: @Sendable (inout GlobalSettings) -> Void) async throws {
+    func update(_ change: @escaping @Sendable (inout GlobalSettings) -> Void) async throws {
         try await env.settings.update(change)
     }
 

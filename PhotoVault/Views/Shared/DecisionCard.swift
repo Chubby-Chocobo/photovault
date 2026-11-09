@@ -9,7 +9,7 @@ struct DecisionCard: View {
     @State private var step: Step = .choices
     @State private var newRootName = "Camera Uploads 2"
 
-    private enum Step { case choices, newRoot, confirmReupload }
+    private enum Step { case choices, newRoot, confirmReupload, confirmProceed }
 
     var body: some View {
         Banner(style, title: title, message: message) {
@@ -104,10 +104,19 @@ struct DecisionCard: View {
                     Button("Huỷ") { step = .choices }
                 }
             }
+        case (.recoveryNeedsDecision, .confirmProceed):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("PhotoVault upload lại toàn bộ phạm vi vào đích này, bên cạnh dữ liệu cũ (không ghi đè, không xoá). Dung lượng ở đích có thể tăng gấp đôi và không hoàn tác được.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Tiếp tục và upload lại") { model.proceedWithoutRecovery(decision) }
+                    Button("Huỷ") { step = .choices }
+                }
+            }
         case (.recoveryNeedsDecision, _):
             HStack {
                 Button("Thử khôi phục lại") { model.startRecovery(decision.destinationId) }
-                Button("Tiếp tục không dùng dữ liệu cũ") { model.proceedWithoutRecovery(decision) }
+                Button("Tiếp tục không dùng dữ liệu cũ…") { step = .confirmProceed }
             }
         case (.checksumMismatch, _):
             HStack {

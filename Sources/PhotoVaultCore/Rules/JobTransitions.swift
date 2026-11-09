@@ -39,6 +39,8 @@ public enum JobEvent: Hashable, Sendable {
     case missingAtDestination
     /// The owner confirmed re-uploading a missing file.
     case reuploadConfirmed
+    /// A file marked missing is at the destination again (restored from the trash).
+    case foundAgain
     /// Scope or rules narrowed.
     case cancel
     /// Scope or rules widened again.
@@ -139,6 +141,13 @@ public enum JobTransitions {
             j.state = .pending
             j.attempts = 0
             j.nextAttemptAt = nil
+            j.lastError = nil
+            if j.stateReason == .tooLargeForDisk {
+                // Time spent waiting for disk space never counted toward the 30 days; a later
+                // deferral for another reason starts its own window.
+                j.deferredSince = nil
+                j.stateReason = nil
+            }
 
         case (.deferred, .deferralExpired):
             guard j.stateReason != .tooLargeForDisk else { return job }
@@ -148,6 +157,7 @@ public enum JobTransitions {
         case (.skipped, .retrySkipped):
             j.state = .pending
             j.stateReason = nil
+            j.lastError = nil
             // A session kept from before the skip may belong to other content; a new one is cheap.
             j.sessionRef = nil
             j.sessionMd5 = nil
@@ -174,6 +184,25 @@ public enum JobTransitions {
         case (.done, .missingAtDestination):
             j.state = .missingRemote
 
+        case (.pending, .missingAtDestination), (.uploading, .missingAtDestination):
+            // A new generation was going to replace a file that is no longer there: the owner
+            // decides, as for any missing file (FR-47), instead of retrying a replace that cannot work.
+            guard j.doneGen > 0, j.remoteId != nil else { throw JobTransitionError.invalid(from: job.state, event: "missingAtDestination") }
+            j.state = .missingRemote
+            j.uploadingGen = nil
+            j.sessionRef = nil
+            j.sessionMd5 = nil
+            j.nextAttemptAt = nil
+
+        case (.missingRemote, .foundAgain):
+            // The file is the one uploaded at `doneGen`; a newer generation still has to replace it.
+            if j.doneGen < j.targetGen {
+                j.state = .pending
+                j.origin = .refresh
+            } else {
+                j.state = .done
+            }
+
         case (.missingRemote, .reuploadConfirmed):
             j.state = .pending
             j.origin = .reupload
@@ -193,6 +222,9 @@ public enum JobTransitions {
             j.origin = origin
             j.attempts = 0
             j.nextAttemptAt = nil
+            j.deferredSince = nil
+            j.stateReason = nil
+            j.lastError = nil
 
         default:
             throw JobTransitionError.invalid(from: job.state, event: String(describing: event))
@@ -234,8 +266,13 @@ public enum JobTransitions {
             job = (try? apply(.reinstate(origin: desired.origin), to: job, now: now)) ?? job
             if desired.targetGen > job.targetGen { job.targetGen = desired.targetGen }
             return job
-        case .skipped, .missingRemote:
+        case .skipped:
             return nil
+        case .missingRemote:
+            // Still waiting for the owner, but a newer generation is remembered so that a file found
+            // again (or re-uploaded) carries the latest edit.
+            guard desired.targetGen > job.targetGen else { return nil }
+            return try? apply(.contentChanged(targetGen: desired.targetGen), to: job, now: now)
         case .pending, .uploading, .done, .deferred:
             guard desired.targetGen > job.targetGen else { return nil }
             return try? apply(.contentChanged(targetGen: desired.targetGen), to: job, now: now)

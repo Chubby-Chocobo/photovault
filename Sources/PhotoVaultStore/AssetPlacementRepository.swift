@@ -17,11 +17,12 @@ public enum AssetPlacementRepository {
 
         let dayText = day.description
         let baseKey = NameSanitizer.collisionKey(baseStem)
-        // Only `base` and `base (n)` can collide with `base`; narrow the scan to that prefix.
+        // Only `base` and `base (n)` can collide with `base`; narrow the scan to that prefix. The prefix
+        // length is measured by SQLite (code points), never by Swift's `count` (grapheme clusters).
         let taken = Set(try String.fetchAll(db, sql: """
             SELECT norm_stem FROM name_alloc
-            WHERE placement_category = ? AND placement_day = ? AND substr(norm_stem, 1, ?) = ?
-            """, arguments: [category.rawValue, dayText, baseKey.count, baseKey]))
+            WHERE placement_category = ? AND placement_day = ? AND substr(norm_stem, 1, length(?)) = ?
+            """, arguments: [category.rawValue, dayText, baseKey, baseKey]))
         let stem = NameStemBuilder.uniqueStem(base: baseStem, taken: taken)
 
         try db.execute(sql: """

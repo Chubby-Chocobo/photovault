@@ -56,6 +56,61 @@ import Testing
         #expect(try restored.read { try AssetRepository.count($0) } == 1)
     }
 
+    @Test func theCorruptFileIsKeptAsideNotDeleted() throws {
+        let f = try fixture()
+        try f.backup.backup(f.store, now: t0)
+        for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: f.db.path + suffix) }
+        try Data("garbage".utf8).write(to: f.db)
+        _ = try #require(try f.backup.restoreNewest(to: f.db, now: t0.addingTimeInterval(60)))
+        let names = try FileManager.default.contentsOfDirectory(atPath: f.db.deletingLastPathComponent().path)
+        let aside = try #require(names.first { $0.contains(".corrupt-") && !$0.hasSuffix("-wal") && !$0.hasSuffix("-shm") })
+        let kept = try Data(contentsOf: f.db.deletingLastPathComponent().appendingPathComponent(aside))
+        #expect(kept == Data("garbage".utf8))
+    }
+
+    @Test func withoutAGoodBackupTheOriginalFilesAreLeftInPlace() throws {
+        let f = try fixture()
+        try f.backup.backup(f.store, now: t0)
+        let only = try #require(try f.backup.existingBackups().first)
+        try Data("broken backup".utf8).write(to: only)
+        for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: f.db.path + suffix) }
+        try Data("garbage".utf8).write(to: f.db)
+        #expect(try f.backup.restoreNewest(to: f.db, now: t0.addingTimeInterval(60)) == nil)
+        #expect(try Data(contentsOf: f.db) == Data("garbage".utf8))
+        let names = try FileManager.default.contentsOfDirectory(atPath: f.db.deletingLastPathComponent().path)
+        #expect(!names.contains { $0.contains(".corrupt-") })
+    }
+
+    @Test func aBrokenNewestBackupFallsBackToAnOlderOneAndLeavesNoStagingFiles() throws {
+        let f = try fixture()
+        try f.store.write { db in _ = try DestinationRepository.add(db, makeDestination(), now: t0) }
+        try f.backup.backup(f.store, now: t0)
+        let newest = try f.backup.backup(f.store, now: t0.addingTimeInterval(3600))
+        try Data("broken".utf8).write(to: newest)
+        for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: f.db.path + suffix) }
+        try Data("garbage".utf8).write(to: f.db)
+        let restored = try #require(try f.backup.restoreNewest(to: f.db, now: t0.addingTimeInterval(7200)))
+        #expect(try restored.read { try DestinationRepository.fetchAll($0) }.allSatisfy(\.recoveryRequired))
+        let names = try FileManager.default.contentsOfDirectory(atPath: f.db.deletingLastPathComponent().path)
+        #expect(!names.contains { $0.contains(".restoring") })
+    }
+
+    @Test func onlyDamagedFilesCountAsCorruption() throws {
+        #expect(DatabaseBackup.isCorruption(DatabaseError(resultCode: .SQLITE_CORRUPT)))
+        #expect(DatabaseBackup.isCorruption(DatabaseError(resultCode: .SQLITE_NOTADB)))
+        #expect(!DatabaseBackup.isCorruption(DatabaseError(resultCode: .SQLITE_FULL)))
+        #expect(!DatabaseBackup.isCorruption(DatabaseError(resultCode: .SQLITE_CANTOPEN)))
+        #expect(!DatabaseBackup.isCorruption(CocoaError(.fileNoSuchFile)))
+        let f = try fixture()
+        try Data("garbage".utf8).write(to: f.dir.appendingPathComponent("junk.sqlite"))
+        do {
+            _ = try Store.open(at: f.dir.appendingPathComponent("junk.sqlite"))
+            Issue.record("a non-database file opened")
+        } catch {
+            #expect(DatabaseBackup.isCorruption(error), "a garbage file must be recognised: \(error)")
+        }
+    }
+
     @Test func restoreWithoutBackupsReturnsNil() throws {
         let dir = try tempDirectory()
         let backup = DatabaseBackup(directory: dir.appendingPathComponent("none"))

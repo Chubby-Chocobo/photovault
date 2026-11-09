@@ -19,6 +19,9 @@ enum PhotosErrorMapper {
             case 3164, 3169: return .networkError            // networkAccessRequired, networkError
             case 3072: return .cancelled                     // userCancelled
             case 3310, 3311: return .notAuthorized           // accessRestricted, accessUserDenied
+            // libraryVolumeOffline, relinquishingLibraryBundleToWriter, switchingSystemPhotoLibrary:
+            // the whole library is away, so no single resource should spend its retries.
+            case 3114, 3142, 3143: return .libraryUnavailable
             default: return .other(code: code, domain: domain)
             }
         }

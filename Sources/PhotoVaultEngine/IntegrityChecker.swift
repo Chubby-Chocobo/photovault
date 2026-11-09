@@ -35,11 +35,19 @@ struct IntegrityChecker: Sendable {
         var report = IntegrityReport()
         let records = try await env.store.read { db in try DestinationRepository.fetchAll(db) }
         for record in records where id == nil || record.id == id {
-            guard !record.recoveryRequired, let destination = await env.destinations.destination(for: record.id) else {
+            guard !record.recoveryRequired, !Self.isLocationProblem(record.status),
+                  let destination = await env.destinations.destination(for: record.id) else {
                 report.skippedDestinations.append(record.id)
                 continue
             }
             do {
+                // A trashed or missing root (or a paused-for-folder destination) is a problem for
+                // the owner to resolve: nothing under it can be judged, so nothing is marked missing.
+                guard try await rootIsUsable(record, destination) else {
+                    env.log.log(.notice, category: "integrity", "check skipped destination=\(record.id) root unavailable")
+                    report.skippedDestinations.append(record.id)
+                    continue
+                }
                 report.add(try await check(record, destination: destination))
             } catch let error as DestinationError where id == nil || Self.isUnreachable(error) {
                 env.log.log(.notice, category: "integrity", "check skipped destination=\(record.id) error=\(error)")
@@ -47,6 +55,16 @@ struct IntegrityChecker: Sendable {
             }
         }
         return report
+    }
+
+    private static func isLocationProblem(_ status: DestinationStatus) -> Bool {
+        [.paused(.rootMissing), .paused(.rootTrashed), .paused(.folderTrashed)].contains(status)
+    }
+
+    private func rootIsUsable(_ record: DestinationRecord, _ destination: any Destination) async throws -> Bool {
+        guard let managing = destination as? any RootManaging, let rootId = record.config.driveRootId, !rootId.isEmpty else { return true }
+        if case .ok = try await managing.checkRoot(remoteId: rootId) { return true }
+        return false
     }
 
     private static func isUnreachable(_ error: DestinationError) -> Bool {
@@ -139,116 +157,6 @@ struct IntegrityChecker: Sendable {
                 }
             }
             return marked
-        }
-    }
-
-    // MARK: Drive
-
-    private func checkDrive(_ record: DestinationRecord, destination: any Destination) async throws -> IntegrityReport {
-        var report = IntegrityReport()
-        // The database is read first, then the destination is listed: a file that finished after
-        // the snapshot is not part of the check, and one that is in the snapshot but not in the
-        // listing is asked for by id before it counts as missing.
-        let id = record.id
-        let jobs = try await doneJobs(id)
-        let knownShortcuts = try await liveShortcuts(id)
-        var items: [String: RemoteItem] = [:]
-        for try await item in destination.list(under: nil) {
-            try Task.checkCancellation()
-            items[item.remoteId] = item
-        }
-        func isGone(_ id: String) -> Bool {
-            var current = items[id]
-            var hops = 0
-            while let item = current, hops < 64 {
-                if item.trashed { return true }
-                current = item.parentIds.first.flatMap { items[$0] }
-                hops += 1
-            }
-            return items[id] == nil
-        }
-        report.checked = jobs.count
-        var gone: [DoneJob] = []
-        for job in jobs where isGone(job.remoteId) {
-            if items[job.remoteId] == nil, try await stillThere(job.remoteId, destination) { continue }
-            gone.append(job)
-        }
-        report.missing = try await markMissing(gone).count
-        try await healReturned(id, isGone: isGone)
-        try await reconcileShortcuts(
-            record, destination: destination, known: knownShortcuts, items: items, isGone: isGone, report: &report)
-        return report
-    }
-
-    /// The listing did not show the item: ask for it by id. Errors other than "not found" end the check.
-    private func stillThere(_ remoteId: String, _ destination: any Destination) async throws -> Bool {
-        do {
-            return try await destination.probe(remoteId: remoteId).map { !$0.trashed } ?? false
-        } catch DestinationError.notFound {
-            return false
-        }
-    }
-
-    private func liveShortcuts(_ id: DestinationID) async throws -> [ShortcutRecord] {
-        try await env.store.read { db in
-            try [ShortcutState.done, .movePending].flatMap { try ShortcutRepository.fetch(db, destinationId: id, state: $0) }
-        }
-    }
-
-    /// A file that was missing and is back (the owner restored it) is done again.
-    private func healReturned(_ id: DestinationID, isGone: (String) -> Bool) async throws {
-        let missing = try await env.store.read { db in try JobRepository.fetch(db, state: .missingRemote, destinationId: id) }
-        let back = missing.filter { job in job.remoteId.map { !isGone($0) } ?? false }
-        guard !back.isEmpty else { return }
-        try await env.store.write { db in
-            for job in back {
-                try db.execute(sql: "UPDATE upload_job SET state = 'done' WHERE id = ? AND state = 'missingRemote'", arguments: [job.id])
-            }
-        }
-    }
-
-    /// Shortcuts the owner deleted stay deleted (`userRemoved`); app-made shortcuts the database
-    /// does not know are trashed. Only shortcuts, never files or folders.
-    private func reconcileShortcuts(
-        _ record: DestinationRecord, destination: any Destination, known: [ShortcutRecord], items: [String: RemoteItem],
-        isGone: (String) -> Bool, report: inout IntegrityReport
-    ) async throws {
-        let id = record.id
-        var ownerRemoved: [ShortcutRecord] = []
-        for shortcut in known {
-            guard let shortcutId = shortcut.shortcutId, isGone(shortcutId) else { continue }
-            if items[shortcutId] == nil, try await stillThere(shortcutId, destination) { continue }
-            ownerRemoved.append(shortcut)
-        }
-        let removed = ownerRemoved
-        if !removed.isEmpty {
-            report.shortcutsRemoved = try await env.store.write { db in
-                var changed = 0
-                for var shortcut in removed {
-                    // Only a shortcut that is still the one that was checked.
-                    guard let current = try ShortcutRepository.fetch(db, destinationId: id, view: shortcut.view, assetKey: shortcut.assetKey),
-                          current.shortcutId == shortcut.shortcutId, [.done, .movePending].contains(current.state) else { continue }
-                    shortcut.state = .userRemoved
-                    try ShortcutRepository.save(db, shortcut)
-                    changed += 1
-                }
-                return changed
-            }
-        }
-        guard let viewing = destination as? any ViewDestination else { return }
-        let knownIds: Set<String> = try await env.store.read { db in
-            Set(try String.fetchAll(db, sql: "SELECT shortcut_id FROM shortcut WHERE destination_id = ? AND shortcut_id IS NOT NULL", arguments: [id.rawValue]))
-        }
-        let strays = items.values.filter {
-            $0.kind == .shortcut && !$0.trashed && $0.appProperties[AppPropertyKey.view] != nil && !knownIds.contains($0.remoteId)
-        }.sorted { $0.remoteId < $1.remoteId }.prefix(Self.strayShortcutCap)
-        for stray in strays {
-            do {
-                try await viewing.trashShortcut(remoteId: stray.remoteId)
-                report.shortcutsTrashed += 1
-            } catch DestinationError.notFound {
-                continue
-            }
         }
     }
 }

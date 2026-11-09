@@ -16,13 +16,6 @@ enum EngineQueries {
             """, arguments: [limit]).compactMap(AssetKey.init(rawValue:))
     }
 
-    static func provisionalAssetKeys(_ db: Database, limit: Int) throws -> [AssetKey] {
-        try String.fetchAll(db, sql: """
-            SELECT asset_key FROM asset WHERE category_provisional = 1 AND deleted_at IS NULL
-            ORDER BY (inserted_at IS NULL), creation_date DESC LIMIT ?
-            """, arguments: [limit]).compactMap(AssetKey.init(rawValue:))
-    }
-
     static func liveAssetKeys(_ db: Database, after key: String, limit: Int) throws -> [AssetKey] {
         try String.fetchAll(db, sql: """
             SELECT asset_key FROM asset WHERE deleted_at IS NULL AND asset_key > ? ORDER BY asset_key LIMIT ?
@@ -67,12 +60,13 @@ enum EngineQueries {
     }
 
     /// Resets an export that ended without being counted as an error (cancelled by a rule or by
-    /// shutdown): `exporting → none`.
-    static func resetExportToNone(_ db: Database, key: AssetKey, type: ResourceType) throws {
+    /// shutdown): `exporting → none`. `retryAt` keeps the resource out of the candidate list until then.
+    static func resetExportToNone(_ db: Database, key: AssetKey, type: ResourceType, retryAt: Date? = nil) throws {
         try db.execute(sql: """
-            UPDATE resource SET staging_state = 'none', staging_path = NULL
+            UPDATE resource SET staging_state = 'none', staging_path = NULL,
+                next_export_attempt_at = COALESCE(?, next_export_attempt_at)
             WHERE asset_key = ? AND res_type = ? AND staging_state = 'exporting'
-            """, arguments: [key.rawValue, type.rawValue])
+            """, arguments: [retryAt, key.rawValue, type.rawValue])
     }
 
     static func clearExportFailures(_ db: Database, key: AssetKey, type: ResourceType) throws {
@@ -169,7 +163,11 @@ enum EngineQueries {
     static func apply(_ db: Database, _ event: JobEvent, key: AssetKey, type: ResourceType, states: Set<JobState>,
                       destinations: Set<DestinationID>? = nil, now: Date) throws {
         for job in try jobs(db, key: key, type: type, states: states) where destinations?.contains(job.destinationId) ?? true {
-            _ = try? JobRepository.apply(db, event, to: job.identity, now: now)
+            do {
+                _ = try JobRepository.apply(db, event, to: job.identity, now: now)
+            } catch is JobTransitionError {
+                continue
+            }
         }
     }
 
@@ -177,46 +175,43 @@ enum EngineQueries {
 
     struct JobCounts: Sendable, Equatable {
         var pending = 0, uploading = 0, done = 0, deferred = 0, skipped = 0, missingRemote = 0, cancelled = 0
+
+        init() {}
+
+        init(_ byState: [JobState: Int]) {
+            pending = byState[.pending] ?? 0
+            uploading = byState[.uploading] ?? 0
+            done = byState[.done] ?? 0
+            deferred = byState[.deferred] ?? 0
+            skipped = byState[.skipped] ?? 0
+            missingRemote = byState[.missingRemote] ?? 0
+            cancelled = byState[.cancelled] ?? 0
+        }
+
+        static func + (lhs: JobCounts, rhs: JobCounts) -> JobCounts {
+            var sum = JobCounts()
+            sum.pending = lhs.pending + rhs.pending
+            sum.uploading = lhs.uploading + rhs.uploading
+            sum.done = lhs.done + rhs.done
+            sum.deferred = lhs.deferred + rhs.deferred
+            sum.skipped = lhs.skipped + rhs.skipped
+            sum.missingRemote = lhs.missingRemote + rhs.missingRemote
+            sum.cancelled = lhs.cancelled + rhs.cancelled
+            return sum
+        }
     }
 
-    static func jobCounts(_ db: Database, destinationId: DestinationID?) throws -> JobCounts {
-        var counts = JobCounts()
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT state, COUNT(*) AS n FROM upload_job WHERE (? IS NULL OR destination_id = ?) GROUP BY state
-            """, arguments: [destinationId?.rawValue, destinationId?.rawValue])
-        for row in rows {
-            let n: Int = row["n"]
-            switch JobState(rawValue: row["state"]) {
-            case .pending: counts.pending = n
-            case .uploading: counts.uploading = n
-            case .done: counts.done = n
-            case .deferred: counts.deferred = n
-            case .skipped: counts.skipped = n
-            case .missingRemote: counts.missingRemote = n
-            case .cancelled: counts.cancelled = n
-            case nil: break
-            }
-        }
-        return counts
+    /// Job counts per destination from the maintained counters.
+    static func jobCountsByDestination(_ db: Database) throws -> [DestinationID: JobCounts] {
+        try SnapshotCounterRepository.jobCounts(db).mapValues(JobCounts.init)
     }
 
     /// (assets with backfill jobs, of which finished) for the progress display.
     static func backfillProgress(_ db: Database) throws -> (done: Int, total: Int) {
-        let total = try Int.fetchOne(db, sql: """
-            SELECT COUNT(DISTINCT asset_key) FROM upload_job
-            WHERE origin IN ('backfill', 'destinationBackfill') AND state != 'cancelled'
-            """) ?? 0
-        let open = try Int.fetchOne(db, sql: """
-            SELECT COUNT(DISTINCT asset_key) FROM upload_job
-            WHERE origin IN ('backfill', 'destinationBackfill') AND state IN ('pending', 'uploading', 'deferred', 'missingRemote')
-            """) ?? 0
-        return (total - open, total)
+        try SnapshotCounterRepository.backfillProgress(db)
     }
 
     static func uploadedBytes(_ db: Database) throws -> Int64 {
-        try Int64.fetchOne(db, sql: """
-            SELECT COALESCE(SUM(r.size_bytes), 0) FROM upload_job j
-            JOIN resource r ON r.asset_key = j.asset_key AND r.res_type = j.res_type WHERE j.state = 'done'
-            """) ?? 0
+        try SnapshotCounterRepository.uploadedBytes(db)
     }
 }

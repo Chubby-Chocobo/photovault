@@ -18,6 +18,11 @@ extension UploadAttempt {
     // MARK: Errors (spec 8.14)
 
     func handleFailure(_ error: any Error) async throws -> UploadOutcome {
+        if error is UploadedFileGone {
+            env.logJob(.notice, "upload", jobId: ready.job.id, "uploaded file is gone; waiting for the owner")
+            try await applyIfValid(.missingAtDestination)
+            return .skipped
+        }
         guard let failure = error as? DestinationError else {
             env.logJob(.error, "upload", jobId: ready.job.id, "unexpected error type=\(type(of: error))")
             return try await itemFailure("unexpected error")
@@ -64,3 +69,6 @@ extension UploadAttempt {
         return .requeued
     }
 }
+
+/// The file a new generation should replace is no longer at the destination.
+struct UploadedFileGone: Error {}

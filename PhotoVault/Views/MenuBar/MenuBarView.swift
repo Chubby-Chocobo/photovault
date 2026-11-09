@@ -47,6 +47,7 @@ private struct RunningContent: View {
             NoticeBanner()
             ForEach(model.visibleDecisions) { DecisionCard(decision: $0) }
             if model.diskState == .critical { DiskCriticalCard() }
+            if model.driveNeedsSignIn { SignInAgainCard() }
             ForEach(model.localRecords.filter { $0.status == .unavailable(.offline) }) { OfflineCard(record: $0) }
             if model.photosAuthorization != .authorized && model.photosAuthorization != .notDetermined { PhotosDeniedCard() }
             if let snapshot = model.snapshot {

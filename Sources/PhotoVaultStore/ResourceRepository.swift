@@ -83,6 +83,13 @@ public enum ResourceRepository {
     }
 
     /// `exporting → none` after a failure: bumps the single export-error counter (FR-23) and sets
+    /// Records why a transient export failed (iCloud not delivering, a stalled download) without
+    /// counting an attempt, so a failure that lasts for days is still visible. Cleared on success.
+    public static func noteExportError(_ db: Database, key: AssetKey, type: ResourceType, message: String) throws {
+        try db.execute(sql: "UPDATE resource SET last_error = ? WHERE asset_key = ? AND res_type = ?",
+                       arguments: [message, key.rawValue, type.rawValue])
+    }
+
     /// the backoff. Returns the new attempt count, or nil when the resource was not exporting.
     @discardableResult
     public static func failExport(

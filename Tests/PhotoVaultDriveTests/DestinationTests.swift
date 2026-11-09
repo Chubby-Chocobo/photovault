@@ -266,6 +266,13 @@ final class Events: @unchecked Sendable {
         #expect(Set(names) == Set((0..<5).map { "f\($0)" }))
     }
 
+    @Test func listingIncludesTrashedItems() async throws {
+        let h = try await Harness.make()
+        for try await _ in h.destination.list(under: nil) {}
+        let list = try #require(await h.server.requests.last { $0.method == "GET" && $0.url.path == "/drive/v3/files" })
+        #expect(!(list.query["q"] ?? "").contains("trashed=false"))
+    }
+
     @Test func updateMetadataAndQuota() async throws {
         let h = try await Harness.make()
         try await h.destination.updateMetadata(remoteId: h.root.remoteId, description: "hello", appProperties: ["pvArchiveTZ": "UTC"])

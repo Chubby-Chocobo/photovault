@@ -12,13 +12,28 @@ extension LocalFileOps {
             let tmp: DirectoryHandle
             do { tmp = try tmpDirectory(root, create: false) } catch DestinationError.notFound { return }
             var removed = 0
+            var failed = 0
+            var lastFailure = ""
             for name in try tmp.entries() where DirectoryHandle.isOwnedPartName(name) && !writer.isActive(name, in: tmp) {
-                guard let st = try tmp.status(name), st.isRegular else { continue }
-                try tmp.unlinkOwned(name)
-                removed += 1
+                // One stubborn orphan (owned by another user, held open by another client) must not make the
+                // root look missing; the next sweep retries it.
+                do {
+                    guard let st = try tmp.status(name), st.isRegular else { continue }
+                    try tmp.unlinkOwned(name)
+                    removed += 1
+                } catch {
+                    failed += 1
+                    lastFailure = Self.failureKind(error)
+                }
             }
             if removed > 0 { log.log(.info, category: "local", "removed \(removed) orphaned temp files") }
+            if failed > 0 { log.log(.notice, category: "local", "\(failed) orphaned temp files could not be removed (\(lastFailure))") }
         }
+    }
+
+    /// What failed, without names: local destination errors only carry errno-based reasons.
+    private static func failureKind(_ error: any Error) -> String {
+        error is DestinationError ? String(describing: error) : String(describing: type(of: error))
     }
 
     /// Write, read back and delete `.photovault-test` at the root (FR-70).
@@ -99,7 +114,7 @@ extension LocalFileOps {
                 if let existing = try existingOrNil() { return existing }
                 throw DestinationError.foreignFile
             }
-            support.sync()
+            flush(support)
             return marker
         }
     }

@@ -28,10 +28,21 @@ final class ResourceRequestSession: @unchecked Sendable {
     func start(
         resource: PHAssetResource,
         onChunk: @escaping @Sendable (Data) -> Bool,
+        onProgress: @escaping @Sendable () -> Void = {},
         completion: @escaping @Sendable (Error?) -> Void
     ) {
         let options = PHAssetResourceRequestOptions()
         options.isNetworkAccessAllowed = true
+        // Only real progress counts: a stuck download may keep reporting the same fraction.
+        let highest = OSAllocatedUnfairLock(initialState: -1.0)
+        options.progressHandler = { fraction in
+            let advanced = highest.withLock { value -> Bool in
+                guard fraction > value else { return false }
+                value = fraction
+                return true
+            }
+            if advanced { onProgress() }
+        }
         let id = PHAssetResourceManager.default().requestData(
             for: resource,
             options: options,
@@ -49,30 +60,24 @@ final class ResourceRequestSession: @unchecked Sendable {
 }
 
 extension PhotoKitSource {
-    /// Streams one resource through `onChunk`; throws what PhotoKit reports, or `.cancelled` when the
-    /// surrounding task is cancelled. Returns normally when PhotoKit completed without error.
+    /// Streams one resource through `onChunk`; throws what PhotoKit reports, `.cancelled` when the
+    /// surrounding task is cancelled, or `.networkError` when the download stalls. Returns normally
+    /// when PhotoKit completed without error.
     func stream(
         localId: String,
         type: ResourceType,
         onChunk: @escaping @Sendable (Data) -> Bool
     ) async throws {
         let session = ResourceRequestSession()
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                do {
-                    guard let resource = try Self.resource(localId: localId, type: type) else {
-                        throw PhotosSourceError.resourceNotFound(localId: localId, type: type)
-                    }
-                    session.start(resource: resource, onChunk: onChunk) { error in
-                        if let error { continuation.resume(throwing: error) } else { continuation.resume() }
-                    }
-                } catch {
-                    continuation.resume(throwing: error)
+        try await StalledRequestGuard().run(
+            start: { chunk, activity, completion in
+                guard let resource = try Self.resource(localId: localId, type: type) else {
+                    throw PhotosSourceError.resourceNotFound(localId: localId, type: type)
                 }
-            }
-        } onCancel: {
-            session.cancel()
-        }
+                session.start(resource: resource, onChunk: chunk, onProgress: activity, completion: completion)
+            },
+            cancel: { session.cancel() },
+            onChunk: onChunk)
     }
 
     /// The asset's resource of `type`; nil when the asset has none. Throws `.assetNotFound`.

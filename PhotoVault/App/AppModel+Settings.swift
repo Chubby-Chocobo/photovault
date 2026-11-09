@@ -5,15 +5,15 @@ import PhotoVaultEngine
 
 /// Global settings (FR-05) and the archive timezone (FR-07).
 extension AppModel {
-    /// Validates the edited copy and saves it when valid. Content and organization changes make the
-    /// engine recompute what goes where (FR-19); operating knobs only take effect.
+    /// Validates the edited copy and saves every valid change; fields with an issue keep their saved
+    /// value until fixed, and the issues are shown on every tab. Content and organization changes make
+    /// the engine recompute what goes where (FR-19); operating knobs only take effect.
     func commitSettings() async {
         settingsCommitsInFlight += 1
         defer { settingsCommitsInFlight -= 1 }
-        let candidate = settings
-        let issues = SettingsValidator.validate(candidate)
-        settingsIssues = issues
-        guard issues.isEmpty, candidate != persistedSettings, let env else { return }
+        settingsIssues = SettingsValidator.validate(settings)
+        let candidate = SettingsValidator.savable(settings, persisted: persistedSettings)
+        guard candidate != persistedSettings, let env else { return }
         let old = persistedSettings
         do {
             try await env.settings.update { $0 = candidate }

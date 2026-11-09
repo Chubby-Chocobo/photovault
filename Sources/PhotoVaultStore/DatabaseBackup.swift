@@ -24,6 +24,7 @@ public struct DatabaseBackup: Sendable {
         try store.writer.writeWithoutTransaction { db in
             try db.execute(sql: "VACUUM INTO ?", arguments: [url.path])
         }
+        try Self.flushToDisk(url)
         try prune()
         return url
     }
@@ -40,22 +41,85 @@ public struct DatabaseBackup: Sendable {
         try backupFiles().map(\.url)
     }
 
-    /// Replaces the database at `databaseURL` with the newest readable backup, opens it (running
-    /// migrations) and marks every destination `recovery_required` (FR-51/52).
-    /// Returns nil when no usable backup exists.
+    /// Replaces a corrupt database at `databaseURL` with the newest backup that passes
+    /// `integrity_check`, opens it (running migrations) and marks every destination
+    /// `recovery_required` (FR-51/52).
+    ///
+    /// Each candidate is prepared beside the database (copied, verified, migrated and flagged) and
+    /// only then swapped in, so no failure leaves an unflagged backup or nothing at all in place. The
+    /// damaged files (database, `-wal`, `-shm`) are moved aside as `<name>.corrupt-<time>`, never
+    /// deleted: they may hold commits newer than any backup. When no backup is usable, nothing on
+    /// disk changes and nil is returned.
     public func restoreNewest(to databaseURL: URL, now: Date = Date()) throws -> Store? {
         let fm = FileManager.default
+        let suffixes = ["", "-wal", "-shm"]
+        let staging = URL(fileURLWithPath: databaseURL.path + ".restoring")
+        func removeStaging() { for suffix in suffixes { try? fm.removeItem(atPath: staging.path + suffix) } }
         for candidate in try backupFiles() {
-            for suffix in ["", "-wal", "-shm"] {
-                let path = databaseURL.path + suffix
-                if fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
+            removeStaging()
+            do {
+                try fm.copyItem(at: candidate.url, to: staging)
+                try Self.prepare(at: staging)
+            } catch {
+                removeStaging()
+                continue
             }
-            try fm.copyItem(at: candidate.url, to: databaseURL)
-            guard let store = try? Store.open(at: databaseURL) else { continue }
-            try store.write { try DestinationRepository.markAllRecoveryRequired($0) }
-            return store
+            try swapIn(staging, for: databaseURL, tag: ".corrupt-" + String(Int64((now.timeIntervalSince1970 * 1000).rounded())))
+            removeStaging()  // the emptied -wal and -shm of the closed copy
+            return try Store.open(at: databaseURL)
         }
         return nil
+    }
+
+    /// Verifies, migrates and flags a copied backup, then closes it so it can be renamed.
+    private static func prepare(at url: URL) throws {
+        let store = try openVerified(at: url)
+        try store.write { try DestinationRepository.markAllRecoveryRequired($0) }
+        // Everything must be in the main file: only that file is moved into place.
+        try store.writer.writeWithoutTransaction { db in try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)") }
+        try (store.writer as? DatabasePool)?.close()
+        try flushToDisk(url)
+    }
+
+    /// Moves the damaged files aside and the prepared copy into place; on failure puts them back.
+    private func swapIn(_ prepared: URL, for databaseURL: URL, tag: String) throws {
+        let fm = FileManager.default
+        var movedAside: [(from: String, to: String)] = []
+        do {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = databaseURL.path + suffix
+                guard fm.fileExists(atPath: path) else { continue }
+                let aside = databaseURL.path + tag + suffix
+                try fm.moveItem(atPath: path, toPath: aside)
+                movedAside.append((path, aside))
+            }
+            try fm.moveItem(at: prepared, to: databaseURL)
+        } catch {
+            for move in movedAside.reversed() { try? fm.moveItem(atPath: move.to, toPath: move.from) }
+            throw error
+        }
+    }
+
+    /// True for the errors that mean the file itself is damaged, as opposed to a full disk, a
+    /// permission problem or a lock: only those justify swapping in a backup.
+    public static func isCorruption(_ error: Error) -> Bool {
+        guard let error = error as? DatabaseError else { return false }
+        return error.resultCode == .SQLITE_CORRUPT || error.resultCode == .SQLITE_NOTADB
+    }
+
+    private static func openVerified(at url: URL) throws -> Store {
+        let store = try Store.open(at: url)
+        let result = try store.read { db in try String.fetchOne(db, sql: "PRAGMA integrity_check") }
+        guard result == "ok" else { throw DatabaseError(resultCode: .SQLITE_CORRUPT, message: "integrity_check failed") }
+        return store
+    }
+
+    /// `VACUUM INTO` does not sync its output; a backup must survive the power loss it guards against.
+    private static func flushToDisk(_ url: URL) throws {
+        let fd = open(url.path, O_RDONLY | O_CLOEXEC)
+        guard fd >= 0 else { throw CocoaError(.fileReadUnknown) }
+        defer { close(fd) }
+        if fcntl(fd, F_FULLFSYNC) != 0, fsync(fd) != 0 { throw CocoaError(.fileWriteUnknown) }
     }
 
     private func prune() throws {

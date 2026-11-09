@@ -22,6 +22,21 @@ public actor FakeDestination: ViewDestination, RootManaging {
         public var description: String?
         public var targetId: String?
         public var trashed: Bool
+
+        public init(
+            id: String, name: String, parentId: String, kind: RemoteItemKind, content: StagedContent? = nil,
+            appProperties: [String: String] = [:], description: String? = nil, targetId: String? = nil, trashed: Bool = false
+        ) {
+            self.id = id
+            self.name = name
+            self.parentId = parentId
+            self.kind = kind
+            self.content = content
+            self.appProperties = appProperties
+            self.description = description
+            self.targetId = targetId
+            self.trashed = trashed
+        }
     }
 
     public nonisolated let id: DestinationID
@@ -35,6 +50,8 @@ public actor FakeDestination: ViewDestination, RootManaging {
     public var status: DestinationStatus = .active
     public var quotaValue: Quota? = Quota(totalBytes: 2_000 * GlobalSettings.GiB, usedBytes: 0, availableBytes: 2_000 * GlobalSettings.GiB)
     public var viewsPermitted = true
+    /// `list(under: nil)` covers every item of the account (other roots too), as on Drive.
+    public var listsWholeAccount = false
     private var failures: [Operation: [DestinationError]] = [:]
     private var crashes: [Operation: Int] = [:]
     private var sessions: [String: UploadRequest] = [:]
@@ -64,6 +81,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
     public func crashAfterEffect(_ op: Operation, times: Int = 1) { crashes[op, default: 0] += times }
     public func setStatus(_ value: DestinationStatus) { status = value }
     public func setViewsPermitted(_ value: Bool) { viewsPermitted = value }
+    public func setListsWholeAccount(_ value: Bool) { listsWholeAccount = value }
 
     /// Removes an item as an owner would in the Drive UI (not something the app can do).
     public func externallyDelete(_ remoteId: String) { items[remoteId] = nil }
@@ -135,10 +153,23 @@ public actor FakeDestination: ViewDestination, RootManaging {
         return id
     }
 
+    /// Like Drive, an item inside a trashed folder reports itself as trashed.
+    private func reportsTrashed(_ item: Item) -> Bool {
+        guard capabilities.reservesIds else { return item.trashed }
+        var current: Item? = item
+        var hops = 0
+        while let candidate = current, hops < 64 {
+            if candidate.trashed { return true }
+            current = items[candidate.parentId]
+            hops += 1
+        }
+        return false
+    }
+
     private func remote(_ item: Item) -> RemoteItem {
         RemoteItem(remoteId: item.id, name: item.name, parentIds: [item.parentId], kind: item.kind,
                    size: item.content?.size, md5: item.content?.md5, sha256: item.content?.sha256,
-                   appProperties: item.appProperties, shortcutTargetId: item.targetId, trashed: item.trashed,
+                   appProperties: item.appProperties, shortcutTargetId: item.targetId, trashed: reportsTrashed(item),
                    relativePath: capabilities.reservesIds ? nil : path(of: item.id))
     }
 
@@ -235,9 +266,10 @@ public actor FakeDestination: ViewDestination, RootManaging {
     public func resumeUpload(_ request: UploadRequest, session: SessionCheckpoint,
                              onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
         try step(.resume)
-        guard sessions[session.sessionRef] != nil else { throw DestinationError.sessionExpired }
+        guard let opened = sessions[session.sessionRef] else { throw DestinationError.sessionExpired }
         sessions[session.sessionRef] = nil
-        let parent = try requireParent(request.parent)
+        // The file lands in the folder the session was opened for, whatever the new request plans.
+        let parent = try requireParent(opened.parent)
         let id = try consumeReservation(request.reservedRemoteId)
         let item = Item(id: id, name: request.fileName, parentId: parent?.id ?? rootId, kind: .file, content: request.content,
                         appProperties: request.appProperties, description: request.description, targetId: nil, trashed: false)
@@ -303,6 +335,8 @@ public actor FakeDestination: ViewDestination, RootManaging {
 
     private func listItems(under folder: RemoteFolderRef?) throws -> [RemoteItem] {
         try step(.list)
+        // Without a folder Drive lists the whole account, not only the app's root.
+        if folder == nil, capabilities.reservesIds, listsWholeAccount { return items.values.map(remote).sorted { $0.remoteId < $1.remoteId } }
         let base = folder?.remoteId ?? rootId
         var result: [RemoteItem] = []
         var queue = [base]

@@ -9,6 +9,8 @@ struct ExportPassResult: Sendable, Equatable {
     var skippedByRule = 0
     /// Set when the guard stopped the pass (critical disk, staging full).
     var blockedBy: DiskGuardBlock?
+    /// Set when Photos refused or lost the library; the pass ended early so the cycle re-checks access.
+    var photosUnavailable = false
 }
 
 /// Step 4 of the cycle (FR-30..34, FR-23, NFR-09). Each resource is exported once for every
@@ -17,12 +19,16 @@ struct ExportPassResult: Sendable, Equatable {
 /// `maxConcurrentExports` run at once. Only placed assets are exported, so nothing is staged
 /// before the placement exists.
 actor ExportWorker {
-    private let env: EngineEnvironment
+    let env: EngineEnvironment
     private let resourceGuard: ResourceGuard
     private let staging: StagingManager
     /// Candidates fetched once and consumed in order; refetched when exhausted, so a pass over a
     /// large backlog does not repeat the ranking query for every export.
     private var queue: [Candidate] = []
+    /// Set by a failure that says Photos itself is unusable; ends the running pass.
+    private var photosLost = false
+    /// A resource that failed without a reason of its own waits this long before it is picked again.
+    static let transientRetryDelay: TimeInterval = 60
 
     init(env: EngineEnvironment, resourceGuard: ResourceGuard, staging: StagingManager) {
         self.env = env
@@ -58,16 +64,19 @@ actor ExportWorker {
     func runPass() async throws -> ExportPassResult {
         try await revisitTooLarge()
         queue = []
+        photosLost = false
         var result = ExportPassResult()
         var inFlight = Set<String>()
         var held = Set<String>()
+        // Candidates that failed in this pass are not picked again until the next pass.
+        var failed = Set<String>()
         var stop = false
         let limit = max(1, env.tuning.maxConcurrentExports)
         try await withThrowingTaskGroup(of: Outcome.self) { group in
             while true {
                 try Task.checkCancellation()
                 while !stop, inFlight.count < limit {
-                    let step = try await dispatchNext(excluding: inFlight.union(held))
+                    let step = try await dispatchNext(excluding: inFlight.union(held).union(failed))
                     switch step {
                     case .none: stop = true
                     case .held(let id): held.insert(id)
@@ -84,9 +93,15 @@ actor ExportWorker {
                 inFlight.remove(outcome.id)
                 switch outcome {
                 case .exported: result.exported += 1
-                case .failed: result.failed += 1
+                case .failed(let id):
+                    result.failed += 1
+                    failed.insert(id)
                 case .cancelledForDisk: result.cancelledForDisk += 1
                 case .skippedByRule: result.skippedByRule += 1
+                }
+                if photosLost {
+                    stop = true
+                    result.photosUnavailable = true
                 }
             }
         }
@@ -234,7 +249,12 @@ actor ExportWorker {
                 }
                 return .cancelledForDisk(started.id)
             case nil:
-                try await env.store.write { db in try EngineQueries.resetExportToNone(db, key: key, type: type) }
+                // Cancelled without a reason of ours: the library went away underneath the export.
+                // A cancelled task (shutdown, owner command) is not a lost library and needs no delay.
+                let shuttingDown = Task.isCancelled
+                if !shuttingDown { photosLost = true }
+                let retryAt = shuttingDown ? nil : now.addingTimeInterval(Self.transientRetryDelay)
+                try await env.store.write { db in try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: retryAt) }
                 return .failed(started.id)
             }
         }
@@ -247,7 +267,11 @@ actor ExportWorker {
                 try EngineQueries.apply(db, .permanentFailure(reason, message: message), key: key, type: type, states: [.pending], now: now)
             }
         case .destinationLevel, .transient, .verify:
-            try await env.store.write { db in try EngineQueries.resetExportToNone(db, key: key, type: type) }
+            if case .destinationLevel = classification { photosLost = true }
+            try await env.store.write { db in
+                try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(Self.transientRetryDelay))
+                try ResourceRepository.noteExportError(db, key: key, type: type, message: message)
+            }
         case .itemLevel:
             let delay = Backoff().delay(forAttempt: started.resource.exportAttempts)
             try await env.store.write { db in
@@ -260,43 +284,5 @@ actor ExportWorker {
         }
         env.logJob(.notice, "export", jobId: nil, "export failed class=\(classification)")
         return .failed(started.id)
-    }
-
-    /// Skips the jobs of destinations whose size cap the file exceeds (FR-33).
-    private func skipOversized(key: AssetKey, type: ResourceType, size: Int64, destinations: [DestinationRecord], force: Bool = false) async throws {
-        let oversized = Set(destinations.filter { ($0.rules.skipLargerThanBytes ?? .max) < size || (force && $0.rules.skipLargerThanBytes != nil) }.map(\.id))
-        guard !oversized.isEmpty else { return }
-        let now = env.clock.now
-        try await env.store.write { db in
-            try EngineQueries.apply(
-                db, .permanentFailure(.tooLargeForRule, message: "larger than destination limit"),
-                key: key, type: type, states: [.pending], destinations: oversized, now: now)
-        }
-    }
-
-    // MARK: tooLargeForDisk
-
-    /// FR-31. The mark is on the resource, so a job that appears later for it (another destination,
-    /// a wider rule) is deferred too and shows in the counts instead of waiting for ever. The
-    /// resource is tried again when the free space covers the bytes it reached (its size when
-    /// known) plus the margin, or after 24 hours at the latest.
-    private func revisitTooLarge() async throws {
-        let free = try? env.disk.capacity(of: env.stagingDirectory).available
-        let now = env.clock.now
-        try await env.store.write { db in
-            for resource in try EngineQueries.tooLargeResources(db) {
-                let key = resource.assetKey
-                let type = resource.type
-                let fits = free.map {
-                    DiskGuardPolicy.mayRetryTooLarge(freeBytes: $0, knownSizeBytes: resource.sizeBytes ?? resource.bytesReceivedAtCancel)
-                } ?? false
-                if fits || (resource.nextExportAttemptAt.map { $0 <= now } ?? false) {
-                    try EngineQueries.clearTooLarge(db, key: key, type: type)
-                    try EngineQueries.apply(db, .retryDeferred, key: key, type: type, states: [.deferred], now: now)
-                } else {
-                    try EngineQueries.apply(db, .tooLargeForDisk, key: key, type: type, states: [.pending], now: now)
-                }
-            }
-        }
     }
 }

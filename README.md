@@ -2,7 +2,7 @@
 
 Personal macOS menu-bar app. It backs up the Photos library (originals and edits) to one Google Drive folder and to any number of local or NAS folders. It never deletes backup data and never changes the Photos library.
 
-> **Status:** the engine and the core packages are in the repo. The menu bar, onboarding and Settings are still being written. The M0 spikes have not been run, so several defaults are unverified. See [docs/spikes/README.md](docs/spikes/README.md).
+> **Status:** the engine, the core packages, the menu bar, onboarding and Settings are in the repo. The M0 spikes have not been run, so several defaults are unverified. See [docs/spikes/README.md](docs/spikes/README.md).
 
 Other references: the full spec is [docs/requirements/photovault-spec-v1.md](docs/requirements/photovault-spec-v1.md) (copy of GitHub issue #1), decisions are in [docs/decisions/](docs/decisions/README.md), and the sidecar format is in [docs/sidecar-schema.md](docs/sidecar-schema.md).
 
@@ -124,7 +124,7 @@ The archive timezone is fixed when you onboard. Changing the Mac's timezone late
 
 ## Using the app
 
-The menu bar shows the overall state, one line per destination, backfill progress, and the actions Sync now, Pause/Resume, Open Drive, Reveal NAS, recent activity, Settings, Log and Quit. The interface is described in [docs/design/README.md](docs/design/README.md), with interactive mockups in `docs/design/mockups/`. This section will be refined when the UI is in the app.
+The menu bar shows the overall state, one line per destination, backfill progress, and the actions Sync now, Pause/Resume, Open Drive, Reveal NAS, recent activity, Settings, Log and Quit. The interface is described in [docs/design/README.md](docs/design/README.md), with interactive mockups in `docs/design/mockups/`.
 
 ## Known limits
 

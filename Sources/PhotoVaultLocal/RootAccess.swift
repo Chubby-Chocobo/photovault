@@ -5,6 +5,13 @@ import PhotoVaultCore
 public protocol RootAccess: Sendable {
     /// Throws `DestinationError.bookmarkInvalid` / `.offline` / `.rootMissing` / `.rootTrashed` when the root cannot be used.
     func withRoot<T>(_ body: (URL) throws -> T) throws -> T
+    /// Drops a cached resolution of the root so the next `withRoot` resolves it again. Returns true when
+    /// there was one to drop. Roots that never cache return false.
+    func invalidateResolvedRoot() -> Bool
+}
+
+extension RootAccess {
+    public func invalidateResolvedRoot() -> Bool { false }
 }
 
 /// A fixed folder URL (tests, non-sandboxed use).
@@ -81,6 +88,15 @@ public final class SecurityScopedBookmarkRoot: RootAccess, @unchecked Sendable {
         lease.uses = 1
         current = lease
         return lease
+    }
+
+    public func invalidateResolvedRoot() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let old = current else { return false }
+        retire(old)
+        current = nil
+        return true
     }
 
     private func release(_ lease: Lease) {

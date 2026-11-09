@@ -46,6 +46,7 @@ struct RootProblemService: Sendable {
             let now = env.clock.now
             try await env.store.write { db in try DestinationRepository.setStatus(db, id: id, status: .active, now: now) }
             await forget(id)
+            await IntegrityChecker(env: env).healMissing(id, destination: managing)
         }
     }
 
@@ -108,9 +109,16 @@ struct RootProblemService: Sendable {
         var candidates = Set(try await env.store.read { db in
             try RemoteFolderRepository.fetchAll(db, destinationId: id).filter(\.created).compactMap(\.remoteId)
         })
-        for try await item in managing.list(under: nil) where item.kind == .folder && item.trashed
-            && item.appProperties[AppPropertyKey.schema] == AppPropertyCodec.schemaVersion {
-            candidates.insert(item.remoteId)
+        // The listing covers the whole account: only trashed folders of this root are ours to restore,
+        // never an old root the owner moved away from or another Mac's backup.
+        var listing = DriveListing()
+        for try await item in managing.list(under: nil) { listing.items[item.remoteId] = item }
+        if let rootId = record.config.driveRootId {
+            for item in listing.items.values where item.kind == .folder && item.trashed
+                && item.appProperties[AppPropertyKey.schema] == AppPropertyCodec.schemaVersion
+                && listing.isUnder(root: rootId, item) {
+                candidates.insert(item.remoteId)
+            }
         }
         for folderId in candidates.sorted() {
             try Task.checkCancellation()
@@ -124,6 +132,7 @@ struct RootProblemService: Sendable {
             try DestinationRepository.setStatus(db, id: id, status: .active, now: now)
         }
         await forget(id)
+        if restored > 0 { await IntegrityChecker(env: env).healMissing(id, destination: managing) }
         return restored
     }
 }

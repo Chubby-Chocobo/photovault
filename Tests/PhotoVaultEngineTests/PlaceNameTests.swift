@@ -176,6 +176,27 @@ import Testing
         #expect(await h.geocoder.requestCount == 4)
     }
 
+    /// Apple answers a cell on the water with a country and no province (measured on Hạ Long bay).
+    /// A boat trip must not switch the whole library to country names or cost the day its province.
+    @Test func aBoatTripStillNamesTheDayAfterItsProvince() async throws {
+        let h = try await harness()
+        let quangNinh = GeoPoint(latitude: 20.95, longitude: 107.08)
+        await h.geocoder.seed(quangNinh,
+                              en: GeoPlace(isoCountryCode: "VN", country: "Vietnam", administrativeArea: "Quang Ninh"),
+                              vi: GeoPlace(isoCountryCode: "VN", country: "Việt Nam", administrativeArea: "Quảng Ninh"))
+        await h.add(h.snapshot("port", daysAgo: 3, location: quangNinh), recordChange: false)
+        // The water photos are newer, so they are geocoded first.
+        for index in 0..<12 {
+            let point = GeoPoint(latitude: 20.80 + Double(index) * 0.011, longitude: 107.18)
+            await h.geocoder.seed(point, en: GeoPlace(isoCountryCode: "VN", country: "Vietnam"), vi: GeoPlace(isoCountryCode: "VN", country: "Việt Nam"))
+            await h.add(h.snapshot("bay\(index)", daysAgo: 2.99 - Double(index) * 0.001, location: point), recordChange: false)
+        }
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        #expect(try h.dayStat(organizationDay)?.placeKey == "VN|Quang Ninh")
+        #expect(await dayFolders(h.drive) == ["\(organizationDay) Quảng Ninh"])
+    }
+
     @Test func missingProvinceFieldsDowngradeToTheCountryAndTellTheOwner() async throws {
         let h = try await harness()
         let countryOnly = GeoPlace(isoCountryCode: "VN", country: "Việt Nam")

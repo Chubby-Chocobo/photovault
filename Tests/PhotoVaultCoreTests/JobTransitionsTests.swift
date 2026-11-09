@@ -85,6 +85,46 @@ import Testing
         #expect(j.deferredSince == now, "deferred_since is only written when NULL")
     }
 
+    @Test func aJobLeavingTheTooLargeWaitStartsAFreshThirtyDayWindow() throws {
+        var j = try JobTransitions.apply(.tooLargeForDisk, to: job(), now: now)
+        let later = now.addingTimeInterval(45 * 24 * 3600)
+        j = try JobTransitions.apply(.retryDeferred, to: j, now: later)
+        #expect(j.state == .pending && j.deferredSince == nil && j.stateReason == nil)
+        j = try JobTransitions.apply(.exportGaveUp, to: j, now: later)
+        #expect(j.deferredSince == later)
+        let next = try JobTransitions.apply(.deferralExpired, to: j, now: later.addingTimeInterval(3600))
+        #expect(next.state == .skipped, "the sweeper decides when; the window itself starts at \(later)")
+    }
+
+    @Test func aReinstatedJobStartsAFreshThirtyDayWindow() throws {
+        var j = try JobTransitions.apply(.exportGaveUp, to: job(), now: now)
+        j = try JobTransitions.apply(.cancel, to: j, now: now)
+        let later = now.addingTimeInterval(60 * 24 * 3600)
+        j = try JobTransitions.apply(.reinstate(origin: .backfill), to: j, now: later)
+        #expect(j.deferredSince == nil && j.stateReason == nil)
+    }
+
+    @Test func aFileFoundAgainIsDoneOrStillOwesItsNewerGeneration() throws {
+        var j = try JobTransitions.apply(.startUpload(generation: 1), to: job(), now: now)
+        j = try JobTransitions.apply(.uploadSucceeded(remoteId: "f", finalName: "a", parent: "p", verifiedHash: "h"), to: j, now: now)
+        let missing = try JobTransitions.apply(.missingAtDestination, to: j, now: now)
+        #expect(try JobTransitions.apply(.foundAgain, to: missing, now: now).state == .done)
+        var edited = try JobTransitions.apply(.contentChanged(targetGen: 2), to: j, now: now)
+        edited = try JobTransitions.apply(.missingAtDestination, to: edited, now: now)
+        let back = try JobTransitions.apply(.foundAgain, to: edited, now: now)
+        #expect(back.state == .pending && back.origin == .refresh && back.remoteId == "f")
+    }
+
+    @Test func aMissingJobRemembersANewerGenerationButKeepsWaiting() throws {
+        var j = try JobTransitions.apply(.startUpload(generation: 1), to: job(), now: now)
+        j = try JobTransitions.apply(.uploadSucceeded(remoteId: "f", finalName: "a", parent: "p", verifiedHash: "h"), to: j, now: now)
+        j = try JobTransitions.apply(.missingAtDestination, to: j, now: now)
+        let desired = JobTransitions.Desired(identity: j.identity, origin: .refresh, targetGen: 2)
+        let updated = try #require(JobTransitions.upsert(existing: j, desired: desired, now: now))
+        #expect(updated.state == .missingRemote && updated.targetGen == 2)
+        #expect(try JobTransitions.apply(.foundAgain, to: updated, now: now).state == .pending)
+    }
+
     @Test func exportGaveUpDefers() throws {
         let j = try JobTransitions.apply(.exportGaveUp, to: job(), now: now)
         #expect(j.state == .deferred && j.stateReason == .exportFailures)

@@ -59,7 +59,7 @@ final class DirectoryHandle: @unchecked Sendable {
     }
 
     func openChild(_ name: String, create: Bool) throws -> DirectoryHandle {
-        try LocalPath.validate(name: name)
+        if create { try LocalPath.validate(name: name) } else { try LocalPath.validateExisting(name: name) }
         if create, mkdirat(fd, name, 0o755) != 0, errno != EEXIST { throw Self.fail(errno) }
         let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard child >= 0 else {
@@ -82,14 +82,17 @@ final class DirectoryHandle: @unchecked Sendable {
 
     /// `fstatat(AT_SYMLINK_NOFOLLOW)`; nil when the entry does not exist.
     func status(_ name: String) throws -> stat? {
-        try LocalPath.validate(name: name)
+        try LocalPath.validateExisting(name: name)
         var st = stat()
         if fstatat(fd, name, &st, AT_SYMLINK_NOFOLLOW) == 0 { return st }
         if errno == ENOENT { return nil }
         throw Self.fail(errno)
     }
 
-    func entries() throws -> [String] {
+    func entries() throws -> [String] { try entries(reader: { readdir($0) }) }
+
+    /// `reader` is `readdir`; a seam so tests can make it fail midway.
+    func entries(reader: (UnsafeMutablePointer<DIR>) -> UnsafeMutablePointer<dirent>?) throws -> [String] {
         let copy = dup(fd)
         guard copy >= 0 else { throw Self.fail(errno) }
         guard let dir = fdopendir(copy) else {
@@ -100,7 +103,13 @@ final class DirectoryHandle: @unchecked Sendable {
         defer { closedir(dir) }
         rewinddir(dir)
         var names: [String] = []
-        while let entry = readdir(dir) {
+        while true {
+            // NULL means end of directory only when errno stayed 0; otherwise the listing is incomplete.
+            errno = 0
+            guard let entry = reader(dir) else {
+                if errno != 0 { throw Self.fail(errno) }
+                break
+            }
             let name = withUnsafePointer(to: &entry.pointee.d_name) {
                 $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
             }
@@ -111,10 +120,11 @@ final class DirectoryHandle: @unchecked Sendable {
 
     // MARK: Files
 
-    /// Opens a regular file for reading; refuses symlinks and non-regular files.
+    /// Opens a regular file for reading; refuses symlinks and non-regular files. `O_NONBLOCK` keeps the
+    /// open of a FIFO or device from blocking; it has no effect on regular files.
     func openFile(_ name: String) throws -> Int32 {
-        try LocalPath.validate(name: name)
-        let file = openat(fd, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        try LocalPath.validateExisting(name: name)
+        let file = openat(fd, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard file >= 0 else { throw Self.fail(errno) }
         var st = stat()
         guard fstat(file, &st) == 0, st.isRegular else {
@@ -161,7 +171,7 @@ final class DirectoryHandle: @unchecked Sendable {
     /// supports neither is remembered in `memo`, so later calls go straight to the fallback.
     func renameExclusive(_ from: String, to name: String, in destination: DirectoryHandle, allowCheckThenRename: Bool,
                          memo: ExclusiveRenameMemo) throws {
-        try LocalPath.validate(name: from)
+        try LocalPath.validateExisting(name: from)
         try LocalPath.validate(name: name)
         if !memo.isUnsupported(destination.volume) {
             if renameatx_np(fd, from, destination.fd, name, UInt32(RENAME_EXCL)) == 0 { return }
