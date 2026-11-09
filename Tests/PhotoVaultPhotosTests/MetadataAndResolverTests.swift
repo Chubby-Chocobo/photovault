@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import PhotoVaultCore
 import Testing
@@ -76,6 +77,9 @@ struct PhotosErrorMapperTests {
         #expect(PhotosErrorMapper.map(domain: "PHPhotosErrorDomain", code: 3105) == .tokenExpired)
         #expect(PhotosErrorMapper.map(domain: "PHPhotosErrorDomain", code: 3210) == .changeDetailsUnavailable)
         #expect(PhotosErrorMapper.map(domain: "PHPhotosErrorDomain", code: 3169) == .networkError)
+        for offline in [3114, 3142, 3143] {
+            #expect(PhotosErrorMapper.map(domain: "PHPhotosErrorDomain", code: offline) == .libraryUnavailable, "library away: \(offline)")
+        }
         #expect(PhotosErrorMapper.map(domain: "PHPhotosErrorDomain", code: 1) == .other(code: 1, domain: "PHPhotosErrorDomain"))
         #expect(PhotosErrorMapper.map(domain: NSURLErrorDomain, code: -1009) == .networkError)
     }
@@ -83,5 +87,12 @@ struct PhotosErrorMapperTests {
     @Test func batching() {
         #expect(PhotoKitSource.batches(Array(0..<1_001), size: 500).map(\.count) == [500, 500, 1])
         #expect(PhotoKitSource.batches([Int](), size: 500).isEmpty)
+    }
+}
+
+struct GeocoderNoResultTests {
+    @Test func noResultIsAnAnswerNotAFailure() {
+        #expect(CLGeocoderReverseGeocoder.isNoResult(NSError(domain: kCLErrorDomain, code: CLError.Code.geocodeFoundNoResult.rawValue)))
+        #expect(!CLGeocoderReverseGeocoder.isNoResult(NSError(domain: kCLErrorDomain, code: CLError.Code.network.rawValue)))
     }
 }
