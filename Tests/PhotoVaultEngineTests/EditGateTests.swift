@@ -95,6 +95,23 @@ import Testing
         #expect(try h.read { db in try ResourceRepository.fetch(db, key: .local("a"), type: .fullSizePhoto)?.contentGen } == generation)
     }
 
+    /// The owner deleted the edited file at the destination, then edited the photo again: the replace
+    /// cannot work, so the job waits for the owner's re-upload decision instead of retrying for 30 days.
+    @Test func aNewEditOfAFileDeletedAtTheDestinationAsksTheOwner() async throws {
+        let h = try await harness()
+        try await firstUpload(h)
+        await edit(h, "a", version: 1, hash: "h1")
+        await h.settle()
+        let edited = try #require(await editedFiles(h).first)
+        await h.drive.externallyDelete(edited.id)
+        await edit(h, "a", version: 2, hash: "h2")
+        await h.settle()
+        let missing = try h.jobs(.missingRemote)
+        #expect(missing.count == 1 && missing.first?.resType == .fullSizePhoto)
+        #expect(await h.coordinator.pendingOwnerDecisions().contains(.integrityMissing(.googleDrive, count: 1)))
+        #expect(await editedFiles(h).isEmpty, "nothing is written until the owner confirms")
+    }
+
     @Test func anAssetThatWasNeverAdjustedIsSkippedWithoutHashingOrExporting() async throws {
         let h = try await harness()
         try await firstUpload(h)

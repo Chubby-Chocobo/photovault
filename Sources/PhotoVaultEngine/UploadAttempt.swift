@@ -135,7 +135,11 @@ struct UploadAttempt: Sendable {
         let id = identity
         // A refresh replaces the file where it is; only a first upload lands in the folder just ensured.
         let replacedInPlace = job.doneGen > 0 && job.remoteId != nil
-        let parentLogical = replacedInPlace ? (job.remoteLogicalParent ?? plan.parentLogical) : plan.parentLogical
+        // A resumed session keeps the parent it was opened with, so the folder the file landed in
+        // is taken from the answer; the commit queues the move to where the layout wants it now.
+        let parentLogical = replacedInPlace
+            ? (job.remoteLogicalParent ?? plan.parentLogical)
+            : try await landedParent(result.parentIds, planned: plan.parentLogical)
         _ = try await env.store.write { db in
             try UploadCompletion.commit(
                 db, identity: id, remoteId: result.remoteId, finalName: result.finalName, uploadedParent: parentLogical,
@@ -145,6 +149,15 @@ struct UploadAttempt: Sendable {
         env.logJob(.info, "upload", jobId: job.id, "done")
         try env.reach(.afterCommitBeforeRelease)
         return .done(bytes: content.size)
+    }
+
+    /// The logical folder whose remote id is one of `parentIds`; the planned one when none is known.
+    private func landedParent(_ parentIds: [String], planned: String) async throws -> String {
+        guard !parentIds.isEmpty else { return planned }
+        let destinationId = record.id
+        let folders = try await env.store.read { db in try RemoteFolderRepository.fetchAll(db, destinationId: destinationId) }
+        if let match = folders.first(where: { $0.logicalPath == planned }), let id = match.remoteId, parentIds.contains(id) { return planned }
+        return folders.first { $0.remoteId.map(parentIds.contains) ?? false }?.logicalPath ?? planned
     }
 
     /// `pending → uploading`. A destination that does not reserve ids is addressed by path: the path
@@ -234,7 +247,7 @@ struct UploadAttempt: Sendable {
             return try await settle(item, request)
         }
         if forceReplace, let remoteId = job.remoteId {
-            return try await destination.replaceContent(remoteId: remoteId, request)
+            return try await replaceUploaded(remoteId, request, job: job)
         }
         if !skipResume, let ref = job.sessionRef, let md5 = job.sessionMd5, job.remoteId != nil {
             do {
@@ -250,9 +263,18 @@ struct UploadAttempt: Sendable {
             }
         }
         if let remoteId = job.remoteId, job.doneGen > 0, job.uploadedHash != nil {
-            return try await destination.replaceContent(remoteId: remoteId, request)
+            return try await replaceUploaded(remoteId, request, job: job)
         }
         return try await destination.upload(request, onSession: persist)
+    }
+
+    /// Replaces a file uploaded before. When it is gone from the destination, retrying cannot help.
+    private func replaceUploaded(_ remoteId: String, _ request: UploadRequest, job: UploadJob) async throws -> UploadResult {
+        do {
+            return try await destination.replaceContent(remoteId: remoteId, request)
+        } catch DestinationError.notFound where job.doneGen > 0 {
+            throw UploadedFileGone()
+        }
     }
 
     /// The file already exists at the destination: accept it when the content matches, otherwise

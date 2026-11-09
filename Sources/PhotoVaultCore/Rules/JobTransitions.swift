@@ -180,6 +180,16 @@ public enum JobTransitions {
         case (.done, .missingAtDestination):
             j.state = .missingRemote
 
+        case (.pending, .missingAtDestination), (.uploading, .missingAtDestination):
+            // A new generation was going to replace a file that is no longer there: the owner
+            // decides, as for any missing file (FR-47), instead of retrying a replace that cannot work.
+            guard j.doneGen > 0, j.remoteId != nil else { throw JobTransitionError.invalid(from: job.state, event: "missingAtDestination") }
+            j.state = .missingRemote
+            j.uploadingGen = nil
+            j.sessionRef = nil
+            j.sessionMd5 = nil
+            j.nextAttemptAt = nil
+
         case (.missingRemote, .reuploadConfirmed):
             j.state = .pending
             j.origin = .reupload
