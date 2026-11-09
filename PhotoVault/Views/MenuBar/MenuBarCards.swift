@@ -20,6 +20,21 @@ struct DiskCriticalCard: View {
     }
 }
 
+/// A database from 0.1.0 is not migrated: the owner starts over, and syncing is stopped until then.
+struct OldLayoutCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Banner(
+            .danger, title: tr(vi: "Bản sao lưu này dùng bố cục thư mục cũ (0.1.0)", en: "This backup uses the old folder layout (0.1.0)"),
+            message: tr(
+                vi: "Bản 0.2.0 xếp ảnh theo từng ngày nên cần bắt đầu lại từ đầu. PhotoVault tạm dừng hẳn để không trộn hai kiểu thư mục. Ảnh đã backup không bị xoá hay di chuyển: hãy chuyển thư mục backup cũ ở Drive hoặc NAS vào Thùng rác, rồi bấm “Đặt lại từ đầu…” trong Cài đặt › Nâng cao và thiết lập với thư mục mới.",
+                en: "Version 0.2.0 files photos by day, so it needs a fresh start. PhotoVault stays stopped so the two layouts are not mixed. Photos already backed up are not deleted or moved: move the old backup folder on Drive or the NAS to the Trash, then click “Start over…” in Settings › Advanced and set up with a new folder.")) {
+            Button(tr(vi: "Mở Cài đặt › Nâng cao…", en: "Open Settings › Advanced…")) { model.open(.settings(.advanced)) }
+        }
+    }
+}
+
 struct OfflineCard: View {
     @Environment(AppModel.self) private var model
     var record: DestinationRecord

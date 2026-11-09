@@ -9,6 +9,8 @@ struct AdvancedTab: View {
     @State private var confirmReset = false
 
     var body: some View {
+        // An old-layout backup waits for this action, so it comes first.
+        if legacyLayoutBlocked { resetSection }
         SettingsSection(tr(vi: "Tốc độ & điện năng", en: "Speed and power")) {
             FormRow(tr(vi: "Tốc độ export khi backfill", en: "Export speed while backfilling")) {
                 gigabyteField(model.binding(\.backfillGBPerHour), unit: tr(vi: "GB/giờ", en: "GB/hour"), label: tr(vi: "GB mỗi giờ", en: "GB per hour"))
@@ -60,7 +62,7 @@ struct AdvancedTab: View {
                 Button(tr(vi: "Thử lại", en: "Retry")) { model.retrySkipped() }.disabled(!model.hardeningAvailable)
             }
             FormRow(tr(vi: "Khôi phục trạng thái từ đích", en: "Restore state from a destination"), detail: tr(vi: "Ghép lại file đã có ở đích vào cơ sở dữ liệu, không upload lại.", en: "Match files already at the destination back into the database, without uploading again.")) {
-                Button(tr(vi: "Khôi phục giúp tôi…", en: "Restore for me…")) { confirmRecovery = true }.disabled(!model.hardeningAvailable || model.destinations.isEmpty)
+                Button(tr(vi: "Khôi phục…", en: "Restore…")) { confirmRecovery = true }.disabled(!model.hardeningAvailable || model.destinations.isEmpty)
             }
             if !model.hardeningAvailable {
                 SettingsNote(tr(vi: "Một số thao tác bảo trì chưa khả dụng trong bản build này.", en: "Some maintenance actions are not available in this build."))
@@ -78,6 +80,12 @@ struct AdvancedTab: View {
         } message: {
             Text(tr(vi: "Chỉ chạy khi scan đã hoàn tất. Đích tạm dừng (đang khôi phục) trong lúc đó.", en: "Runs only when the scan has finished. The destination is paused (restoring) in the meantime."))
         }
+        if !legacyLayoutBlocked { resetSection }
+    }
+
+    private var legacyLayoutBlocked: Bool { model.snapshot?.overall == .legacyLayout }
+
+    private var resetSection: some View {
         SettingsSection(tr(vi: "Đặt lại", en: "Reset")) {
             FormRow(
                 tr(vi: "Đặt lại từ đầu", en: "Start over"),
@@ -94,8 +102,8 @@ struct AdvancedTab: View {
             Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
             Text(tr(
-                vi: "PhotoVault sẽ đăng xuất Google, xoá cơ sở dữ liệu, file tạm, bản sao lưu cơ sở dữ liệu và log trên Mac này, rồi tự mở lại phần thiết lập lần đầu. Ngôn ngữ giao diện được giữ.\n\nKhông có gì ở Google Drive hay NAS bị xoá. Hãy tự chuyển thư mục backup cũ vào Thùng rác trước khi thiết lập lại; nếu không, PhotoVault sẽ đề nghị dùng lại nó.",
-                en: "PhotoVault will sign out of Google, delete its database, temporary files, database snapshots and log on this Mac, then reopen first-time setup. The interface language is kept.\n\nNothing on Google Drive or your NAS is deleted. Move the old backup folder to the Trash yourself before setting up again; otherwise PhotoVault offers to reuse it."))
+                vi: "PhotoVault sẽ đăng xuất Google, xoá cơ sở dữ liệu, file tạm, bản sao lưu cơ sở dữ liệu và log trên Mac này, rồi tự mở lại phần thiết lập lần đầu. Ngôn ngữ giao diện được giữ.\n\nKhông có gì ở Google Drive hay NAS bị xoá. Hãy tự chuyển thư mục backup cũ vào Thùng rác trước khi thiết lập lại. Thư mục của bản 0.1.0 không dùng lại được với bản này; thư mục cùng kiểu thì PhotoVault sẽ đề nghị dùng lại.",
+                en: "PhotoVault will sign out of Google, delete its database, temporary files, database snapshots and log on this Mac, then reopen first-time setup. The interface language is kept.\n\nNothing on Google Drive or your NAS is deleted. Move the old backup folder to the Trash yourself before setting up again. A folder from version 0.1.0 can’t be reused by this version; a folder with the current layout is offered for reuse."))
         }
     }
 

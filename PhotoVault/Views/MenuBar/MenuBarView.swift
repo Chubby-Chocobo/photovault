@@ -50,6 +50,7 @@ private struct RunningContent: View {
         VStack(alignment: .leading, spacing: 10) {
             OverallHeader()
             NoticeBanner()
+            if model.snapshot?.overall == .legacyLayout { OldLayoutCard() }
             ForEach(model.visibleDecisions) { DecisionCard(decision: $0) }
             if model.diskState == .critical { DiskCriticalCard() }
             if model.driveNeedsSignIn { SignInAgainCard() }
@@ -85,7 +86,7 @@ private struct OverallHeader: View {
             LanguageMenu()
             Button("Sync now") { model.syncNow() }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.isPausedAll || model.snapshot?.overall == .photosUnauthorized)
+                .disabled(model.isPausedAll || model.snapshot?.overall == .photosUnauthorized || model.snapshot?.overall == .legacyLayout)
         }
     }
 
