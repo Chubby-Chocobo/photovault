@@ -53,6 +53,29 @@ import Testing
         #expect(try await real.value.1 == 200)
     }
 
+    @Test func anOversizedPickWhoseStateComesAfterTheIdsStillEndsTheFlowAtOnce() async throws {
+        let server = try LoopbackRedirectServer(expectedState: "st", timeout: 5)
+        let port = try await server.start()
+        let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
+        let browser = Task { try? await fetch(port, "/oauth2/callback?picked_file_ids=\(huge)&code=c&state=st") }
+        await #expect(throws: LoopbackError.requestTooLarge) { try await server.awaitCode() }
+        let reply = await browser.value
+        #expect(reply?.1 == 400 && String(decoding: reply?.0 ?? Data(), as: UTF8.self).contains("Too many items"))
+    }
+
+    @Test func aStrayRequestMuchLargerThanTheLimitIsRefusedWithoutEndingTheFlow() async throws {
+        let server = try LoopbackRedirectServer(expectedState: "st", timeout: 30)
+        let port = try await server.start()
+        let waiting = Task { try await server.awaitCode() }
+        let huge = String(repeating: "A", count: 5 * LoopbackRequestParser.maxRequestBytes)
+        let stray = try? await fetch(port, "/oauth2/callback?x=\(huge)")
+        #expect(stray == nil || stray?.1 == 413)
+        let real = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
+        #expect(try await waiting.value == "c")
+        server.respond(success: true)
+        _ = try await real.value
+    }
+
     @Test func thePickerFlowFailsFastWhenTheSelectionIsTooLarge() async throws {
         let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
         let opener: URLOpening = { url in

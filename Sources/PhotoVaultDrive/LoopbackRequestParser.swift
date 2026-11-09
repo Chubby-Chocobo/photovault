@@ -27,6 +27,8 @@ public enum LoopbackRequestParser {
     /// Hard cap on the request line. The Picker redirect lists every picked id (about 35 bytes each), so this
     /// must hold the largest selection the app accepts; the listener is bound to loopback only.
     public static let maxRequestBytes = 256 * 1024
+    /// How far a callback past the limit is read on while looking for its `state`; beyond this it is a stray request.
+    static let strayRequestBytes = 4 * maxRequestBytes
     /// Bytes read from the socket at a time.
     static let readChunkBytes = 16 * 1024
 

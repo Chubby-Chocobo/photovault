@@ -35,6 +35,13 @@ private func server(email: String? = "me@example.com", refresh: String? = "r-1")
     }
 }
 
+private final class LockedPage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    func set(_ value: Data?) { lock.withLock { data = value ?? Data() } }
+    var text: String { lock.withLock { String(decoding: data, as: UTF8.self) } }
+}
+
 @Suite struct GooglePickerFlowTests {
     @Test func thePickerWaitsLongEnoughToChooseManyPhotos() {
         #expect(GooglePickerFlow.pickTimeout >= 15 * 60)
@@ -70,11 +77,18 @@ private func server(email: String? = "me@example.com", refresh: String? = "r-1")
         #expect(throws: PickerError.selectionTooLarge) { try GooglePickerFlow.parseIds(manyIds(GooglePickerFlow.maxPickedIds + 1)) }
     }
 
-    @Test func theFlowFailsWhenMoreItemsComeBackThanTheAppTakes() async throws {
+    @Test func theFlowFailsWhenMoreItemsComeBackThanTheAppTakesAndTheBrowserSaysSo() async throws {
         let list = manyIds(GooglePickerFlow.maxPickedIds + 1)
-        await #expect(throws: PickerError.selectionTooLarge) {
-            try await flow(server(), opener: browser { _ in "&code=c&picked_file_ids=\(list)" }).run()
+        let page = LockedPage()
+        let opener: URLOpening = { url in
+            let q = items(url)
+            let target = URL(string: "\(q["redirect_uri"]!)?state=\(q["state"]!)&code=c&picked_file_ids=\(list)")!
+            Task.detached { page.set(try? await URLSession.shared.data(from: target).0) }
+            return true
         }
+        await #expect(throws: PickerError.selectionTooLarge) { try await flow(server(), opener: opener).run() }
+        for _ in 0..<100 where page.text.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(page.text.contains("Too many items"))
     }
 
     @Test func fullFlowReturnsPickAndTokens() async throws {

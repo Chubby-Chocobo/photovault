@@ -95,7 +95,7 @@ public struct GooglePickerFlow: Sendable {
             return PickerResult(pickedIds: ids, refreshToken: refresh, accessToken: tokens.accessToken,
                                 expiresAt: tokens.expiresAt, email: email)
         } catch {
-            server.respond(success: false)
+            if let picker = error as? PickerError, picker == .selectionTooLarge { server.respondSelectionTooLarge() } else { server.respond(success: false) }
             throw error
         }
     }

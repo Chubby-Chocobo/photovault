@@ -10,6 +10,13 @@ private func components(_ url: URL) -> [String: String] {
     return result
 }
 
+private final class OpenedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    func set() { lock.withLock { flag = true } }
+    var value: Bool { lock.withLock { flag } }
+}
+
 /// The fixed redirect port is shared, so these tests run one after another.
 @Suite(.serialized) struct DropboxAuthTests {
     @Test func authorizationURLCarriesPkceOfflineAndFixedRedirect() {
@@ -114,12 +121,16 @@ private func components(_ url: URL) -> [String: String] {
     @Test func aPortThatIsFreedAMomentLaterIsStillUsed() async throws {
         let squatter = try LoopbackRedirectServer(expectedState: "s", port: 53_698)
         _ = try await squatter.start()
-        let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) }, openURL: { _ in true },
-                               loopbackTimeout: 60, port: 53_698)
+        let opened = OpenedFlag()
+        let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) },
+                               openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: 53_698)
         let task = Task { try await auth.signIn() }
         try await Task.sleep(for: .milliseconds(400))
+        #expect(!opened.value, "the port is still taken")
         squatter.cancel()
-        try await Task.sleep(for: .milliseconds(600))
+        // The browser opens only once the listener is up on the freed port.
+        for _ in 0..<100 where !opened.value { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(opened.value)
         task.cancel()
         await #expect(throws: DropboxAuthError.cancelled) { _ = try await task.value }
     }

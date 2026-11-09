@@ -64,6 +64,15 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     /// Connections currently open and not yet answered.
     var openConnectionCount: Int { lock.withLock { connections.count } }
 
+    /// Tells the browser that the selection had more items than the app takes, and closes the callback connection.
+    public func respondSelectionTooLarge() {
+        let connection = lock.withLock { () -> NWConnection? in
+            defer { callbackConnection = nil }
+            return callbackConnection
+        }
+        if let connection { reply(connection, status: "400 Bad Request", body: Self.tooLargePage) }
+    }
+
     /// Tells the browser how the sign-in ended and closes the callback connection.
     public func respond(success: Bool) {
         let connection = lock.withLock { () -> NWConnection? in
@@ -133,22 +142,25 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             if let data { buffer.append(data) }
             let text = String(decoding: buffer, as: UTF8.self)
             let hasRequestLine = text.contains("\r\n")
-            if hasRequestLine || isComplete || error != nil {
+            let isCallback = text.hasPrefix("GET \(LoopbackRequestParser.callbackPath)")
+            if buffer.count >= LoopbackRequestParser.maxRequestBytes, isCallback {
+                // A callback past the size limit that carries the expected state is the owner's selection, simply too
+                // long: it gets a readable page and ends the flow now. The state may come after the ids, so a long
+                // request is read on, up to a few times the limit, to find it. One without the state is a stray
+                // request: refused, and the flow keeps waiting.
+                if LoopbackRequestParser.carriesState(text, expectedState: self.expectedState) {
+                    self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
+                    self.finish(.failure(.requestTooLarge))
+                } else if hasRequestLine || isComplete || error != nil || buffer.count >= LoopbackRequestParser.strayRequestBytes {
+                    self.answer(connection, status: "413 Content Too Large", body: Self.failurePage)
+                } else {
+                    self.receive(connection, buffer: buffer)
+                }
+            } else if hasRequestLine || isComplete || error != nil {
                 self.handle(text, on: connection)
             } else if buffer.count >= LoopbackRequestParser.maxRequestBytes {
-                // No request line within the size limit. A callback that carries the expected state is the owner's
-                // selection, simply too long: it gets a readable page and ends the flow now. A long request without
-                // the state is a stray one: refused, and the flow keeps waiting.
-                if text.hasPrefix("GET \(LoopbackRequestParser.callbackPath)") {
-                    if LoopbackRequestParser.carriesState(text, expectedState: self.expectedState) {
-                        self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
-                        self.finish(.failure(.requestTooLarge))
-                    } else {
-                        self.answer(connection, status: "413 Content Too Large", body: Self.failurePage)
-                    }
-                } else {
-                    self.answer(connection, status: "400 Bad Request", body: "")
-                }
+                // No request line within the size limit and not a browser redirect.
+                self.answer(connection, status: "400 Bad Request", body: "")
             } else {
                 self.receive(connection, buffer: buffer)
             }
