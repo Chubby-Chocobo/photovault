@@ -17,12 +17,18 @@ public enum LoopbackError: Error, Equatable, Sendable {
     case missingCode
     case timeout
     case cancelled
+    /// The redirect's request line is longer than the hard limit (a very large Picker selection).
+    case requestTooLarge
 }
 
 /// Pure parsing of the single HTTP request the browser sends to the loopback redirect.
 public enum LoopbackRequestParser {
     public static let callbackPath = "/oauth2/callback"
-    public static let maxRequestBytes = 8192
+    /// Hard cap on the request line. The Picker redirect lists every picked id (about 35 bytes each), so this
+    /// must hold the largest selection the app accepts; the listener is bound to loopback only.
+    public static let maxRequestBytes = 256 * 1024
+    /// Bytes read from the socket at a time.
+    static let readChunkBytes = 16 * 1024
 
     /// Parses the request line of a raw HTTP request.
     public static func parse(_ raw: String) throws -> LoopbackCallback {

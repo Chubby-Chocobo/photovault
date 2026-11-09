@@ -29,7 +29,7 @@ public protocol HTTPTransport: Sendable {
 
 public struct URLSessionTransport: HTTPTransport {
     fileprivate let session: URLSession
-    fileprivate let configuration: URLSessionConfiguration
+    fileprivate let streamer: URLSessionStreamer
 
     public init(timeout: TimeInterval = 120) {
         let configuration = URLSessionConfiguration.ephemeral
@@ -42,7 +42,7 @@ public struct URLSessionTransport: HTTPTransport {
 
     /// For callers that need their own session setup, for example tests with a stub `URLProtocol`.
     public init(configuration: URLSessionConfiguration) {
-        self.configuration = configuration
+        streamer = URLSessionStreamer(configuration: configuration)
         session = URLSession(configuration: configuration)
     }
 
@@ -123,7 +123,7 @@ extension HTTPTransport {
 
 extension URLSessionTransport: StreamingTransport {
     public func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
-        try await URLSessionStreamer(configuration: configuration).stream(request, sink: sink)
+        try await streamer.stream(request, sink: sink)
     }
 }
 

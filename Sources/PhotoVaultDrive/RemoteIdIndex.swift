@@ -13,6 +13,8 @@ public actor RemoteIdIndex {
     private var pathById: [String: String]
     private let file: URL
     private var relisting: Task<Void, any Error>?
+    /// True while the map in memory is ahead of the file (a write failed); the next merge writes it again.
+    private var unsaved = false
     private var lastRelist: ContinuousClock.Instant?
     private let relistInterval: Duration
 
@@ -61,7 +63,11 @@ public actor RemoteIdIndex {
                 changed = true
             }
         }
-        if changed { try persist() }
+        if changed { unsaved = true }
+        if unsaved {
+            try persist()
+            unsaved = false
+        }
         return stable
     }
 
@@ -82,11 +88,10 @@ public actor RemoteIdIndex {
     }
 
     private func runRelist(_ relist: @Sendable () async throws -> [String: String]) async throws {
-        defer {
-            relisting = nil
-            lastRelist = .now
-        }
+        defer { relisting = nil }
         try merge(try await relist())
+        // Only a relist that worked makes a path that is still unknown "missing" for a while.
+        lastRelist = .now
     }
 
     private func persist() throws {

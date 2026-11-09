@@ -125,6 +125,8 @@ public final class DriveImportSource: FolderImportSource, Sendable {
         case .offline: return .unavailable
         case .rateLimited, .server, .transient: return .busy
         case .itemRejected(let reason):
+            // The per-file download allowance runs out for a while; the file is fine and is read again later.
+            if reason == "http 403 downloadQuotaExceeded" { return .busy }
             let status = reason.split(separator: " ").dropFirst().first.flatMap { Int($0) }
             return .readFailed(code: status ?? 0)
         default: return .readFailed(code: 0)

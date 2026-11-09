@@ -20,6 +20,8 @@ public enum PickerError: Error, Equatable, Sendable {
     /// Consent was given but nothing was selected.
     case nothingPicked
     case tokenMissing
+    /// The selection was too large for the redirect to carry.
+    case selectionTooLarge
 }
 
 /// Google's desktop Picker flow: OAuth with `drive.file` only and `trigger_onepick`. The browser
@@ -76,6 +78,7 @@ public struct GooglePickerFlow: Sendable {
             switch error {
             case .timeout: throw PickerError.timedOut
             case .cancelled, .authorizationDenied: throw PickerError.cancelled
+            case .requestTooLarge: throw PickerError.selectionTooLarge
             default: throw DestinationError.itemRejected(reason: "picker redirect \(error)")
             }
         }

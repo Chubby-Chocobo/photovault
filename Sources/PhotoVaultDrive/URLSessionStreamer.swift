@@ -1,15 +1,33 @@
 import Foundation
 
 /// Streams one response to a sink with a delegate task, so large downloads never sit in memory and the
-/// network is paused while the sink falls behind. Used by every cloud download (Drive and Dropbox).
-struct URLSessionStreamer {
+/// network is paused while the sink falls behind. Used by every cloud download (Drive and Dropbox). One
+/// session serves all downloads, so connections to the provider are reused; the delegate routes each
+/// task's events to its own stream.
+final class URLSessionStreamer: @unchecked Sendable {
     /// Bytes of an error body kept for the caller.
     static let maxErrorBody = 1 << 16
     /// The network is paused above this much unprocessed data and resumed below the low mark.
     static let highWater = 8 << 20
     static let lowWater = 2 << 20
 
-    let configuration: URLSessionConfiguration
+    private let configuration: URLSessionConfiguration
+    private let router = Router()
+    private let lock = NSLock()
+    private var shared: URLSession?
+
+    init(configuration: URLSessionConfiguration) { self.configuration = configuration }
+
+    deinit { shared?.finishTasksAndInvalidate() }
+
+    private var session: URLSession {
+        lock.withLock {
+            if let shared { return shared }
+            let made = URLSession(configuration: configuration, delegate: router, delegateQueue: nil)
+            shared = made
+            return made
+        }
+    }
 
     /// 2xx: the body goes to `sink` in order and the returned data is empty. Any other status: the sink
     /// is never called and the data is the start of the body. A throwing sink stops the transfer and its error
@@ -17,12 +35,13 @@ struct URLSessionStreamer {
     func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
         let (events, continuation) = AsyncThrowingStream.makeStream(of: Event.self)
         let flow = Flow()
-        let session = URLSession(configuration: configuration, delegate: Delegate(continuation, flow), delegateQueue: nil)
         let task = session.dataTask(with: request)
         flow.task = task
-        continuation.onTermination = { _ in
+        let identifier = task.taskIdentifier
+        router.register(identifier, Route(continuation: continuation, flow: flow))
+        continuation.onTermination = { [router] _ in
+            router.unregister(identifier)
             task.cancel()
-            session.finishTasksAndInvalidate()
         }
         task.resume()
         var head: HTTPURLResponse?
@@ -83,30 +102,38 @@ struct URLSessionStreamer {
         }
     }
 
-    private final class Delegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-        private let continuation: AsyncThrowingStream<Event, any Error>.Continuation
-        private let flow: Flow
+    private struct Route {
+        var continuation: AsyncThrowingStream<Event, any Error>.Continuation
+        var flow: Flow
+    }
 
-        init(_ continuation: AsyncThrowingStream<Event, any Error>.Continuation, _ flow: Flow) {
-            self.continuation = continuation
-            self.flow = flow
-        }
+    private final class Router: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+        private let lock = NSLock()
+        private var routes: [Int: Route] = [:]
+
+        func register(_ identifier: Int, _ route: Route) { lock.withLock { routes[identifier] = route } }
+        func unregister(_ identifier: Int) { lock.withLock { routes[identifier] = nil } }
+        private func route(_ identifier: Int) -> Route? { lock.withLock { routes[identifier] } }
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
                         completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
-            if let http = response as? HTTPURLResponse { continuation.yield(.head(http)) }
+            guard let route = route(dataTask.taskIdentifier) else { completionHandler(.cancel); return }
+            if let http = response as? HTTPURLResponse { route.continuation.yield(.head(http)) }
             completionHandler(.allow)
         }
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-            flow.received(data.count)
-            continuation.yield(.data(data))
+            guard let route = route(dataTask.taskIdentifier) else { return }
+            route.flow.received(data.count)
+            route.continuation.yield(.data(data))
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-            if let error { continuation.finish(throwing: error) } else {
-                continuation.yield(.completed)
-                continuation.finish()
+            guard let route = route(task.taskIdentifier) else { return }
+            unregister(task.taskIdentifier)
+            if let error { route.continuation.finish(throwing: error) } else {
+                route.continuation.yield(.completed)
+                route.continuation.finish()
             }
         }
     }

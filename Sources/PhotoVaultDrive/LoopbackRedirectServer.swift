@@ -127,7 +127,7 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     }
 
     private func receive(_ connection: NWConnection, buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: LoopbackRequestParser.maxRequestBytes) { [weak self] data, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: LoopbackRequestParser.readChunkBytes) { [weak self] data, _, isComplete, error in
             guard let self else { connection.cancel(); return }
             var buffer = buffer
             if let data { buffer.append(data) }
@@ -136,8 +136,14 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             if hasRequestLine || isComplete || error != nil {
                 self.handle(text, on: connection)
             } else if buffer.count >= LoopbackRequestParser.maxRequestBytes {
-                // No request line within the size limit: not a browser redirect.
-                self.answer(connection, status: "400 Bad Request", body: "")
+                // No request line within the size limit. A callback that is simply too long gets a readable page and
+                // ends the flow now; anything else is not a browser redirect.
+                if text.hasPrefix("GET \(LoopbackRequestParser.callbackPath)") {
+                    self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
+                    self.finish(.failure(.requestTooLarge))
+                } else {
+                    self.answer(connection, status: "400 Bad Request", body: "")
+                }
             } else {
                 self.receive(connection, buffer: buffer)
             }
@@ -194,6 +200,12 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     <!doctype html><html><head><meta charset="utf-8"><title>PhotoVault</title></head>\
     <body><p>Đăng nhập không thành công. Hãy đóng tab này và thử lại trong PhotoVault.</p>\
     <p>Sign-in failed. Close this tab and try again in PhotoVault.</p></body></html>
+    """
+
+    static let tooLargePage = """
+    <!doctype html><html><head><meta charset="utf-8"><title>PhotoVault</title></head>\
+    <body><p>Bạn đã chọn quá nhiều mục cùng lúc. Hãy đóng tab này và chọn ít hơn trong PhotoVault.</p>\
+    <p>Too many items were selected at once. Close this tab and pick fewer in PhotoVault.</p></body></html>
     """
 
     private func reply(_ connection: NWConnection, status: String, body: String) {

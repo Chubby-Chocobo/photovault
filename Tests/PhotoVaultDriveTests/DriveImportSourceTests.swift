@@ -183,7 +183,7 @@ func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(fo
         _ = try await source.listFiles()
         let cases: [(StubResponse, SourceError)] = [
             (.json(429, [:]), .busy), (.json(503, [:]), .busy), (.json(500, [:]), .busy),
-            (.json(403, ["error": ["errors": [["reason": "downloadQuotaExceeded"]]]]), .readFailed(code: 403)),
+            (.json(403, ["error": ["errors": [["reason": "downloadQuotaExceeded"]]]]), .busy),
             (.json(403, ["error": ["errors": [["reason": "userRateLimitExceeded"]]]]), .busy),
             (.json(403, ["error": ["errors": [["reason": "rateLimitExceeded"]]]]), .busy),
         ]
