@@ -133,7 +133,8 @@ extension IntegrityChecker {
             for job in jobs {
                 guard let current = try JobRepository.fetch(db, identity: job.identity), current.state == .missingRemote else { continue }
                 _ = try JobRepository.apply(db, .foundAgain, to: job.identity, now: now)
-                try DirtyQueue.mark(db, [.view], asset: job.assetKey)
+                // Sidecars, views and descriptions may have changed while the file was away.
+                try DirtyQueue.mark(db, [.sidecar, .view, .description], asset: job.assetKey)
             }
         }
     }

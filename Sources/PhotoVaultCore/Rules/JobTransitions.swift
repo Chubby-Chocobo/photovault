@@ -141,6 +141,7 @@ public enum JobTransitions {
             j.state = .pending
             j.attempts = 0
             j.nextAttemptAt = nil
+            j.lastError = nil
             if j.stateReason == .tooLargeForDisk {
                 // Time spent waiting for disk space never counted toward the 30 days; a later
                 // deferral for another reason starts its own window.
@@ -156,6 +157,7 @@ public enum JobTransitions {
         case (.skipped, .retrySkipped):
             j.state = .pending
             j.stateReason = nil
+            j.lastError = nil
             // A session kept from before the skip may belong to other content; a new one is cheap.
             j.sessionRef = nil
             j.sessionMd5 = nil
@@ -222,6 +224,7 @@ public enum JobTransitions {
             j.nextAttemptAt = nil
             j.deferredSince = nil
             j.stateReason = nil
+            j.lastError = nil
 
         default:
             throw JobTransitionError.invalid(from: job.state, event: String(describing: event))
@@ -263,8 +266,13 @@ public enum JobTransitions {
             job = (try? apply(.reinstate(origin: desired.origin), to: job, now: now)) ?? job
             if desired.targetGen > job.targetGen { job.targetGen = desired.targetGen }
             return job
-        case .skipped, .missingRemote:
+        case .skipped:
             return nil
+        case .missingRemote:
+            // Still waiting for the owner, but a newer generation is remembered so that a file found
+            // again (or re-uploaded) carries the latest edit.
+            guard desired.targetGen > job.targetGen else { return nil }
+            return try? apply(.contentChanged(targetGen: desired.targetGen), to: job, now: now)
         case .pending, .uploading, .done, .deferred:
             guard desired.targetGen > job.targetGen else { return nil }
             return try? apply(.contentChanged(targetGen: desired.targetGen), to: job, now: now)
