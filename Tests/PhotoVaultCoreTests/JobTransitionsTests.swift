@@ -104,6 +104,17 @@ import Testing
         #expect(j.deferredSince == nil && j.stateReason == nil)
     }
 
+    @Test func aFileFoundAgainIsDoneOrStillOwesItsNewerGeneration() throws {
+        var j = try JobTransitions.apply(.startUpload(generation: 1), to: job(), now: now)
+        j = try JobTransitions.apply(.uploadSucceeded(remoteId: "f", finalName: "a", parent: "p", verifiedHash: "h"), to: j, now: now)
+        let missing = try JobTransitions.apply(.missingAtDestination, to: j, now: now)
+        #expect(try JobTransitions.apply(.foundAgain, to: missing, now: now).state == .done)
+        var edited = try JobTransitions.apply(.contentChanged(targetGen: 2), to: j, now: now)
+        edited = try JobTransitions.apply(.missingAtDestination, to: edited, now: now)
+        let back = try JobTransitions.apply(.foundAgain, to: edited, now: now)
+        #expect(back.state == .pending && back.origin == .refresh && back.remoteId == "f")
+    }
+
     @Test func exportGaveUpDefers() throws {
         let j = try JobTransitions.apply(.exportGaveUp, to: job(), now: now)
         #expect(j.state == .deferred && j.stateReason == .exportFailures)

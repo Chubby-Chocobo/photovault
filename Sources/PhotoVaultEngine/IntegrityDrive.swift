@@ -128,9 +128,11 @@ extension IntegrityChecker {
 
     func markHealed(_ jobs: [UploadJob]) async throws {
         guard !jobs.isEmpty else { return }
+        let now = env.clock.now
         try await env.store.write { db in
             for job in jobs {
-                try db.execute(sql: "UPDATE upload_job SET state = 'done' WHERE id = ? AND state = 'missingRemote'", arguments: [job.id])
+                guard let current = try JobRepository.fetch(db, identity: job.identity), current.state == .missingRemote else { continue }
+                _ = try JobRepository.apply(db, .foundAgain, to: job.identity, now: now)
                 try DirtyQueue.mark(db, [.view], asset: job.assetKey)
             }
         }
