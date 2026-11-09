@@ -24,6 +24,12 @@ import Testing
         return folder
     }
 
+    /// Every read takes two seconds on the harness clock, so retry times move while a pass runs.
+    private func slow(_ source: FakeCloudSource, _ h: Harness) -> SlowCloudSource {
+        let clock = h.clock
+        return SlowCloudSource(source) { clock.advance(by: 2) }
+    }
+
     /// The five-minute recheck of an import that is still reading.
     private func run(_ h: Harness, hours: Double) async {
         for _ in 0..<Int(hours * 12) { h.clock.advance(by: 300); await h.settle(rounds: 3) }
@@ -34,7 +40,7 @@ import Testing
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg"]))
         source.setFailure(path: "a.jpg", SourceError.busy)
         source.setFailure(path: "b.jpg", SourceError.busy)
-        let id = try await h.startCloudImport(source)
+        let id = try await h.startCloudImport(slow(source, h))
         await run(h, hours: 30)
         #expect(try h.importCounts(id) == [.imported: 1, .failed: 2])
         #expect(try h.source(id)?.status == .completed)
@@ -44,7 +50,7 @@ import Testing
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg"]))
         for name in ["a.jpg", "b.jpg", "c.jpg"] { source.setFailure(path: name, SourceError.busy) }
-        let id = try await h.startCloudImport(source)
+        let id = try await h.startCloudImport(slow(source, h))
         await run(h, hours: 1)
         #expect(try h.importCounts(id)[.imported] == 2, "the readable files are read within the first hour")
         await run(h, hours: 29)
@@ -56,7 +62,7 @@ import Testing
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg", "d.jpg"]))
         for name in ["a.jpg", "b.jpg", "c.jpg"] { source.setFailure(path: name, SourceError.unavailable) }
-        let id = try await h.startCloudImport(source)
+        let id = try await h.startCloudImport(slow(source, h))
         await run(h, hours: 30)
         #expect(try h.importCounts(id) == [.imported: 1, .failed: 3])
     }
@@ -65,7 +71,7 @@ import Testing
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg", "f.jpg"]))
         for name in ["b.jpg", "c.jpg", "d.jpg"] { source.setFailure(path: name, SourceError.busy) }
-        let id = try await h.startCloudImport(source)
+        let id = try await h.startCloudImport(slow(source, h))
         await run(h, hours: 30)
         #expect(try h.importCounts(id) == [.imported: 3, .failed: 3])
     }
@@ -74,7 +80,7 @@ import Testing
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg"]))
         source.setFailure(path: "a.jpg", SourceError.busy)
-        let id = try await h.startCloudImport(source)
+        let id = try await h.startCloudImport(slow(source, h))
         await run(h, hours: 1)
         h.clock.advance(by: 3 * 3600)
         await h.settle(rounds: 3)
@@ -92,8 +98,7 @@ import Testing
         }
         let fake = FakeCloudSource(folder)
         for index in [5, 30, 55] { fake.setFailure(path: String(format: "p%03d.jpg", index), SourceError.busy) }
-        let clock = h.clock
-        let id = try await h.startCloudImport(SlowCloudSource(fake) { clock.advance(by: 2) })
+        let id = try await h.startCloudImport(slow(fake, h))
         await run(h, hours: 30)
         #expect(try h.importCounts(id) == [.imported: 117, .failed: 3])
         #expect(try h.source(id)?.status == .completed)
@@ -102,7 +107,7 @@ import Testing
     @Test func anOutageWhereTheProviderDoesNotAnswerFailsNothing() async throws {
         let h = try await harness()
         let source = FakeCloudSource(try photos(h, ["a.jpg", "b.jpg", "c.jpg"]))
-        let id = try await h.startCloudImport(source)
+        let id = try await h.startCloudImport(slow(source, h))
         source.setFailure(.probe, SourceError.unavailable)
         source.setFailure(.inspect, SourceError.unavailable)
         // A file read is attempted once before the outage reaches the probe.
