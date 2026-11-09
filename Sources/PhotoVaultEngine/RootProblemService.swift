@@ -46,6 +46,7 @@ struct RootProblemService: Sendable {
             let now = env.clock.now
             try await env.store.write { db in try DestinationRepository.setStatus(db, id: id, status: .active, now: now) }
             await forget(id)
+            await IntegrityChecker(env: env).healMissing(id, destination: managing)
         }
     }
 
@@ -124,6 +125,7 @@ struct RootProblemService: Sendable {
             try DestinationRepository.setStatus(db, id: id, status: .active, now: now)
         }
         await forget(id)
+        if restored > 0 { await IntegrityChecker(env: env).healMissing(id, destination: managing) }
         return restored
     }
 }

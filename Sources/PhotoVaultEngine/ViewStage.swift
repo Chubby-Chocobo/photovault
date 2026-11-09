@@ -58,7 +58,14 @@ struct ViewStage: CycleStage {
         var worked = false
         for target in targets {
             let executor = try await executor(for: target)
-            try await executor.finishTrashes()
+            switch try await executor.finishTrashes() {
+            case .completed: continue
+            case .disabled:
+                let id = target.record.id
+                let now = env.clock.now
+                try await env.store.write { db in try Self.disable(db, id, now: now) }
+            case .retryLater, .stopped: return worked
+            }
         }
         var seen = Set<String>()
         while true {
@@ -137,32 +144,14 @@ struct ViewStage: CycleStage {
 
     // MARK: Rebuild
 
-    /// View folders the owner deleted or trashed are forgotten, so the rebuild creates them again.
-    /// Only a definitive answer counts (not found, or trashed): an error says nothing about the folder,
-    /// so the preparation stops and is repeated later, and no second view folder is created beside
-    /// one that still exists. Returns false when it has to wait.
+    /// The owner's removals in Drive are learned first (see `ViewRebuildPreparation`), once per rebuild.
+    /// Returns false when a destination has to be asked again later.
     private func prepareRebuild(_ targets: [Target]) async throws -> Bool {
         guard try await env.store.read({ db in try KeyValueRepository.int(db, Self.preparedKey) }) != 1 else { return true }
         for target in targets {
-            let id = target.record.id
             let ensurer = await uploader.ensurer(for: target.record, destination: target.destination)
-            let folders = try await env.store.read { db in
-                try RemoteFolderRepository.fetchAll(db, destinationId: id).filter { $0.logicalPath.hasPrefix("view") && $0.created }
-            }
-            for folder in folders {
-                guard let remoteId = folder.remoteId else { continue }
-                let gone: Bool
-                do {
-                    let item = try await target.destination.probe(remoteId: remoteId)
-                    gone = item == nil || item?.trashed == true
-                } catch DestinationError.notFound {
-                    gone = true
-                } catch let error as DestinationError {
-                    env.log.log(.notice, category: "views", "rebuild waits: probe failed error=\(error)")
-                    return false
-                }
-                if gone { try await ensurer.invalidate(logicalPath: folder.logicalPath) }
-            }
+            let preparation = ViewRebuildPreparation(env: env, record: target.record, destination: target.destination, ensurer: ensurer)
+            guard try await preparation.run() else { return false }
         }
         try await env.store.write { db in try KeyValueRepository.set(db, Self.preparedKey, 1) }
         return true

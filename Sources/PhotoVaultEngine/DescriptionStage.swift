@@ -85,13 +85,16 @@ struct DescriptionStage: CycleStage {
         let snapshot = await env.settingsSnapshot()
         let id = target.record.id
         let loaded: (text: String, recorded: String?, files: [String])? = try await env.store.read { db in
-            guard let asset = try AssetRepository.fetch(db, key: key),
-                  let text = try OrganizationLookups.descriptionText(db, asset: asset, settings: snapshot.settings) else { return nil }
+            guard let asset = try AssetRepository.fetch(db, key: key) else { return nil }
+            // No parts left: an empty text clears what was written before (a Place: that must go).
+            let text = try OrganizationLookups.descriptionText(db, asset: asset, settings: snapshot.settings) ?? ""
             let files = try JobRepository.fetchAll(db, assetKey: key)
                 .filter { $0.destinationId == id && $0.state == .done && !$0.resType.isSidecar }.compactMap(\.remoteId)
             return (text, try DescriptionState.recorded(db, destinationId: id, key: key), files)
         }
         guard let loaded, !loaded.files.isEmpty, loaded.recorded != loaded.text else { return .unchanged }
+        // Nothing was ever written: an empty text has nothing to clear.
+        if loaded.text.isEmpty, loaded.recorded == nil { return .unchanged }
         for remoteId in loaded.files {
             guard await resourceGuard.admitMetadataWrite() else { return .retryLater }
             do {

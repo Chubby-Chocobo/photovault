@@ -48,13 +48,23 @@ struct ViewExecutor: Sendable {
         return results
     }
 
-    /// Finishes trashes that were persisted but not confirmed.
-    func finishTrashes() async throws {
+    /// Finishes trashes that were persisted but not confirmed. Errors go through the same handling
+    /// as every other view operation; anything but `.completed` stops the pass (the rows stay
+    /// queued, and repeated failures end in `failed` instead of ending every cycle).
+    func finishTrashes() async throws -> Result {
         let id = record.id
         for shortcut in try await env.store.read({ db in try ShortcutRepository.fetch(db, destinationId: id, state: .trashPending) }) {
-            guard await resourceGuard.admitMetadataWrite() else { return }
-            _ = try await trash(shortcut)
+            guard await resourceGuard.admitMetadataWrite() else { return .retryLater }
+            let outcome: Result
+            do {
+                outcome = try await trash(shortcut)
+            } catch {
+                if error is EngineAbort || error is CancellationError { throw error }
+                outcome = try await handle(error, operation: .trash(view: shortcut.view, assetKey: shortcut.assetKey))
+            }
+            if outcome != .completed { return outcome }
         }
+        return .completed
     }
 
     private static func key(of operation: ViewOperation) -> AssetKey {

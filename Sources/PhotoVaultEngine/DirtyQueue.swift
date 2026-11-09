@@ -51,10 +51,10 @@ enum DirtyQueue {
 
     // MARK: Sweeps
 
+    /// Starts a sweep from the beginning. A sweep that is already running restarts too: what it
+    /// processed before the request used the old state.
     static func requestSweep(_ db: Database, _ channels: [Channel]) throws {
-        for channel in channels {
-            if try KeyValueRepository.string(db, sweepKey(channel)) == nil { try KeyValueRepository.set(db, sweepKey(channel), "") }
-        }
+        for channel in channels { try KeyValueRepository.set(db, sweepKey(channel), "") }
     }
 
     /// Cursor of the running sweep, nil when none is requested.
