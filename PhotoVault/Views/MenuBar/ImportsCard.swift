@@ -24,7 +24,7 @@ struct ImportsCard: View {
                 }
                 ProgressBar(fraction: ImportProgressText.fraction(item))
                     .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
-                Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline ? .orange : .secondary)
+                Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if confirming {
                     HStack {
@@ -45,7 +45,12 @@ struct ImportsCard: View {
         }
     }
 
+    private func waitingReason(_ item: ImportSnapshot) -> String? {
+        ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading)
+    }
+
     private func statusText(_ item: ImportSnapshot) -> String {
+        if let reason = waitingReason(item) { return reason }
         let line = ImportProgressText.progressLine(item)
         return line.isEmpty || item.status == .offline ? ImportProgressText.statusLabel(item.status) : line
     }

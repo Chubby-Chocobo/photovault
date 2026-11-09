@@ -17,7 +17,17 @@ extension AppModel {
     /// Asks for a folder, records the job and starts a cycle.
     func importFolder() {
         guard let env, canStartImport else { return }
-        guard let pick = FolderPicker.chooseImportFolder() else { return }
+        let pick: FolderPicker.Pick
+        do {
+            guard let chosen = try FolderPicker.chooseImportFolder() else { return }
+            pick = chosen
+        } catch {
+            env.log.log(.error, category: "import", "bookmark for the chosen folder failed")
+            showNotice(tr(
+                vi: "Không mở được thư mục này để đọc. Hãy chọn thư mục khác hoặc cấp quyền truy cập thư mục trong System Settings.",
+                en: "This folder couldn’t be opened for reading. Choose another folder, or allow access to it in System Settings."), isError: true)
+            return
+        }
         let existing = destinations.compactMap { record in
             record.kind == .localFolder ? record.config.displayPath.map { (name: record.displayName, path: $0) } : nil
         }
@@ -59,10 +69,12 @@ extension AppModel {
     /// Posts one notification when an import that was running at the last snapshot has completed.
     /// A job that is already finished when the app starts is only remembered.
     func noteImportProgress(_ snapshot: EngineSnapshot) async {
-        var next: [SourceID: SourceStatus] = [:]
-        for item in snapshot.imports {
-            next[item.id] = item.status
-            guard item.status == .completed, let before = importStatuses[item.id], before.isOpen else { continue }
+        let next = Dictionary(snapshot.imports.map { ($0.id, $0.status) }, uniquingKeysWith: { _, last in last })
+        // Assigned before anything suspends: a second snapshot that arrives while a notification is
+        // being posted must not see the old statuses and post the same completion again.
+        let before = importStatuses
+        importStatuses = next
+        for item in ImportProgressText.newlyCompleted(before: before, imports: snapshot.imports) {
             guard let env, await notificationService.isAuthorized() else { continue }
             let text = ImportNotificationText.make(folderName: item.displayName, imported: item.imported, known: item.duplicates)
             do {
@@ -72,7 +84,6 @@ extension AppModel {
                 env.log.log(.error, category: "notification", "post failed: \(type(of: error))")
             }
         }
-        importStatuses = next
     }
 
     /// Live Photos assets, for the Photos row of the Sources tab.

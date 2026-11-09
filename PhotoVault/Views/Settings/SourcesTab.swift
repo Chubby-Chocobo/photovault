@@ -17,7 +17,8 @@ struct SourcesTab: View {
                 vi: "Giữ thư mục và ổ đĩa chứa nó kết nối cho tới khi nhập xong. PhotoVault chỉ đọc, không sửa hay xoá gì trong thư mục.",
                 en: "Keep the folder and the disk it is on connected until the import is done. PhotoVault only reads; it never changes or deletes anything in the folder."))
         }
-        .task { photosCount = await model.photosAssetCount() }
+        // Counted again with every snapshot, so the number follows the library while this tab is open.
+        .task(id: model.snapshot?.updatedAt) { photosCount = await model.photosAssetCount() }
         .confirmationDialog(
             tr(vi: "Huỷ lần nhập này?", en: "Cancel this import?"), isPresented: Binding(get: { confirmCancel != nil }, set: { if !$0 { confirmCancel = nil } }),
             titleVisibility: .visible
@@ -63,6 +64,7 @@ struct SourcesTab: View {
         switch model.photosAuthorization {
         case .authorized: .green
         case .notDetermined: .secondary
+        case .limited: .orange
         default: .red
         }
     }
@@ -99,7 +101,7 @@ struct SourcesTab: View {
                 Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
             }
             ForEach(running) { item in
-                ImportRunningRow(item: item, onCancel: { confirmCancel = item.id })
+                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), onCancel: { confirmCancel = item.id })
             }
             let finished = model.finishedImports
             if !finished.isEmpty {
@@ -113,6 +115,7 @@ struct SourcesTab: View {
 
 private struct ImportRunningRow: View {
     var item: ImportSnapshot
+    var waitingReason: String?
     var onCancel: () -> Void
 
     var body: some View {
@@ -123,7 +126,8 @@ private struct ImportRunningRow: View {
                 Spacer(minLength: 8)
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small)
             }
-            Text(ImportProgressText.statusLabel(item.status)).font(.caption).foregroundStyle(item.status == .offline ? .orange : .secondary)
+            Text(waitingReason ?? ImportProgressText.statusLabel(item.status)).font(.caption)
+                .foregroundStyle(item.status == .offline || waitingReason != nil ? .orange : .secondary)
             if item.status != .offline || item.found > 0 {
                 ProgressBar(fraction: ImportProgressText.fraction(item))
                     .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))

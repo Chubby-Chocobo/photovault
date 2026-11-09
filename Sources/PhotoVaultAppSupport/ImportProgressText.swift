@@ -29,6 +29,24 @@ public enum ImportProgressText {
         return 0.5 * read + 0.5 * uploaded
     }
 
+    /// Why an open import is not moving: Photos access is missing and the cycle that runs imports waits
+    /// for it. nil when the import is moving, waiting for its folder, or finished.
+    public static func waitingForPhotos(_ item: ImportSnapshot, photosAllowsReading: Bool) -> String? {
+        guard !photosAllowsReading, item.status == .scanning || item.status == .importing else { return nil }
+        return tr(
+            vi: "Đang chờ quyền truy cập Photos. Cấp quyền trong System Settings để tiếp tục.",
+            en: "Waiting for Photos access. Grant it in System Settings to continue.")
+    }
+
+    /// Imports that were open at the last snapshot and are completed now. One that is unknown or was
+    /// already finished is not announced.
+    public static func newlyCompleted(before: [SourceID: SourceStatus], imports: [ImportSnapshot]) -> [ImportSnapshot] {
+        imports.filter { item in
+            guard item.status == .completed, let previous = before[item.id] else { return false }
+            return previous.isOpen
+        }
+    }
+
     /// "Đọc 1.240/3.500 · Upload 800/1.100 · 120 đã có"; empty while the folder is still being listed.
     public static func progressLine(_ item: ImportSnapshot) -> String {
         guard item.found > 0 else { return "" }
@@ -60,7 +78,8 @@ public enum ImportProgressText {
     /// "+ 2 lần nhập khác"; nil when there is no other.
     public static func moreImports(_ count: Int) -> String? {
         guard count > 0 else { return nil }
-        return tr(vi: "+ \(count) lần nhập khác", en: "+ \(count) more \(L10n.plural(count, one: "import", other: "imports"))")
+        let number = L10n.integer(count)
+        return tr(vi: "+ \(number) lần nhập khác", en: "+ \(number) more \(L10n.plural(count, one: "import", other: "imports"))")
     }
 
     /// Imports that still have work (or wait for their folder), newest first.

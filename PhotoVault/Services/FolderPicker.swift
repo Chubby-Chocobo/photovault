@@ -28,8 +28,12 @@ enum FolderPicker {
         return Pick(url: url, bookmark: bookmark, volumeName: volume)
     }
 
+    /// The folder was chosen but macOS would not give a bookmark for it, so it cannot be read later.
+    struct BookmarkFailed: Error {}
+
     /// A folder to import from. It is only read: no "new folder" button, and the bookmark allows reading only.
-    static func chooseImportFolder() -> Pick? {
+    /// nil when the owner cancels; throws `BookmarkFailed` when the pick cannot be kept.
+    static func chooseImportFolder() throws -> Pick? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -39,7 +43,7 @@ enum FolderPicker {
         panel.prompt = tr(vi: "Nhập", en: "Import")
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
-        guard let bookmark = try? SecurityScopedBookmarkRoot.makeBookmark(for: url, readOnly: true) else { return nil }
+        guard let bookmark = try? SecurityScopedBookmarkRoot.makeBookmark(for: url, readOnly: true) else { throw BookmarkFailed() }
         return Pick(url: url, bookmark: bookmark, volumeName: nil)
     }
 

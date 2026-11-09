@@ -105,4 +105,43 @@ import Testing
         snapshot.overall = .idle
         #expect(vi { OverallStatusText.make(snapshot: snapshot, disk: .ok, settings: GlobalSettings(), now: Date()).title } == "Đã đồng bộ")
     }
+
+    @Test func waitingForPhotosAccessIsSaidInsteadOfReadingTheFolder() {
+        let reading = item(.scanning)
+        vi {
+            #expect(ImportProgressText.waitingForPhotos(reading, photosAllowsReading: false)?.hasPrefix("Đang chờ quyền truy cập Photos") == true)
+            #expect(ImportProgressText.waitingForPhotos(reading, photosAllowsReading: true) == nil)
+            #expect(ImportProgressText.waitingForPhotos(item(.completed), photosAllowsReading: false) == nil)
+            #expect(ImportProgressText.waitingForPhotos(item(.offline), photosAllowsReading: false) == nil)
+        }
+        en { #expect(ImportProgressText.waitingForPhotos(item(.importing), photosAllowsReading: false)?.hasPrefix("Waiting for Photos access") == true) }
+    }
+
+    @Test func moreImportsGroupsThousands() {
+        vi { #expect(ImportProgressText.moreImports(1_200) == "+ 1.200 lần nhập khác") }
+        en {
+            #expect(ImportProgressText.moreImports(1_200) == "+ 1,200 more imports")
+            #expect(ImportProgressText.moreImports(1) == "+ 1 more import")
+        }
+        #expect(ImportProgressText.moreImports(0) == nil)
+    }
+
+    @Test func onlyAnImportThatWasOpenAndIsNowCompletedIsNewlyCompleted() {
+        let running = item(.importing, name: "A")
+        let done = item(.completed, name: "A")
+        let other = item(.completed, name: "B")
+        let before: [SourceID: SourceStatus] = [running.id: .importing, other.id: .completed]
+        let finished = ImportProgressText.newlyCompleted(before: before, imports: [done.with(id: running.id), other])
+        #expect(finished.map(\.displayName) == ["A"], "an import already finished at the last snapshot is not announced again")
+        #expect(ImportProgressText.newlyCompleted(before: [running.id: .completed], imports: [done.with(id: running.id)]).isEmpty)
+        #expect(ImportProgressText.newlyCompleted(before: [:], imports: [done]).isEmpty, "unknown at the last snapshot: only remembered")
+    }
+}
+
+private extension ImportSnapshot {
+    func with(id: SourceID) -> ImportSnapshot {
+        var copy = self
+        copy.id = id
+        return copy
+    }
 }
