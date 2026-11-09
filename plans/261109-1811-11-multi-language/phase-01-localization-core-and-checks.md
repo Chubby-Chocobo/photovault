@@ -42,7 +42,7 @@ The pieces every other phase uses: the language value, the `tr(vi:en:)` function
 3. Run the filter; leave the coverage test disabled.
 
 ## Success Criteria
-- [ ] Core and format tests pass; coverage test reports today's literals when enabled locally.
+- [x] Core and format tests pass; coverage test reports today's literals when enabled locally.
 
 ## Risk Assessment
 The coverage scan is a heuristic (a literal on a line after `vi:` but not its argument); keep the rule simple — the literal must be immediately preceded by `vi:` — and fix code to fit it rather than widen the rule.

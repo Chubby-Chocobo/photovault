@@ -1,7 +1,7 @@
 ---
 phase: 10
 title: "Hardening: recovery, reconciliation, integrity, rebuild"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 4-6h
@@ -33,7 +33,7 @@ Recovery from destinations (FR-51, 8.15), DB backup restore (FR-52), cloud ID ba
 2. Implement; wire into `SyncCoordinator`.
 
 ## Success Criteria
-- [ ] Full `swift test` green.
+- [x] Full `swift test` green.
 
 ## Risk Assessment
 - [VERIFY] Drive listing of app files after reinstall with `drive.file`: if not visible, the zero-match guard keeps the destination paused and asks the owner (see Audit additions); documented.

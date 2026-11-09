@@ -1,6 +1,6 @@
 ---
 title: "PhotoVault 1.0 — macOS Photos backup to Google Drive and local/NAS"
-status: in-progress
+status: completed
 priority: P1
 size: L
 human_effort: 40-70h
@@ -49,33 +49,33 @@ Dependencies: Core ← Store, Photos, Drive, Local; Engine ← Core + Store; App
 
 | # | Phase | Status | Size | Depends on |
 |---|---|---|---|---|
-| 01 | [Scaffold: SPM package, Xcode app project, CI, config](phase-01-scaffold.md) | done | M | — |
-| 02 | [HTML mockups of every screen](phase-02-mockups.md) | done | M | — |
-| 03 | [Core contracts: models, entities, protocols, state machine, fakes](phase-03-core-contracts.md) | done | L | 01 |
-| 03b | [Core policies: rate limiting, disk guard, places, sidecars, devices, views](phase-03b-core-policies.md) | done | M | 03 |
-| 04 | [Store: GRDB schema, repositories, backups](phase-04-store.md) | done | L | 03 |
-| 05 | [Photos adapter, export streaming, metadata reader](phase-05-photos-adapter.md) | done | M | 03 |
-| 06 | [Google Drive: OAuth, Keychain, REST, resumable upload](phase-06-google-drive.md) | done | L | 03 |
-| 07 | [Local/NAS destination](phase-07-local-destination.md) | done | M | 03 |
-| 08 | [Engine: change tracking, export, fan-out, sync cycle](phase-08-engine-pipeline.md) | done | L | 04 |
-| 09 | [Organization & metadata: day folders, places, sidecars, edits, views](phase-09-organization-metadata.md) | done | L | 03b, 08 |
-| 10 | [Hardening: recovery, reconciliation, integrity, rebuild](phase-10-recovery-integrity.md) | done | L | 07, 09 |
-| 11 | [App: menu bar, onboarding, Settings, notifications](phase-11-app-ui.md) | done | L | 02, 05, 06, 07, 10 |
-| 12 | [Docs: README, sidecar schema, decisions, spikes, test report](phase-12-docs.md) | done | M | 11 |
+| 01 | [Scaffold: SPM package, Xcode app project, CI, config](phase-01-scaffold.md) | completed | M | — |
+| 02 | [HTML mockups of every screen](phase-02-mockups.md) | completed | M | — |
+| 03 | [Core contracts: models, entities, protocols, state machine, fakes](phase-03-core-contracts.md) | completed | L | 01 |
+| 03b | [Core policies: rate limiting, disk guard, places, sidecars, devices, views](phase-03b-core-policies.md) | completed | M | 03 |
+| 04 | [Store: GRDB schema, repositories, backups](phase-04-store.md) | completed | L | 03 |
+| 05 | [Photos adapter, export streaming, metadata reader](phase-05-photos-adapter.md) | completed | M | 03 |
+| 06 | [Google Drive: OAuth, Keychain, REST, resumable upload](phase-06-google-drive.md) | completed | L | 03 |
+| 07 | [Local/NAS destination](phase-07-local-destination.md) | completed | M | 03 |
+| 08 | [Engine: change tracking, export, fan-out, sync cycle](phase-08-engine-pipeline.md) | completed | L | 04 |
+| 09 | [Organization & metadata: day folders, places, sidecars, edits, views](phase-09-organization-metadata.md) | completed | L | 03b, 08 |
+| 10 | [Hardening: recovery, reconciliation, integrity, rebuild](phase-10-recovery-integrity.md) | completed | L | 07, 09 |
+| 11 | [App: menu bar, onboarding, Settings, notifications](phase-11-app-ui.md) | completed | L | 02, 05, 06, 07, 10 |
+| 12 | [Docs: README, sidecar schema, decisions, spikes, test report](phase-12-docs.md) | completed | M | 11 |
 
 Phase 03 (contracts) is written by the controller as code; it is the contract. Phases 03b and 04–07 then run in parallel (separate folders, separate `--scratch-path`); none of them may change Core contract types. Phase 02 runs in parallel with 01–03.
 
 ## Acceptance criteria (from spec §12, scoped to what an agent can prove)
 
-- [ ] `swift build` and `swift test` pass from a clean checkout; `xcodebuild -scheme PhotoVault build CODE_SIGNING_ALLOWED=NO` succeeds.
-- [ ] Every FR is implemented as described, or has a reason in `docs/decisions/`.
-- [ ] Unit tests cover the list in spec §11 "Unit" with fakes.
-- [ ] Every [VERIFY] has a recorded conclusion or is listed in `docs/spikes/` as pending the owner's M0 run, with the default the code uses.
-- [ ] Extension points from spec §7 exist: `Destination` (with capabilities), `LayoutPolicy`, `ViewRule`, `Transform` (identity).
-- [ ] `docs/sidecar-schema.md` exists and matches `SidecarBuilder`.
-- [ ] README covers build, Google Cloud setup, signing, NAS, configuration, known limits, uninstall.
-- [ ] No secrets in git; `Config/Secrets.xcconfig` is gitignored with an `.example`.
-- [ ] T1–T43: unit-level equivalents automated where possible; the manual run is a checklist in `docs/test-report.md` for the owner.
+- [x] `swift build` and `swift test` pass from a clean checkout; `xcodebuild -scheme PhotoVault build CODE_SIGNING_ALLOWED=NO` succeeds.
+- [x] Every FR is implemented as described, or has a reason in `docs/decisions/`.
+- [x] Unit tests cover the list in spec §11 "Unit" with fakes.
+- [x] Every [VERIFY] has a recorded conclusion or is listed in `docs/spikes/` as pending the owner's M0 run, with the default the code uses.
+- [ ] Extension points from spec §7 exist: `Destination` (with capabilities), `LayoutPolicy`, `ViewRule`, `Transform` (identity). — open: `LayoutPolicy`, `Destination` (capabilities) and `Transform` are protocols; views are a closed set (`ViewKind` + `ViewRules`), so a new view is a new case, not a plug-in.
+- [x] `docs/sidecar-schema.md` exists and matches `SidecarBuilder`.
+- [x] README covers build, Google Cloud setup, signing, NAS, configuration, known limits, uninstall.
+- [x] No secrets in git; `Config/Secrets.xcconfig` is gitignored with an `.example`.
+- [x] T1–T43: unit-level equivalents automated where possible; the manual run is a checklist in `docs/test-report.md` for the owner.
 
 ## Decisions
 ### Geocoding input privacy

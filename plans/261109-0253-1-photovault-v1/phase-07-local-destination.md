@@ -1,7 +1,7 @@
 ---
 phase: 07
 title: "Local/NAS destination"
-status: done
+status: completed
 priority: P1
 size: M
 human_effort: 3-4h
@@ -35,7 +35,7 @@ sources:
 2. Implement.
 
 ## Success Criteria
-- [ ] Local tests green on APFS temp dir.
+- [x] Local tests green on APFS temp dir.
 
 ## Risk Assessment
 - [VERIFY M0-4] `RENAME_EXCL`/`F_FULLFSYNC` on exFAT/SMB and bookmark survival across remount: fallbacks implemented, documented as best-effort.

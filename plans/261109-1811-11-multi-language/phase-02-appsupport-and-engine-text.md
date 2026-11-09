@@ -37,7 +37,7 @@ Every string AppSupport builds for the UI and every Engine activity message beco
 3. Run AppSupport + Engine tests.
 
 ## Success Criteria
-- [ ] All AppSupport/Engine tests pass; English tests pass; coverage test (run locally) clean for these modules.
+- [x] All AppSupport/Engine tests pass; English tests pass; coverage test (run locally) clean for these modules.
 
 ## Risk Assessment
 Engine messages are built inside database closures; they read `L10n.current` (not the task-local), which is correct at runtime. No English Engine test (would need the global); the Vietnamese side is covered by existing Engine tests where they exist.

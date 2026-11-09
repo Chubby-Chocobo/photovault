@@ -28,7 +28,7 @@ acceptance:
 5. Tests: kept files, marker removed last, nothing happens without a marker, a partial wipe keeps the marker.
 
 ## Success Criteria
-- [ ] A reset ends in onboarding with an empty database and the language kept.
+- [ ] A reset ends in onboarding with an empty database and the language kept. — open: covered by `FactoryResetTests`; the live reset has not been run on the owner's Mac.
 
 ## Risk Assessment
 - Relaunch can fail in the sandbox: the marker stays, the reset completes when the owner opens the app.

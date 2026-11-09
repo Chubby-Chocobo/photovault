@@ -1,7 +1,7 @@
 ---
 phase: 03
 title: "Core contracts: models, persisted entities, protocols, state machine, fakes"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 4-6h
@@ -75,8 +75,8 @@ Every type and protocol that crosses a module boundary, plus the pure rules othe
 2. Implement models, entities, protocols, rules, fakes, conformance suite.
 
 ## Success Criteria
-- [ ] `swift test --filter PhotoVaultCoreTests` green; every 8.3 row has a test.
-- [ ] Conformance suite passes on `FakeDestination`.
+- [x] `swift test --filter PhotoVaultCoreTests` green; every 8.3 row has a test.
+- [x] Conformance suite passes on `FakeDestination`.
 
 ## Risk Assessment
 - Contract gaps found in 04–07 come back as NEEDS_CONTEXT and are fixed here, not locally.

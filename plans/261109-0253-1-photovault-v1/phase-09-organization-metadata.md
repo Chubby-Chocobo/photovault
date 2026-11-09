@@ -1,7 +1,7 @@
 ---
 phase: 09
 title: "Organization & metadata: day folders, places, sidecars, edits, views"
-status: done
+status: completed
 priority: P1
 size: L
 human_effort: 5-8h
@@ -34,7 +34,7 @@ Runs the Core policies inside the pipeline: day-folder promotion with moves, Pla
 2. Implement workers and hook them into `SyncCoordinator` steps 5–9.
 
 ## Success Criteria
-- [ ] Engine tests green including the scenarios above.
+- [x] Engine tests green including the scenarios above.
 
 ## Risk Assessment
 - [VERIFY M0-6] CLGeocoder structured fields and throttling; downgrade to country-only when fields are missing, with an owner notice.
