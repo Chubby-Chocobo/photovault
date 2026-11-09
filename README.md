@@ -186,9 +186,9 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 
 Settings → Nâng cao → **Đặt lại từ đầu…** returns PhotoVault to first-time setup.
 1. Before resetting, move the old backup folder on Drive (and on the NAS, if you use one) to the Trash yourself. The app never deletes backup data. If the old folder is still there, onboarding offers to reuse it.
-2. On confirm, PhotoVault signs out of Google (the refresh token is revoked and removed from the Keychain) and relaunches.
+2. On confirm, PhotoVault signs out of Google and relaunches. The refresh token is removed from the Keychain, and revoked at Google when Google can be reached.
 3. Before opening anything, the new process deletes the database, staging files, database snapshots, logs and the notification history.
-4. Two things are kept: the interface language, and `drive-daily-cap.json`. Google counts the 750 GB a day per account, not per database.
+4. Two things are kept: the interface language, and `drive-daily-cap.json`. Google counts the 750 GB a day per account, not per database. If you then sign in with a different Google account, it starts from the old account's count for the rest of that 24 hours.
 5. Onboarding then creates a new root and syncs into it. If the reset is cut short, for example by a crash, it finishes at the next launch.
 
 ## Uninstall

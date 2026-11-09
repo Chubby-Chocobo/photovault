@@ -83,10 +83,14 @@ struct AdvancedTab: View {
                 tr(vi: "Đặt lại từ đầu", en: "Start over"),
                 detail: tr(vi: "Xoá mọi dữ liệu của PhotoVault trên Mac này và mở lại phần thiết lập lần đầu. Ảnh đã backup ở đích vẫn giữ nguyên.", en: "Delete all of PhotoVault’s data on this Mac and open first-time setup again. Photos already backed up at your destinations stay.")) {
                 Button(tr(vi: "Đặt lại từ đầu…", en: "Start over…"), role: .destructive) { confirmReset = true }
+                    .disabled(model.factoryResetInProgress)
             }
         }
         .alert(tr(vi: "Đặt lại PhotoVault từ đầu?", en: "Start PhotoVault over?"), isPresented: $confirmReset) {
-            Button(tr(vi: "Đặt lại và mở lại", en: "Reset and reopen"), role: .destructive) { Task { await model.factoryReset() } }
+            Button(tr(vi: "Đặt lại và mở lại", en: "Reset and reopen"), role: .destructive) {
+                guard !model.factoryResetInProgress else { return }
+                Task { await model.factoryReset() }
+            }
             Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
             Text(tr(

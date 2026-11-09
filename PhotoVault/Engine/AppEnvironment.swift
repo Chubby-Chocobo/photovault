@@ -107,7 +107,9 @@ struct AppEnvironment: Sendable {
             wasReset = try FactoryReset.applyIfRequested(layout)
             if wasReset { try ContainerLocator.prepare(layout) }
         } catch {
-            throw LaunchFailure.other(tr(vi: "Không đặt lại được dữ liệu của PhotoVault: \(error.localizedDescription)", en: "Could not reset PhotoVault’s data: \(error.localizedDescription)"))
+            throw LaunchFailure.other(tr(
+                vi: "Không đặt lại được dữ liệu của PhotoVault: \(error.localizedDescription)\n\nCó thể xoá tay nội dung thư mục \(layout.root.path) (giữ file photovault.lock) rồi mở lại.",
+                en: "Could not reset PhotoVault’s data: \(error.localizedDescription)\n\nYou can empty the folder \(layout.root.path) by hand (keep photovault.lock) and open the app again."))
         }
 
         let fileLog = RotatingFileLog(directory: layout.logs)

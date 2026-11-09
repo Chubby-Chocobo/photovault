@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Reset on next launch"
-status: in-progress
+status: completed
 priority: P2
 size: M
 human_effort: 1-2h

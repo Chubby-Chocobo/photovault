@@ -46,6 +46,8 @@ final class AppModel {
     var firstStart: FirstStartState?
     /// One short message for the user (success or failure); views show it as a banner.
     var notice: Notice?
+    /// A factory reset is signing out or relaunching; its button stays disabled.
+    var factoryResetInProgress = false
     var windowRequest: WindowRequest?
     var settingsTab: SettingsTab = .general
     var hardening: (any HardeningCommands)?

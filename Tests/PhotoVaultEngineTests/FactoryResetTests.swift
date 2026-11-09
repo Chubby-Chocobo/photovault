@@ -15,6 +15,17 @@ import Testing
         return layout
     }
 
+    @Test func linksInTheFolderAreRemovedWithoutTouchingTheirTargets() throws {
+        let layout = try layout()
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent("reset-target-\(UUID().uuidString)")
+        try Data("keep".utf8).write(to: outside)
+        try FileManager.default.createSymbolicLink(at: layout.root.appendingPathComponent("link"), withDestinationURL: outside)
+        try FactoryReset.request(layout)
+        try FactoryReset.applyIfRequested(layout)
+        #expect(try Data(contentsOf: outside) == Data("keep".utf8))
+        #expect(!FileManager.default.fileExists(atPath: layout.root.appendingPathComponent("link").path))
+    }
+
     private func names(_ layout: ContainerLayout) throws -> [String] {
         try FileManager.default.contentsOfDirectory(atPath: layout.root.path).sorted()
     }
@@ -37,7 +48,8 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: layout.staging.path), "folders come back for the fresh start")
     }
 
-    @Test func aFailedWipeKeepsTheMarkerForTheNextLaunch() throws {
+    @Test(.disabled(if: getuid() == 0, "root ignores the read-only folder"))
+    func aFailedWipeKeepsTheMarkerForTheNextLaunch() throws {
         let layout = try layout()
         try FactoryReset.request(layout)
         let locked = layout.root.appendingPathComponent("locked", isDirectory: true)
