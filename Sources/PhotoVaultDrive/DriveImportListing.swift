@@ -75,6 +75,9 @@ enum ImportNames {
 /// Walks the picked items and records which file each relative path names.
 struct DriveImportLister: Sendable {
     static let maxDepth = 64
+    /// Picked items read at the same time, and tries per item.
+    static let pickedParallelism = 8
+    static let itemAttempts = 3
 
     let http: DriveHTTP
     let pickedIds: [String]
@@ -85,15 +88,53 @@ struct DriveImportLister: Sendable {
     }
 
     func list() async throws -> Listing {
-        var roots: [ImportItem] = []
-        for id in pickedIds {
-            do { roots.append(try await item(id)) } catch where Self.isPerItem(error) { continue }
-        }
+        let roots = try await pickedItems()
         var listing = Listing()
         var visited = Set<String>()
         try await walk(roots.filter { !$0.isSkipped }, prefix: "", depth: 0, visited: &visited, into: &listing)
         listing.entries.sort { $0.relativePath.utf8.lexicographicallyPrecedes($1.relativePath.utf8) }
         return listing
+    }
+
+    /// Picked items read side by side, a few at a time. The result keeps the order of `pickedIds`, so it does not
+    /// depend on which answer comes first. An item Drive refuses to show is left out.
+    private func pickedItems() async throws -> [ImportItem] {
+        try await withThrowingTaskGroup(of: (Int, ImportItem?).self) { group in
+            var found: [(Int, ImportItem)] = []
+            var next = 0
+            func startNext() {
+                guard next < pickedIds.count else { return }
+                let index = next, id = pickedIds[next]
+                next += 1
+                group.addTask { (index, try await self.itemWithRetry(id)) }
+            }
+            for _ in 0..<min(Self.pickedParallelism, pickedIds.count) { startNext() }
+            while let (index, item) = try await group.next() {
+                if let item { found.append((index, item)) }
+                startNext()
+            }
+            return found.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+    }
+
+    /// One picked item. A hiccup (server error, throttling, dropped connection) is retried for this item alone;
+    /// when it persists the error goes up and the listing is busy.
+    private func itemWithRetry(_ id: String) async throws -> ImportItem? {
+        var attempt = 1
+        while true {
+            do { return try await item(id) } catch where Self.isPerItem(error) { return nil } catch {
+                guard attempt < Self.itemAttempts, Self.isHiccup(error) else { throw error }
+                try await Task.sleep(for: .milliseconds(200 * attempt))
+                attempt += 1
+            }
+        }
+    }
+
+    private static func isHiccup(_ error: any Error) -> Bool {
+        switch error as? DestinationError {
+        case .rateLimited, .server, .transient: true
+        default: false
+        }
     }
 
     /// A missing item or one the app may not read (403) says nothing about the source: Drive answered, this item is skipped.

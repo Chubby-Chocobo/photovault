@@ -54,6 +54,15 @@ public enum LoopbackRequestParser {
         return code
     }
 
+    /// True when the request text has a `state` query item equal to `expectedState` (checked in constant time).
+    public static func carriesState(_ text: String, expectedState: String) -> Bool {
+        guard let start = text.firstIndex(of: "?") else { return false }
+        let line = text[start...].prefix { $0 != " " && $0 != "\r" }
+        return line.dropFirst().split(separator: "&").contains { pair in
+            pair.hasPrefix("state=") && constantTimeEquals(String(pair.dropFirst("state=".count)), expectedState)
+        }
+    }
+
     public static func constantTimeEquals(_ a: String, _ b: String) -> Bool {
         let x = Array(a.utf8), y = Array(b.utf8)
         var diff = UInt8(truncatingIfNeeded: x.count ^ y.count)

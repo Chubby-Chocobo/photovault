@@ -28,7 +28,9 @@ public enum PickerError: Error, Equatable, Sendable {
 /// shows the account chooser, consent and the picker; the loopback redirect carries `picked_file_ids`.
 public struct GooglePickerFlow: Sendable {
     public static let scope = "https://www.googleapis.com/auth/drive.file"
-    static let maxPickedIds = 5000
+    /// What the loopback request line can carry with room to spare: an id is at most about 45 bytes and its
+    /// comma may arrive as `%2C`, so 48 bytes each, after 4 KiB for the other query items. More than this is refused.
+    static let maxPickedIds = (LoopbackRequestParser.maxRequestBytes - 4096) / 48
     /// Picking many photos across folders takes a while; the selection is lost when this runs out.
     public static let pickTimeout: TimeInterval = 20 * 60
 
@@ -83,7 +85,7 @@ public struct GooglePickerFlow: Sendable {
             }
         }
         do {
-            let ids = Self.parseIds(server.receivedCallback?.pickedFileIds)
+            let ids = try Self.parseIds(server.receivedCallback?.pickedFileIds)
             guard !ids.isEmpty else { throw PickerError.nothingPicked }
             let oauth = OAuthClient(config: config, transport: transport, clock: clock, openURL: openURL)
             let tokens = try await oauth.exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
@@ -99,7 +101,8 @@ public struct GooglePickerFlow: Sendable {
     }
 
     /// Ids are opaque Drive ids: letters, digits, `-` and `_`. Anything else is dropped, duplicates collapse.
-    static func parseIds(_ raw: String?) -> [String] {
+    /// More than `maxPickedIds` valid ids throw `selectionTooLarge`; an id is never dropped silently.
+    static func parseIds(_ raw: String?) throws -> [String] {
         var seen = Set<String>()
         var ids: [String] = []
         for part in (raw ?? "").split(separator: ",") {
@@ -107,8 +110,8 @@ public struct GooglePickerFlow: Sendable {
             guard !id.isEmpty, id.utf8.count <= 128,
                   id.unicodeScalars.allSatisfy({ ($0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0))) || $0 == "-" || $0 == "_" }),
                   seen.insert(id).inserted else { continue }
+            guard ids.count < maxPickedIds else { throw PickerError.selectionTooLarge }
             ids.append(id)
-            if ids.count == maxPickedIds { break }
         }
         return ids
     }

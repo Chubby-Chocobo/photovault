@@ -106,8 +106,22 @@ private func components(_ url: URL) -> [String: String] {
         let squatter = try LoopbackRedirectServer(expectedState: "s", port: 53_699)
         _ = try await squatter.start()
         defer { squatter.cancel() }
-        let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) }, openURL: { _ in true }, port: 53_699)
+        let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) }, openURL: { _ in true },
+                               port: 53_699, portWait: 0.3)
         await #expect(throws: DropboxAuthError.portInUse) { try await auth.signIn() }
+    }
+
+    @Test func aPortThatIsFreedAMomentLaterIsStillUsed() async throws {
+        let squatter = try LoopbackRedirectServer(expectedState: "s", port: 53_698)
+        _ = try await squatter.start()
+        let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) }, openURL: { _ in true },
+                               loopbackTimeout: 60, port: 53_698)
+        let task = Task { try await auth.signIn() }
+        try await Task.sleep(for: .milliseconds(400))
+        squatter.cancel()
+        try await Task.sleep(for: .milliseconds(600))
+        task.cancel()
+        await #expect(throws: DropboxAuthError.cancelled) { _ = try await task.value }
     }
 
     @Test func unopenableBrowserIsReported() async throws {

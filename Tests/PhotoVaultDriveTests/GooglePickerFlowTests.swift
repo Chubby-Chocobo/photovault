@@ -56,9 +56,25 @@ private func server(email: String? = "me@example.com", refresh: String? = "r-1")
         #expect(callback.pickedFileIds == "a1,b-2" && callback.code == "c")
     }
 
-    @Test func idsAreValidatedAndDeduplicated() {
-        #expect(GooglePickerFlow.parseIds("a1, b_2,a1,,bad id,x/y,../z,C-3") == ["a1", "b_2", "C-3"])
-        #expect(GooglePickerFlow.parseIds(nil).isEmpty)
+    @Test func idsAreValidatedAndDeduplicated() throws {
+        #expect(try GooglePickerFlow.parseIds("a1, b_2,a1,,bad id,x/y,../z,C-3") == ["a1", "b_2", "C-3"])
+        #expect(try GooglePickerFlow.parseIds(nil).isEmpty)
+    }
+
+    private func manyIds(_ count: Int) -> String {
+        (0..<count).map { "1" + String(format: "%032d", $0) }.joined(separator: ",")
+    }
+
+    @Test func aSelectionAboveTheLimitIsRefusedNotCut() throws {
+        #expect(try GooglePickerFlow.parseIds(manyIds(GooglePickerFlow.maxPickedIds)).count == GooglePickerFlow.maxPickedIds)
+        #expect(throws: PickerError.selectionTooLarge) { try GooglePickerFlow.parseIds(manyIds(GooglePickerFlow.maxPickedIds + 1)) }
+    }
+
+    @Test func theFlowFailsWhenMoreItemsComeBackThanTheAppTakes() async throws {
+        let list = manyIds(GooglePickerFlow.maxPickedIds + 1)
+        await #expect(throws: PickerError.selectionTooLarge) {
+            try await flow(server(), opener: browser { _ in "&code=c&picked_file_ids=\(list)" }).run()
+        }
     }
 
     @Test func fullFlowReturnsPickAndTokens() async throws {

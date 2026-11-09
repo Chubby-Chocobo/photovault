@@ -136,11 +136,16 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             if hasRequestLine || isComplete || error != nil {
                 self.handle(text, on: connection)
             } else if buffer.count >= LoopbackRequestParser.maxRequestBytes {
-                // No request line within the size limit. A callback that is simply too long gets a readable page and
-                // ends the flow now; anything else is not a browser redirect.
+                // No request line within the size limit. A callback that carries the expected state is the owner's
+                // selection, simply too long: it gets a readable page and ends the flow now. A long request without
+                // the state is a stray one: refused, and the flow keeps waiting.
                 if text.hasPrefix("GET \(LoopbackRequestParser.callbackPath)") {
-                    self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
-                    self.finish(.failure(.requestTooLarge))
+                    if LoopbackRequestParser.carriesState(text, expectedState: self.expectedState) {
+                        self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
+                        self.finish(.failure(.requestTooLarge))
+                    } else {
+                        self.answer(connection, status: "413 Content Too Large", body: Self.failurePage)
+                    }
                 } else {
                     self.answer(connection, status: "400 Bad Request", body: "")
                 }

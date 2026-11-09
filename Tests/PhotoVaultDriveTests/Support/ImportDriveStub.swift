@@ -22,19 +22,38 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
     private var recorded: [URLRequest] = []
     private var failures: [String: StubResponse] = [:]
     private var listingFailures: [String: StubResponse] = [:]
+    private var oneShots: [String: StubResponse] = [:]
+    private var inFlight = 0
+    private var peak = 0
     var pageSize = 1000
+    /// Each answer takes this long, so overlapping requests can be seen.
+    var latency: Duration = .zero
     let validToken = LockedBox("token-1")
 
     func add(_ node: Node) { lock.withLock { nodes[node.id] = node; order.append(node.id) } }
     func remove(_ id: String) { lock.withLock { nodes[id] = nil } }
     func fail(_ id: String, with response: StubResponse) { lock.withLock { failures[id] = response } }
+    /// The next request for this id answers `response`, then it answers normally.
+    func failOnce(_ id: String, with response: StubResponse) { lock.withLock { oneShots[id] = response } }
+    /// The most requests that were waiting for an answer at the same time.
+    var peakInFlight: Int { lock.withLock { peak } }
+    /// Metadata requests for one id (not listings or downloads).
+    func metadataRequests(for id: String) -> Int {
+        requests.filter { $0.url?.path == "/drive/v3/files/" + id && !($0.url?.query ?? "").contains("alt=media") }.count
+    }
     /// Listing the children of this folder answers `response`.
     func failListing(of id: String, with response: StubResponse) { lock.withLock { listingFailures[id] = response } }
     var requests: [URLRequest] { lock.withLock { recorded } }
     var listingRequests: Int { requests.filter { $0.url?.path == "/drive/v3/files" }.count }
 
     func send(_ request: URLRequest, body: HTTPBody) async throws -> (Data, HTTPURLResponse) {
-        lock.withLock { recorded.append(request) }
+        lock.withLock {
+            recorded.append(request)
+            inFlight += 1
+            peak = max(peak, inFlight)
+        }
+        defer { lock.withLock { inFlight -= 1 } }
+        if latency > .zero { try await Task.sleep(for: latency) }
         let url = request.url!
         let response = route(request, url)
         return (response.body, response.http(for: url))
@@ -49,6 +68,7 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
             if url.path == "/drive/v3/files" { return list(query) }
             let id = String(url.path.dropFirst("/drive/v3/files/".count))
             if let failure = failures[id] { return failure }
+            if let once = oneShots.removeValue(forKey: id) { return once }
             guard let node = nodes[id] else { return .json(404, ["error": ["errors": [["reason": "notFound"]]]]) }
             if query["alt"] == "media" { return StubResponse(status: 200, body: node.content) }
             return .json(200, render(node))

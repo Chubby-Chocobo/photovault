@@ -39,15 +39,18 @@ public struct DropboxAuth: Sendable {
     private let openURL: URLOpening
     private let loopbackTimeout: TimeInterval
     private let port: UInt16
+    private let portWait: TimeInterval
 
     public init(appKey: String, transport: any HTTPTransport, clock: any Clock = SystemClock(), openURL: @escaping URLOpening,
-                loopbackTimeout: TimeInterval = LoopbackRedirectServer.defaultTimeout, port: UInt16 = DropboxAuth.redirectPort) {
+                loopbackTimeout: TimeInterval = LoopbackRedirectServer.defaultTimeout, port: UInt16 = DropboxAuth.redirectPort,
+                portWait: TimeInterval = 2) {
         self.appKey = appKey
         self.transport = transport
         self.clock = clock
         self.openURL = openURL
         self.loopbackTimeout = loopbackTimeout
         self.port = port
+        self.portWait = portWait
     }
 
     public static func authorizationURL(appKey: String, state: String, challenge: String) -> URL {
@@ -64,8 +67,7 @@ public struct DropboxAuth: Sendable {
     public func signIn() async throws -> DropboxSignIn {
         let pkce = try PKCE()
         let state = try PKCE.randomState()
-        let server = try LoopbackRedirectServer(expectedState: state, timeout: loopbackTimeout, port: port)
-        do { _ = try await server.start() } catch { throw DropboxAuthError.portInUse }
+        let server = try await listen(state: state)
         guard await openURL(Self.authorizationURL(appKey: appKey, state: state, challenge: pkce.challenge)) else {
             server.cancel()
             throw DropboxAuthError.browserUnavailable
@@ -89,6 +91,19 @@ public struct DropboxAuth: Sendable {
         } catch {
             server.respond(success: false)
             throw error
+        }
+    }
+
+    /// The fixed port may still be closing after a sign-in that was just cancelled, so a busy port is retried for
+    /// a moment. Each attempt needs its own listener, because a listener that failed to start cannot start again.
+    private func listen(state: String) async throws -> LoopbackRedirectServer {
+        let deadline = Date().addingTimeInterval(portWait)
+        while true {
+            let server = try LoopbackRedirectServer(expectedState: state, timeout: loopbackTimeout, port: port)
+            do { _ = try await server.start(); return server } catch {
+                guard Date() < deadline else { throw DropboxAuthError.portInUse }
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { throw DropboxAuthError.cancelled }
+            }
         }
     }
 

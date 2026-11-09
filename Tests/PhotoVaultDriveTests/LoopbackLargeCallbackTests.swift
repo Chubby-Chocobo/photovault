@@ -26,7 +26,8 @@ import Testing
     }
 
     @Test func theLargestAcceptedSelectionFitsTheRequestLimit() {
-        #expect(GooglePickerFlow.maxPickedIds * 35 < LoopbackRequestParser.maxRequestBytes)
+        // Drive ids are at most about 45 bytes, and a comma may arrive percent-encoded (3 bytes).
+        #expect(GooglePickerFlow.maxPickedIds * 48 < LoopbackRequestParser.maxRequestBytes)
     }
 
     @Test func aRequestLineBeyondTheLimitEndsTheFlowAtOnceWithAReadablePage() async throws {
@@ -37,6 +38,19 @@ import Testing
         await #expect(throws: LoopbackError.requestTooLarge) { try await server.awaitCode() }
         let reply = await browser.value
         #expect(reply?.1 == 400 && String(decoding: reply?.0 ?? Data(), as: UTF8.self).contains("Too many items"))
+    }
+
+    @Test func anOversizedRequestWithoutTheStateLeavesTheFlowWaiting() async throws {
+        let server = try LoopbackRedirectServer(expectedState: "st")
+        let port = try await server.start()
+        let waiting = Task { try await server.awaitCode() }
+        let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
+        let stray = try? await fetch(port, "/oauth2/callback?x=\(huge)")
+        #expect(stray?.1 == 413)
+        let real = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
+        #expect(try await waiting.value == "c")
+        server.respond(success: true)
+        #expect(try await real.value.1 == 200)
     }
 
     @Test func thePickerFlowFailsFastWhenTheSelectionIsTooLarge() async throws {
