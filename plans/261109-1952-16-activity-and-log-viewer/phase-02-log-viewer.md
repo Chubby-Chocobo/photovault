@@ -27,4 +27,4 @@ acceptance:
 4. Tests for parsing, ordering across rotated files, filtering.
 
 ## Success Criteria
-- [ ] A non-technical owner can read and copy the log without Finder.
+- [x] A non-technical owner can read and copy the log without Finder.

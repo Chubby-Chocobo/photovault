@@ -32,4 +32,4 @@ Enable the coverage test, record the decisions, document the convention, run eve
 1. Enable test. 2. Docs. 3. Full `swift test`, signed build, screenshots in both languages.
 
 ## Success Criteria
-- [ ] Full suite green with the coverage test on; screenshots reviewed.
+- [x] Full suite green with the coverage test on; screenshots reviewed.

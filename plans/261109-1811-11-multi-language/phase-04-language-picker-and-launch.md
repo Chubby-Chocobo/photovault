@@ -35,4 +35,4 @@ Settings → General → Interface language (System / Tiếng Việt / English),
 3. Scene re-keying; manual check.
 
 ## Success Criteria
-- [ ] Switching updates open windows and the menu immediately and survives relaunch.
+- [x] Switching updates open windows and the menu immediately and survives relaunch.

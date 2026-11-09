@@ -36,7 +36,7 @@ No unit-test target for the app; the guard is `UITextCoverageTests` (run locally
 3. Build.
 
 ## Success Criteria
-- [ ] Coverage test clean for `PhotoVault/`; app builds.
+- [x] Coverage test clean for `PhotoVault/`; app builds.
 
 ## Risk Assessment
 Two writers in parallel must not touch the same file: split by folder.

@@ -1,6 +1,6 @@
 ---
 title: "Organise destinations by day and fix place-name languages"
-status: in-review
+status: completed
 priority: P2
 issue: 12
 branch: feat/12-day-folders-and-place-names

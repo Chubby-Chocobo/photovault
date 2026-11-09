@@ -32,4 +32,4 @@ acceptance:
 6. Tests for each event and the summaries.
 
 ## Success Criteria
-- [ ] Each event kind recorded with tests; no file names in any message.
+- [x] Each event kind recorded with tests; no file names in any message.

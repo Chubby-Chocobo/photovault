@@ -1,6 +1,6 @@
 ---
 title: "Record renames, moves, status changes and milestones; read the log in the app"
-status: in-review
+status: completed
 issue: 16
 sources:
   - "tracker: github:Chubby-Chocobo/photovault#16"
