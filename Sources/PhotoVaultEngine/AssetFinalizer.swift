@@ -43,7 +43,7 @@ enum AssetFinalizer {
         if try OrganizationQueries.hasDoneJob(db, key: key) { try DirtyQueue.mark(db, asset: key) }
     }
 
-    /// Recounts the days and promotes those that crossed the threshold; a promoted day is queued
+    /// Recounts the days and promotes those with a first camera asset; a promoted day is queued
     /// for place naming again because its asset set may have changed (FR-83).
     static func recount(_ db: Database, days: Set<ArchiveDay>, context: PipelineContext) throws {
         for day in days {

@@ -11,8 +11,7 @@ import Testing
 @Suite struct LocalRecoveryTests {
     private func organizedLocalLife() async throws -> (Harness, URL, DirectoryReader) {
         let h = try await Harness.organized()
-        try await h.update { $0.dayFolderThreshold = 3 }
-        await h.geocoder.seed(daLat, en: daLatEnglish, vi: daLatVietnamese)
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         let (_, root, reader) = try await h.useRealLocal()
         try h.addNAS(scope: .full)
         await h.addCameraAssets(5, prefix: "d", daysAgo: 3, recordChange: false, location: daLat)
@@ -156,7 +155,9 @@ import Testing
         #expect(media.count == 3, "\(media.sorted())")
         #expect(media.allSatisfy { !$0.contains("conflict") }, "no conflict copy")
         #expect(!tree.keys.contains { $0.hasSuffix(".part") }, "no temp file is left")
-        #expect(folderListing(root) == ["2026", "2026/10"], "one folder per level: \(folderListing(root))")
+        let folders = folderListing(root)
+        #expect(folders.count == 4 && folders.contains("Camera Uploads"), "Camera Uploads once and one folder per day: \(folders)")
+        #expect(folders.filter { $0 != "Camera Uploads" }.allSatisfy { $0.hasPrefix("Camera Uploads/20") })
         #expect(try h.jobs().allSatisfy { $0.state == .done } && (try h.jobs().count) == 3)
         #expect(h.stagingFiles().isEmpty)
     }

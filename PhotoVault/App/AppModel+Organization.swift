@@ -5,27 +5,6 @@ import PhotoVaultEngine
 
 /// Day folders, views, device groups and place names (spec 8.7, FR-103, FR-104, FR-106).
 extension AppModel {
-    func resortPreview() async -> ResortPreview? {
-        guard let env else { return nil }
-        do { return try await env.coordinator.resortPreview() } catch {
-            showError(error)
-            return nil
-        }
-    }
-
-    func resortApply() async {
-        guard let env else { return }
-        do {
-            let result = try await env.coordinator.resortApply()
-            requestSync(.manual)
-            showNotice(tr(
-                vi: "Đã xếp hàng chuyển \(VietnameseFormat.integer(result.files)) file của \(VietnameseFormat.integer(result.days)) ngày.",
-                en: "Queued \(L10n.plural(result.files, one: "1 file", other: "\(VietnameseFormat.integer(result.files)) files")) from \(L10n.plural(result.days, one: "1 day", other: "\(VietnameseFormat.integer(result.days)) days")) to move."))
-        } catch {
-            showError(error)
-        }
-    }
-
     func rebuildViews() async {
         guard let env else { return }
         do {

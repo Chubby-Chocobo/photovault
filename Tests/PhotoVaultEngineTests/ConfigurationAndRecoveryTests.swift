@@ -10,12 +10,12 @@ import Testing
     @Test func settingsAndArchiveTimeZonePersistAcrossRestarts() async throws {
         let h = try await Harness()
         try await h.update {
-            $0.dayFolderThreshold = 25
+            $0.integrityCheckIntervalDays = 25
             $0.includeHidden = true
         }
         try await h.restart()
         let snapshot = await h.env.settings.snapshot()
-        #expect(snapshot.settings.dayFolderThreshold == 25 && snapshot.settings.includeHidden)
+        #expect(snapshot.settings.integrityCheckIntervalDays == 25 && snapshot.settings.includeHidden)
         #expect(snapshot.timeZone == utc)
         let tokyo = try #require(TimeZone(identifier: "Asia/Tokyo"))
         try await h.env.settings.setArchiveTimeZone(tokyo)

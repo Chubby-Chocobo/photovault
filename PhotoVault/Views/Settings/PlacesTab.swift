@@ -19,23 +19,18 @@ struct PlacesTab: View {
         L10n.plural(n, one: "1 cell", other: "\(VietnameseFormat.integer(n)) cells")
     }
 
+    /// A folder name as it appears on destinations, so the same in both interface languages.
+    private static let homeExample = "2026-11-07 Hà Nội" // l10n: verbatim
+
     var body: some View {
         SettingsSection(tr(vi: "Địa danh", en: "Places")) {
             Toggle(isOn: model.binding(\.placeNamesEnabled)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tr(vi: "Đặt tên địa danh cho thư mục ngày", en: "Add place names to day folders"))
-                    Text(tr(vi: "Ví dụ “2026-11-07 Đà Lạt”, hoặc “2026-10-02 Kyoto, Nhật Bản” khi ở nước ngoài.", en: "For example “2026-11-07 Da Lat”, or “2026-10-02 Kyoto, Japan” when abroad."))
+                    Text(tr(vi: "Ví dụ “\(Self.homeExample)”; ở nước ngoài “2026-10-02 Kyoto (京都市), Japan”: tên nước bằng tiếng Anh, tên nơi bằng tiếng Anh kèm tên bản địa.", en: "For example “\(Self.homeExample)”; abroad “2026-10-02 Kyoto (京都市), Japan”: the country in English, the place in English with its native name."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            FormRow(tr(vi: "Ngôn ngữ tên địa danh", en: "Place-name language")) {
-                Picker(tr(vi: "Ngôn ngữ", en: "Language"), selection: model.binding(\.placeNameLanguage)) {
-                    Text("Tiếng Việt").tag("vi") // l10n: verbatim
-                    Text("English").tag("en")
-                }
-                .labelsHidden().frame(width: 160)
-            }
-            .disabled(!model.settings.placeNamesEnabled)
             FormRow(tr(vi: "Quốc gia nhà", en: "Home country"), detail: tr(vi: "Không thêm tên nước cho nơi trong nước nhà.", en: "Don't add the country name for places in the home country.")) {
                 Picker(tr(vi: "Quốc gia nhà", en: "Home country"), selection: model.binding(\.homeCountryCode)) {
                     ForEach(codes, id: \.self) { code in
@@ -45,7 +40,7 @@ struct PlacesTab: View {
                 .labelsHidden().frame(width: 160)
             }
             .disabled(!model.settings.placeNamesEnabled)
-            SettingsNote(tr(vi: "Chỉ đặt tên khi ngày đã kết thúc ít nhất 6 giờ và mọi ảnh có GPS cùng một tỉnh. Đổi ngôn ngữ thì đổi tên lại thư mục.", en: "Names are added only once the day ended at least 6 hours ago and all photos with GPS are in the same province. Changing the language renames the folders again."))
+            SettingsNote(tr(vi: "Chỉ đặt tên khi ngày đã kết thúc ít nhất 6 giờ và mọi ảnh có GPS cùng một tỉnh.", en: "Names are added only once the day ended at least 6 hours ago and all photos with GPS are in the same province."))
         }
         Banner(
             .info, title: tr(vi: "Quyền riêng tư", en: "Privacy"),
@@ -70,7 +65,7 @@ struct PlacesTab: View {
             Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
             let cells = progress?.totalCells ?? 0
-            let hours = Double(cells) / 20.0 / 60.0
+            let hours = Double(cells) * 2 / 20.0 / 60.0
             Text(tr(
                 vi: "Xoá cache địa danh và tra lại \(VietnameseFormat.integer(cells)) ô, khoảng \(VietnameseFormat.decimal(hours, fractionDigits: 1)) giờ ở 20 request/phút. Tên thư mục ngày và view By place được cập nhật khi tra xong.",
                 en: "Clears the place cache and looks up \(cellCount(cells)) again, about \(VietnameseFormat.decimal(hours, fractionDigits: 1)) hours at 20 requests per minute. Day folder names and the By place view are updated when it finishes."))

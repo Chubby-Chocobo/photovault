@@ -46,7 +46,7 @@ struct LocalizationTests {
             L10n.$override.withValue(language) {
                 let placements = [AssetCategory.camera, .screenshot, .saved].map { Placement(category: $0, day: .day(day), nameStem: "x") }
                     + [Placement(category: .camera, day: .unknown, nameStem: "x")]
-                let files = placements.flatMap { layout.folderChain(for: $0, dayPromoted: true, placeName: "Đà Lạt").map(\.displayName) }
+                let files = placements.flatMap { layout.folderChain(for: $0, placeName: "Đà Lạt").map(\.displayName) }
                 let views = [ViewPath.byDevice(groupKey: "k", groupName: "Sony A7 IV", day: day), .favorites(day: day)]
                     .flatMap { layout.viewFolderChain($0).map(\.displayName) }
                 return files + views

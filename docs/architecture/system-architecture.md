@@ -88,7 +88,7 @@ flowchart LR
 | 5. Edit gate | `EditGateStage`, step `.editGate` (FR-46) | Runs in `OrganizationServices.stages`. |
 | 6. Fan-out | `UploadRunner.runPass()` through `FolderEnsurer` and `UploadAttempt`. Step `.fanOut` has no built-in stage. | At most 2 concurrent uploads per destination. Runs only when `uploadsAllowed`. |
 | 7. Sidecars and views | `SidecarStage`, `ViewStage`, `DescriptionStage`, step `.sidecarsAndViews` | Sidecar jobs are created by `SidecarPlanner` inside the eligibility transactions. A Drive shortcut is created when its target job is `done`. |
-| 8. MoveWorker | `MoveStage`, step `.moves`, wraps `MoveWorker.runPass()` | Day-folder promotion and renames. |
+| 8. MoveWorker | `MoveStage`, step `.moves`, wraps `MoveWorker.runPass()` | Folder renames (place names, device groups) and moves after a root or group change. |
 | 9. PlaceNamer | `PlaceNamerStage`, step `.placeNamer`, `PlaceNamer` and `GeocodeScheduler` | At most 20 geocoder requests per minute. |
 | 10. FR-53 and checks | `CloudIdBackfillStage`, `RecoveryVerifyStage`, `IntegrityStage`, step `.cloudIds` | Cloud-ID backfill in batches of at most 500. Integrity check every `integrityCheckIntervalDays` days (Settings, default 7). |
 | 11. UI | `recordSuccess()`, then `publish()`: `SnapshotBuilder` builds an `EngineSnapshot`, delivered by `snapshots()` as an `AsyncStream` | `last_successful_sync_at` is set when the cycle uploaded something, or when no job was pending or uploading at an active destination. A cycle that could not upload what was waiting does not count. The app observes snapshots and, while the overall state is `syncing`, also re-reads the snapshot every 10 seconds. |
@@ -225,8 +225,8 @@ Schema: migrations `v1`, `v2-upload-intent`, `v3-snapshot-counters` and `v4-prov
 | `resource` | One row per asset and resource type: kind, RAW flag, filename, UTI, size, `content_gen`, MD5, SHA-256, staging generation, path and state, export counters, last error |
 | `upload_job` | One row per destination, asset and resource type: kind, origin, state and reason, remote parent, name and ID, session reference, uploaded hash, `target_gen`, `done_gen`, `uploading_gen`, attempt and mismatch counters, retry times |
 | `upload_intent` | Planned path and content hash of a local/NAS write in progress (crash recovery) |
-| `day_stat` | Count, promotion flag, and place name state of each `camera` day |
-| `geo_cache` | Reverse-geocode results per cell and locale (kept without expiry) |
+| `day_stat` | Count, promotion flag (set at the day's first camera asset; it enables place naming), and place name state of each `camera` day |
+| `geo_cache` | Reverse-geocode results per cell, under `en` and under `local` (the cell's second locale, `PlaceNameRule`), kept without expiry |
 | `remote_folder` | Logical folder path to remote ID and display name, per destination |
 | `move_job` | Pending moves and renames (`moveFile`, `renameFolder`) |
 | `device_group`, `device_model` | "By device" grouping of camera make and model |

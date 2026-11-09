@@ -50,30 +50,9 @@ import Testing
     }
 
     @Test(arguments: Target.allCases)
-    func crashWhileMovingAFileIntoThePromotedDayFolder(_ target: Target) async throws {
-        let (h, destination) = try await prepare(target)
-        await h.addCameraAssets(3, recordChange: false)
-        try await baseline(h, target)
-        await h.settle()
-        try await h.update { $0.dayFolderThreshold = 1 }
-        try await h.coordinator.resortApply()
-        await destination.crashAfterEffect(.move)
-        await h.run()
-        #expect(try h.moveJobs(.inProgress, destination: destination.id).count == 1, "the crash left a move in progress")
-
-        try await recover(h)
-        let paths = await h.backupPaths(destination)
-        #expect(paths.allSatisfy { $0.hasPrefix("2026/10/\(organizationDay)/") }, "\(paths)")
-        await assertNoDuplicates(destination, files: 3)
-        #expect(try h.moveJobs(.inProgress, destination: destination.id).isEmpty && h.moveJobs(.pending, destination: destination.id).isEmpty)
-        #expect(try h.jobs().allSatisfy { $0.state == .done && $0.remoteLogicalParent == "camera/2026/10/\(organizationDay)" })
-        #expect(await destination.operationLog.filter { $0 == .move }.count <= 3, "the recovered move was not repeated")
-    }
-
-    @Test(arguments: Target.allCases)
     func crashWhileRenamingTheDayFolder(_ target: Target) async throws {
         let (h, destination) = try await prepare(target)
-        await h.geocoder.seed(daLat, en: daLatEnglish, vi: daLatVietnamese)
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         await h.addCameraAssets(11, recordChange: false, location: daLat)
         try await h.update { $0.placeNamesEnabled = false }
         try await baseline(h, target)
@@ -87,7 +66,7 @@ import Testing
         try await recover(h)
         let expected = "\(organizationDay) Đà Lạt"
         #expect(await destination.folders.map(\.name).filter { $0.hasPrefix(organizationDay.description) } == [expected])
-        let row = try h.read { db in try RemoteFolderRepository.fetch(db, destinationId: destination.id, logicalPath: "camera/2026/10/\(organizationDay)") }
+        let row = try h.read { db in try RemoteFolderRepository.fetch(db, destinationId: destination.id, logicalPath: "camera/\(organizationDay)") }
         #expect(row?.displayName == expected)
         #expect(try h.moveJobs(.inProgress, destination: destination.id).isEmpty && h.moveJobs(.pending, destination: destination.id).isEmpty)
         await assertNoDuplicates(destination, files: 11)

@@ -66,26 +66,27 @@ import PhotoVaultTestSupport
         #expect(NameStemBuilder.sidecarName(stem: stem, type: .sidecarXmp) == "\(stem).xmp")
     }
 
-    @Test func layoutCameraMonthAndPromotedDay() {
+    @Test func everyCameraDayIsAFolderUnderCameraUploads() {
         let layout = DynamicLayout()
         let day = ArchiveDay(year: 2026, month: 11, day: 8)!
         let p = Placement(category: .camera, day: .day(day), nameStem: "x")
-        #expect(layout.folderChain(for: p, dayPromoted: false, placeName: nil).map(\.logicalPath) == ["camera/2026", "camera/2026/11"])
-        let promoted = layout.folderChain(for: p, dayPromoted: true, placeName: "Đà Lạt")
-        #expect(promoted.last == FolderLevel(logicalPath: "camera/2026/11/2026-11-08", displayName: "2026-11-08 Đà Lạt"))
-        #expect(promoted.map(\.displayName) == ["2026", "11", "2026-11-08 Đà Lạt"])
+        let branch = FolderLevel(logicalPath: "camera", displayName: "Camera Uploads")
+        #expect(layout.folderChain(for: p, placeName: nil) == [branch, FolderLevel(logicalPath: "camera/2026-11-08", displayName: "2026-11-08")])
+        #expect(layout.folderChain(for: p, placeName: "Đà Lạt") == [branch, FolderLevel(logicalPath: "camera/2026-11-08", displayName: "2026-11-08 Đà Lạt")])
     }
 
     @Test func layoutScreenshotsSavedAndUnknown() {
         let layout = DynamicLayout()
         let day = ArchiveDay(year: 2026, month: 1, day: 2)!
-        let shot = layout.folderChain(for: Placement(category: .screenshot, day: .day(day), nameStem: "x"), dayPromoted: true, placeName: "X")
-        #expect(shot.map(\.displayName) == ["Screenshots", "2026", "01"])
-        let saved = layout.folderChain(for: Placement(category: .saved, day: .unknown, nameStem: "x"), dayPromoted: false, placeName: nil)
+        let shot = layout.folderChain(for: Placement(category: .screenshot, day: .day(day), nameStem: "x"), placeName: "X")
+        #expect(shot.map(\.displayName) == ["Screenshots", "2026-01-02"])
+        #expect(shot.map(\.logicalPath) == ["screenshot", "screenshot/2026-01-02"])
+        let saved = layout.folderChain(for: Placement(category: .saved, day: .unknown, nameStem: "x"), placeName: nil)
         #expect(saved.map(\.logicalPath) == ["saved", "saved/unknown"])
         #expect(saved.map(\.displayName) == ["Saved", "Unknown date"])
-        let cam = layout.folderChain(for: Placement(category: .camera, day: .unknown, nameStem: "x"), dayPromoted: false, placeName: nil)
-        #expect(cam.map(\.logicalPath) == ["camera/unknown"])
+        let cam = layout.folderChain(for: Placement(category: .camera, day: .unknown, nameStem: "x"), placeName: nil)
+        #expect(cam.map(\.logicalPath) == ["camera", "camera/unknown"])
+        #expect(cam.map(\.displayName) == ["Camera Uploads", "Unknown date"])
     }
 
     @Test func placeNamesAreSanitizedInFolderNames() {
@@ -93,13 +94,17 @@ import PhotoVaultTestSupport
         #expect(DynamicLayout.dayFolderName(day, placeName: "A/B") == "2026-11-08 A_B")
     }
 
-    @Test func viewChains() {
+    @Test func viewChainsEndInADayFolder() {
         let layout = DynamicLayout()
         let day = ArchiveDay(year: 2026, month: 11, day: 8)!
         let chain = layout.viewFolderChain(.byDevice(groupKey: "g1", groupName: "Sony A7 IV", day: day))
-        #expect(chain.map(\.logicalPath).last == "view/byDevice/g1/2026/11")
-        #expect(chain.map(\.displayName) == ["By device", "Sony A7 IV", "2026", "11"])
+        #expect(chain.map(\.logicalPath).last == "view/byDevice/g1/2026-11-08")
+        #expect(chain.map(\.displayName) == ["By device", "Sony A7 IV", "2026-11-08"])
+        let place = layout.viewFolderChain(.byPlace(countryKey: "JP", countryName: "Japan", areaKey: "Kyoto", areaName: "Kyoto (京都府)", day: day))
+        #expect(place.map(\.displayName) == ["By place", "Japan", "Kyoto (京都府)", "2026-11-08"])
         let fav = layout.viewFolderChain(.favorites(day: day))
-        #expect(fav.map(\.logicalPath) == ["view/favorites", "view/favorites/2026"])
+        #expect(fav.map(\.logicalPath) == ["view/favorites", "view/favorites/2026-11-08"])
+        #expect(fav.map(\.displayName) == ["Favorites", "2026-11-08"])
     }
+
 }

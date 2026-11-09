@@ -15,13 +15,11 @@ struct UploadPlan: Sendable {
 
 enum LayoutResolver {
     static func chain(_ db: Database, placement: Placement, layout: any LayoutPolicy) throws -> [FolderLevel] {
-        var promoted = false
         var placeName: String?
         if placement.category == .camera, let day = placement.day.archiveDay, let stat = try DayStatRepository.fetch(db, day: day) {
-            promoted = stat.promoted
             placeName = stat.placeState == .named ? stat.placeName : nil
         }
-        return layout.folderChain(for: placement, dayPromoted: promoted, placeName: placeName)
+        return layout.folderChain(for: placement, placeName: placeName)
     }
 
     static func parentLogical(_ chain: [FolderLevel]) -> String { chain.last?.logicalPath ?? "" }
@@ -38,9 +36,10 @@ enum LayoutResolver {
     }
 }
 
-/// The `uploading → done` transaction (spec 8.7 step 8): the job is finished and, in the same
-/// transaction, its parent is compared with the layout as it is now. A day promoted while the file
-/// was in flight leaves the file in the old folder, so a `move_job` is created.
+/// The `uploading → done` transaction: the job is finished and, in the same transaction, its parent
+/// is compared with the layout as it is now. A placement that changed while the file was in flight
+/// (a new archive day after an edit, a root change) leaves the file in the old folder, so a
+/// `move_job` is created.
 enum UploadCompletion {
     @discardableResult
     static func commit(

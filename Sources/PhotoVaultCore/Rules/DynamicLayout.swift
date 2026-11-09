@@ -14,7 +14,7 @@ public struct FolderLevel: Hashable, Sendable {
 /// Folder layout for backup files and views (spec §7 extension point).
 public protocol LayoutPolicy: Sendable {
     /// Folders from the root down to the folder that holds the asset's files.
-    func folderChain(for placement: Placement, dayPromoted: Bool, placeName: String?) -> [FolderLevel]
+    func folderChain(for placement: Placement, placeName: String?) -> [FolderLevel]
     func viewFolderChain(_ path: ViewPath) -> [FolderLevel]
 }
 
@@ -33,9 +33,11 @@ public enum ViewPath: Hashable, Sendable {
     }
 }
 
-/// `Năm/Tháng` with promoted day folders (FR-40, 8.7).
+/// One folder per day (`YYYY-MM-DD`) under each branch: `Camera Uploads/` (day folders named with
+/// their place when known), `Screenshots/`, `Saved/`; views end in the day.
 public struct DynamicLayout: LayoutPolicy {
     public static let unknownDateName = "Unknown date"
+    public static let cameraName = "Camera Uploads"
     public static let screenshotsName = "Screenshots"
     public static let savedName = "Saved"
     public static let byDeviceName = "By device"
@@ -44,11 +46,11 @@ public struct DynamicLayout: LayoutPolicy {
 
     public init() {}
 
-    public func folderChain(for placement: Placement, dayPromoted: Bool, placeName: String?) -> [FolderLevel] {
+    public func folderChain(for placement: Placement, placeName: String?) -> [FolderLevel] {
         var levels: [FolderLevel] = []
         let branch = placement.category.rawValue
         switch placement.category {
-        case .camera: break
+        case .camera: levels.append(FolderLevel(logicalPath: branch, displayName: Self.cameraName))
         case .screenshot: levels.append(FolderLevel(logicalPath: branch, displayName: Self.screenshotsName))
         case .saved: levels.append(FolderLevel(logicalPath: branch, displayName: Self.savedName))
         }
@@ -56,13 +58,8 @@ public struct DynamicLayout: LayoutPolicy {
         case .unknown:
             levels.append(FolderLevel(logicalPath: "\(branch)/unknown", displayName: Self.unknownDateName))
         case .day(let day):
-            let year = "\(branch)/\(day.yearString)"
-            let month = "\(year)/\(day.monthString)"
-            levels.append(FolderLevel(logicalPath: year, displayName: day.yearString))
-            levels.append(FolderLevel(logicalPath: month, displayName: day.monthString))
-            if placement.category == .camera, dayPromoted {
-                levels.append(FolderLevel(logicalPath: "\(month)/\(day.description)", displayName: Self.dayFolderName(day, placeName: placeName)))
-            }
+            let name = placement.category == .camera ? Self.dayFolderName(day, placeName: placeName) : day.description
+            levels.append(FolderLevel(logicalPath: "\(branch)/\(day.description)", displayName: name))
         }
         return levels
     }
@@ -81,8 +78,7 @@ public struct DynamicLayout: LayoutPolicy {
             return [
                 FolderLevel(logicalPath: root, displayName: Self.byDeviceName),
                 FolderLevel(logicalPath: group, displayName: NameSanitizer.sanitize(groupName)),
-                FolderLevel(logicalPath: "\(group)/\(day.yearString)", displayName: day.yearString),
-                FolderLevel(logicalPath: "\(group)/\(day.yearString)/\(day.monthString)", displayName: day.monthString),
+                FolderLevel(logicalPath: "\(group)/\(day.description)", displayName: day.description),
             ]
         case let .byPlace(countryKey, countryName, areaKey, areaName, day):
             let root = "view/byPlace"
@@ -92,13 +88,13 @@ public struct DynamicLayout: LayoutPolicy {
                 FolderLevel(logicalPath: root, displayName: Self.byPlaceName),
                 FolderLevel(logicalPath: country, displayName: NameSanitizer.sanitize(countryName)),
                 FolderLevel(logicalPath: area, displayName: NameSanitizer.sanitize(areaName)),
-                FolderLevel(logicalPath: "\(area)/\(day.yearString)", displayName: day.yearString),
+                FolderLevel(logicalPath: "\(area)/\(day.description)", displayName: day.description),
             ]
         case let .favorites(day):
             let root = "view/favorites"
             return [
                 FolderLevel(logicalPath: root, displayName: Self.favoritesName),
-                FolderLevel(logicalPath: "\(root)/\(day.yearString)", displayName: day.yearString),
+                FolderLevel(logicalPath: "\(root)/\(day.description)", displayName: day.description),
             ]
         }
     }

@@ -7,7 +7,7 @@ struct DecisionCard: View {
     @Environment(AppModel.self) private var model
     var decision: OwnerDecisionItem
     @State private var step: Step = .choices
-    @State private var newRootName = "Camera Uploads 2"
+    @State private var newRootName = "PhotoVault 2"
 
     private enum Step { case choices, newRoot, confirmReupload, confirmProceed }
 

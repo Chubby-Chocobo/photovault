@@ -13,19 +13,19 @@ import Testing
     }
 
     @Test func aKeyMissingFromTheStoredJsonKeepsTheOtherChoices() async throws {
-        let settings = try stored(#"{"includeVideos": false, "dayFolderThreshold": 25}"#)
+        let settings = try stored(#"{"includeVideos": false, "integrityCheckIntervalDays": 25}"#)
         let value = await settings.snapshot().settings
         #expect(!value.includeVideos)
-        #expect(value.dayFolderThreshold == 25)
+        #expect(value.integrityCheckIntervalDays == 25)
         #expect(value.includeEdited == GlobalSettings().includeEdited)
     }
 
     @Test func aSettingThatNoLongerDecodesFallsBackOnlyForThatKey() async throws {
         let log = RecordingLogSink()
-        let settings = try stored(#"{"includeVideos": false, "dayFolderThreshold": "many"}"#, log: log)
+        let settings = try stored(#"{"includeVideos": false, "integrityCheckIntervalDays": "many"}"#, log: log)
         let value = await settings.snapshot().settings
         #expect(!value.includeVideos)
-        #expect(value.dayFolderThreshold == GlobalSettings().dayFolderThreshold)
+        #expect(value.integrityCheckIntervalDays == GlobalSettings().integrityCheckIntervalDays)
         #expect(log.lines.contains { $0.contains("settings:") })
     }
 
@@ -39,12 +39,12 @@ import Testing
         let settings = try SettingsStore(store: store, defaultTimeZone: TimeZone(identifier: "UTC")!)
         async let first: GlobalSettings = settings.update { $0.includeVideos = false }
         async let second: GlobalSettings = settings.update { $0.includeHidden = true }
-        async let third: GlobalSettings = settings.update { $0.dayFolderThreshold = 42 }
+        async let third: GlobalSettings = settings.update { $0.integrityCheckIntervalDays = 42 }
         _ = try await (first, second, third)
         let value = await settings.snapshot().settings
         #expect(!value.includeVideos)
         #expect(value.includeHidden)
-        #expect(value.dayFolderThreshold == 42)
+        #expect(value.integrityCheckIntervalDays == 42)
         let reopened = try SettingsStore(store: store, defaultTimeZone: TimeZone(identifier: "UTC")!)
         #expect(await reopened.snapshot().settings == value)
     }

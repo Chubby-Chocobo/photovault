@@ -13,8 +13,7 @@ import Testing
 
     private func organizedLife() async throws -> Harness {
         let h = try await Harness.organized()
-        try await h.update { $0.dayFolderThreshold = 3 }
-        await h.geocoder.seed(daLat, en: daLatEnglish, vi: daLatVietnamese)
+        await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         try h.addDrive(scope: .full)
         await h.addCameraAssets(5, prefix: "d", daysAgo: 3, recordChange: false, location: daLat)
         var favorite = h.snapshot("fav", daysAgo: 40)

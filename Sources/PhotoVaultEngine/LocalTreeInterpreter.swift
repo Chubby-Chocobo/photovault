@@ -3,7 +3,7 @@ import Foundation
 import PhotoVaultCore
 
 /// A folder of a local destination read back as the logical folder it stands for (8.15 step 3):
-/// `2026/11/2026-11-08 Đà Lạt` is the logical `camera/2026/11/2026-11-08` with place name `Đà Lạt`.
+/// `Camera Uploads/2026-11-08 Đà Lạt` is the logical `camera/2026-11-08` with place name `Đà Lạt`.
 struct LocalFolderInfo: Sendable, Equatable {
     var logicalPath: String
     var displayName: String
@@ -14,40 +14,26 @@ struct LocalFolderInfo: Sendable, Equatable {
 /// Reverses `DynamicLayout` for folders. A folder it does not recognise is not ours: it is ignored.
 enum LocalTreeInterpreter {
     static func folder(displayPath: String) -> LocalFolderInfo? {
-        var parts = displayPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        guard let name = parts.last, !name.isEmpty else { return nil }
-        var branch = "camera"
-        var branchFolder = false
-        if parts.first == DynamicLayout.screenshotsName {
-            branch = "screenshot"
-            parts.removeFirst()
-            branchFolder = true
-        } else if parts.first == DynamicLayout.savedName {
-            branch = "saved"
-            parts.removeFirst()
-            branchFolder = true
+        let parts = displayPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard let name = parts.last, !name.isEmpty, let first = parts.first else { return nil }
+        let branch: String
+        switch first {
+        case DynamicLayout.cameraName: branch = "camera"
+        case DynamicLayout.screenshotsName: branch = "screenshot"
+        case DynamicLayout.savedName: branch = "saved"
+        default: return nil
         }
-        if parts.isEmpty { return branchFolder ? LocalFolderInfo(logicalPath: branch, displayName: name) : nil }
-        if parts.count == 1, parts[0] == DynamicLayout.unknownDateName {
-            return LocalFolderInfo(logicalPath: "\(branch)/unknown", displayName: name)
-        }
-        guard isDigits(parts[0], count: 4) else { return nil }
-        let year = "\(branch)/\(parts[0])"
-        if parts.count == 1 { return LocalFolderInfo(logicalPath: year, displayName: name) }
-        guard isDigits(parts[1], count: 2), let month = Int(parts[1]), (1...12).contains(month) else { return nil }
-        let monthPath = "\(year)/\(parts[1])"
-        if parts.count == 2 { return LocalFolderInfo(logicalPath: monthPath, displayName: name) }
-        guard parts.count == 3, branch == "camera", name.count >= 10 else { return nil }
-        let dayText = String(name.prefix(10))
-        guard let day = ArchiveDay(string: dayText), day.yearString == parts[0], day.monthString == parts[1] else { return nil }
+        if parts.count == 1 { return LocalFolderInfo(logicalPath: branch, displayName: name) }
+        guard parts.count == 2 else { return nil }
+        if name == DynamicLayout.unknownDateName { return LocalFolderInfo(logicalPath: "\(branch)/unknown", displayName: name) }
+        guard name.count >= 10, let day = ArchiveDay(string: String(name.prefix(10))) else { return nil }
         let rest = name.dropFirst(10)
-        guard rest.isEmpty || rest.hasPrefix(" ") else { return nil }
+        // Only camera day folders carry a place name.
+        guard rest.isEmpty || (branch == "camera" && rest.hasPrefix(" ")) else { return nil }
         let place = rest.dropFirst().trimmingCharacters(in: .whitespaces)
-        return LocalFolderInfo(logicalPath: "\(monthPath)/\(dayText)", displayName: name, day: day, placeName: place.isEmpty ? nil : place)
-    }
-
-    private static func isDigits(_ text: String, count: Int) -> Bool {
-        text.count == count && text.allSatisfy { $0.isASCII && $0.isNumber }
+        return LocalFolderInfo(
+            logicalPath: "\(branch)/\(day.description)", displayName: name, day: branch == "camera" ? day : nil,
+            placeName: place.isEmpty ? nil : place)
     }
 }
 

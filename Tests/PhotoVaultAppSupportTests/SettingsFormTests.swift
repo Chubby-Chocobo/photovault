@@ -34,28 +34,22 @@ struct SettingsFormTests {
 
     @Test func rangesAreEnforced() {
         var settings = GlobalSettings()
-        settings.dayFolderThreshold = 1
         settings.backfillGBPerHour = 0
         settings.stagingSoftLimitGB = 0
         settings.integrityCheckIntervalDays = 0
-        settings.placeNameLanguage = "fr"
         settings.homeCountryCode = "VNM"
         #expect(Set(SettingsValidator.validate(settings)) == [
-            .dayThresholdOutOfRange, .rateNotPositive, .stagingNotPositive, .integrityIntervalOutOfRange,
-            .unsupportedPlaceLanguage, .invalidHomeCountry,
+            .rateNotPositive, .stagingNotPositive, .integrityIntervalOutOfRange, .invalidHomeCountry,
         ])
         settings = GlobalSettings()
-        settings.dayFolderThreshold = 200
         settings.integrityCheckIntervalDays = 365
         #expect(SettingsValidator.validate(settings).isEmpty)
-        settings.dayFolderThreshold = 201
-        #expect(SettingsValidator.validate(settings) == [.dayThresholdOutOfRange])
     }
 
     @Test func everyIssueHasAMessage() {
         let all: [SettingsIssue] = [
-            .criticalNotBelowLow, .dayThresholdOutOfRange, .rateNotPositive, .stagingNotPositive,
-            .integrityIntervalOutOfRange, .unsupportedPlaceLanguage, .invalidHomeCountry,
+            .criticalNotBelowLow, .rateNotPositive, .stagingNotPositive,
+            .integrityIntervalOutOfRange, .invalidHomeCountry,
         ]
         #expect(all.allSatisfy { !$0.message.isEmpty })
     }
@@ -79,8 +73,8 @@ struct SettingsFormTests {
         let base = GlobalSettings()
         let edits: [(inout GlobalSettings) -> Void] = [
             { $0.includeVideos = false }, { $0.includeEdited = false }, { $0.includeAllBurstFrames = false },
-            { $0.includeHidden = true }, { $0.dayFolderThreshold = 8 }, { $0.chatAppAlbumNames.append("Kakao") },
-            { $0.photosWithoutCameraExifAreSaved = false }, { $0.placeNamesEnabled = false }, { $0.placeNameLanguage = "en" },
+            { $0.includeHidden = true }, { $0.chatAppAlbumNames.append("Kakao") },
+            { $0.photosWithoutCameraExifAreSaved = false }, { $0.placeNamesEnabled = false },
             { $0.homeCountryCode = "JP" }, { $0.sidecarJsonEnabled = false }, { $0.sidecarXmpEnabled = false },
             { $0.viewByDeviceEnabled = false }, { $0.viewByPlaceEnabled = false }, { $0.viewFavoritesEnabled = false },
         ]
@@ -210,7 +204,7 @@ struct DestinationRulesEditorTests {
 
     @Test func aValidEditIsSavedAsIs() {
         var edited = GlobalSettings()
-        edited.dayFolderThreshold = 30
+        edited.includeVideos = false
         #expect(SettingsValidator.savable(edited, persisted: GlobalSettings()) == edited)
     }
 }

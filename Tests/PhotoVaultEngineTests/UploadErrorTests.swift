@@ -205,10 +205,10 @@ import Testing
         try await oneJob(h)
         await h.run()
         await h.add(h.snapshot("b", daysAgo: 1), camera: true)
-        // The month folder disappears behind the app's back.
-        let month = await h.drive.folders.first { $0.name == "11" || $0.name == "10" || $0.name == "09" }
-        let monthId = try #require(month?.id)
-        await h.drive.externallyDelete(monthId)
+        // The day folder disappears behind the app's back.
+        let dayPath = h.cameraDayPath(daysAgo: 1)
+        let day = await h.drive.folders.first { $0.appProperties[AppPropertyKey.logical] == dayPath }
+        await h.drive.externallyDelete(try #require(day?.id))
         await h.run()
         h.clock.advance(by: 3600)
         await h.run()
@@ -243,6 +243,6 @@ import Testing
         let folders = await h.drive.folders.filter { $0.id != "root" }
         let keys = folders.map { "\($0.parentId)/\($0.name)" }
         #expect(Set(keys).count == keys.count)
-        #expect(folders.count == 2, "year and month, once each: \(keys)")
+        #expect(folders.count == 2, "Camera Uploads and the day, once each: \(keys)")
     }
 }

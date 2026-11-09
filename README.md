@@ -89,6 +89,25 @@ Personal Team profiles expire. If Xcode reports the profile as expired, sign aga
 5. The app writes `.photovault/destination.json` into the folder. If a folder already has that file, the app asks whether to reuse it and recover the backup ([FR-74](docs/requirements/photovault-spec-v1.md), [FR-51](docs/requirements/photovault-spec-v1.md)).
 6. When the share is unmounted, the destination shows as unavailable and is checked again every 5 minutes. Files are not held in staging for it; they are exported again when it returns, at the backfill rate.
 
+## Folder layout
+
+Every destination gets the same tree under its root (default name `PhotoVault`); the three views exist on Drive only and hold shortcuts, not copies.
+
+```
+PhotoVault/
+├── Camera Uploads/
+│   ├── 2026-04-26 Hà Nội/           one folder per day; the place is added 6 hours after the day ends
+│   ├── 2026-10-02 Kyoto (京都市), Japan/
+│   └── Unknown date/
+├── Screenshots/2026-04-26/
+├── Saved/2026-04-26/                 photos saved from chat apps or without camera EXIF
+├── By device/Sony A7 IV/2026-04-26/
+├── By place/Vietnam/Lâm Đồng/2026-04-26/
+└── Favorites/2026-04-26/
+```
+
+Files are named `YYYY-MM-DD HH.mm.ss_<original name>`; an asset's original, RAW, Live Photo video, edited version and sidecars sit together. Updating from a build with the old `YYYY/MM` layout means starting over: see [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md).
+
 ## Configuration
 
 Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/Models/Settings.swift` and match spec FR-05.
@@ -97,7 +116,6 @@ Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/M
 |---|---|---|
 | Videos, edited versions, every burst frame | on | Global ceiling. A destination can only narrow it. |
 | Hidden album | off | Hidden photos are scanned, not uploaded. |
-| Day-folder threshold N | 10 | A day with more than N camera photos gets its own folder. |
 | Backfill and re-export rate | 20 GB per hour | |
 | Backfill only on power | on | |
 | Uploads only on power | off | |
@@ -108,7 +126,7 @@ Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/M
 | Chat-app album names | WhatsApp, Zalo, Messenger, Telegram, Viber, LINE, Signal, Instagram, Facebook, Threads, X, TikTok | Exact name match, case-insensitive. |
 | Photos without camera EXIF go to Saved | on | See [known limits](#known-limits). |
 | Interface language | Tiếng Việt | Settings → General: System, Tiếng Việt or English; switches at once. Folder names on destinations never change with it. |
-| Place names | on; language `vi`; home country `VN` | A separate setting: changing it renames day folders on destinations. See [privacy](#privacy). |
+| Place names | on; home country `VN` | Country in English; places in Vietnam in Vietnamese without the province prefix ("Hà Nội"); abroad English with the native name ("Kyoto (京都市)"). See [privacy](#privacy). |
 | Sidecars, JSON and XMP | on, on | Can also be set per destination. |
 | Views: By device, By place, Favorites | on | Google Drive only. |
 | Integrity check | every 7 days | |

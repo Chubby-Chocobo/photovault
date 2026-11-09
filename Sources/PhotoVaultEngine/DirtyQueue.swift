@@ -6,7 +6,7 @@ import PhotoVaultStore
 /// Work that later cycle steps pick up, stored in `kv` so it is written in the same transaction as
 /// the change that caused it and survives a restart. `dirty:<channel>:<id>` marks one subject
 /// (asset key, or day for `.place`); `sweep:<channel>` holds the cursor of a full pass over the
-/// live assets (language change, view toggles, "Dựng lại view", reconciliation).
+/// live assets (view toggles, "Dựng lại view", reconciliation).
 enum DirtyQueue {
     enum Channel: String, CaseIterable, Sendable {
         case sidecar, view, description, place

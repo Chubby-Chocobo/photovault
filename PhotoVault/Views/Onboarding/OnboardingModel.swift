@@ -24,7 +24,7 @@ final class OnboardingModel {
 
     var photos: PhotosAuthorization
 
-    var rootName = "Camera Uploads"
+    var rootName = "PhotoVault"
     var roots: [RootChooser.RemoteItemSummary] = []
     var reuseRootId: String?
     var rootsError: String?
