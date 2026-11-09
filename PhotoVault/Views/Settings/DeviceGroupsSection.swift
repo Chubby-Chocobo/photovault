@@ -1,8 +1,9 @@
 import PhotoVaultAppSupport
+import PhotoVaultCore
 import PhotoVaultEngine
 import SwiftUI
 
-/// "Nhóm thiết bị (By device)" (FR-104): rename (a clash suggests a merge) and merge.
+/// tr(vi: "Nhóm thiết bị (By device)", en: "Device groups (By device)") (FR-104): rename (a clash suggests a merge) and merge.
 struct DeviceGroupsSection: View {
     @Environment(AppModel.self) private var model
     @State private var groups: [AppQueries.DeviceGroupInfo] = []
@@ -13,38 +14,40 @@ struct DeviceGroupsSection: View {
     @State private var mergeTarget: String?
 
     var body: some View {
-        SettingsSection("Nhóm thiết bị (By device)") {
+        SettingsSection(tr(vi: "Nhóm thiết bị (By device)", en: "Device groups (By device)")) {
             if groups.isEmpty {
-                Text("Chưa có ảnh camera nào được phân nhóm.").foregroundStyle(.secondary)
+                Text(tr(vi: "Chưa có ảnh camera nào được phân nhóm.", en: "No camera photos have been grouped yet.")).foregroundStyle(.secondary)
             }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         if editing == group.id {
-                            TextField("Tên nhóm", text: $draft).textFieldStyle(.roundedBorder).frame(width: 220)
+                            TextField(tr(vi: "Tên nhóm", en: "Group name"), text: $draft).textFieldStyle(.roundedBorder).frame(width: 220)
                                 .onSubmit { Task { await save(group) } }
-                            Button("Lưu") { Task { await save(group) } }
-                            Button("Huỷ") { editing = nil; clash = nil }
+                            Button(tr(vi: "Lưu", en: "Save")) { Task { await save(group) } }
+                            Button(tr(vi: "Huỷ", en: "Cancel")) { editing = nil; clash = nil }
                         } else {
                             VStack(alignment: .leading) {
                                 Text(group.name)
-                                Text("\(group.models.count) model · \(VietnameseFormat.integer(group.assetCount)) asset")
+                                Text(tr(
+                                    vi: "\(group.models.count) model · \(VietnameseFormat.integer(group.assetCount)) asset",
+                                    en: "\(L10n.plural(group.models.count, one: "1 model", other: "\(group.models.count) models")) · \(L10n.plural(group.assetCount, one: "1 asset", other: "\(VietnameseFormat.integer(group.assetCount)) assets"))"))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Đổi tên") { editing = group.id; draft = group.name; clash = nil }
-                            Button("Gộp vào…") { openMerge(group, preferred: nil) }.disabled(groups.count < 2)
+                            Button(tr(vi: "Đổi tên", en: "Rename")) { editing = group.id; draft = group.name; clash = nil }
+                            Button(tr(vi: "Gộp vào…", en: "Merge into…")) { openMerge(group, preferred: nil) }.disabled(groups.count < 2)
                         }
                     }
                     if editing == group.id, let clashId = clash, let other = groups.first(where: { $0.id == clashId }) {
                         HStack {
-                            Text("Trùng tên với nhóm “\(other.name)”.").font(.caption).foregroundStyle(.red)
-                            Button("Gộp vào nhóm đó") { openMerge(group, preferred: clashId) }.controlSize(.small)
+                            Text(tr(vi: "Trùng tên với nhóm “\(other.name)”.", en: "Same name as the group “\(other.name)”.")).font(.caption).foregroundStyle(.red)
+                            Button(tr(vi: "Gộp vào nhóm đó", en: "Merge into that group")) { openMerge(group, preferred: clashId) }.controlSize(.small)
                         }
                     }
                 }
             }
-            SettingsNote("Đổi tên = đổi tên thư mục trên Drive. Gộp = gán model sang nhóm khác và chuyển shortcut.")
+            SettingsNote(tr(vi: "Đổi tên = đổi tên thư mục trên Drive. Gộp = gán model sang nhóm khác và chuyển shortcut.", en: "Renaming renames the folder on Drive. Merging assigns the models to another group and moves the shortcuts."))
         }
         .task { groups = await model.deviceGroups() }
         .sheet(item: $mergeSource) { source in
@@ -87,18 +90,20 @@ private struct MergeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Gộp “\(source.name)”").font(.title3.weight(.semibold))
-            Picker("Nhóm đích", selection: $target) {
+            Text(tr(vi: "Gộp “\(source.name)”", en: "Merge “\(source.name)”")).font(.title3.weight(.semibold))
+            Picker(tr(vi: "Nhóm đích", en: "Target group"), selection: $target) {
                 ForEach(others) { Text($0.name).tag(Optional($0.id)) }
             }
             if let target, let name = others.first(where: { $0.id == target })?.name {
-                Text("Gán model vào nhóm “\(name)” và chuyển \(VietnameseFormat.integer(source.assetCount)) shortcut sang By device/\(name)/.")
+                Text(tr(
+                    vi: "Gán model vào nhóm “\(name)” và chuyển \(VietnameseFormat.integer(source.assetCount)) shortcut sang By device/\(name)/.",
+                    en: "Assigns the models to the group “\(name)” and moves \(L10n.plural(source.assetCount, one: "1 shortcut", other: "\(VietnameseFormat.integer(source.assetCount)) shortcuts")) to By device/\(name)/."))
                     .foregroundStyle(.secondary)
             }
             HStack {
                 Spacer()
-                Button("Huỷ") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Gộp") { onConfirm() }.keyboardShortcut(.defaultAction).disabled(target == nil)
+                Button(tr(vi: "Huỷ", en: "Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr(vi: "Gộp", en: "Merge")) { onConfirm() }.keyboardShortcut(.defaultAction).disabled(target == nil)
             }
         }
         .padding(20)

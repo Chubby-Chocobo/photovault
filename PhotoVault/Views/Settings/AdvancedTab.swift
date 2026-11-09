@@ -1,4 +1,5 @@
 import PhotoVaultAppSupport
+import PhotoVaultCore
 import SwiftUI
 
 /// Settings › Nâng cao: speed and power (8.5), Mac disk (FR-31), integrity and maintenance (FR-47, FR-76).
@@ -7,71 +8,73 @@ struct AdvancedTab: View {
     @State private var confirmRecovery = false
 
     var body: some View {
-        SettingsSection("Tốc độ & điện năng") {
-            FormRow("Tốc độ export khi backfill") {
-                gigabyteField(model.binding(\.backfillGBPerHour), unit: "GB/giờ", label: "GB mỗi giờ")
+        SettingsSection(tr(vi: "Tốc độ & điện năng", en: "Speed and power")) {
+            FormRow(tr(vi: "Tốc độ export khi backfill", en: "Export speed while backfilling")) {
+                gigabyteField(model.binding(\.backfillGBPerHour), unit: tr(vi: "GB/giờ", en: "GB/hour"), label: tr(vi: "GB mỗi giờ", en: "GB per hour"))
             }
-            Toggle("Backfill chỉ khi cắm sạc", isOn: model.binding(\.backfillOnlyOnACPower))
-            Toggle("Mọi upload chỉ khi cắm sạc", isOn: model.binding(\.allUploadsOnlyOnACPower))
-            Toggle("Dừng khi mạng tính phí (hotspot)", isOn: model.binding(\.pauseOnExpensiveNetwork))
+            Toggle(tr(vi: "Backfill chỉ khi cắm sạc", en: "Backfill only when plugged in"), isOn: model.binding(\.backfillOnlyOnACPower))
+            Toggle(tr(vi: "Mọi upload chỉ khi cắm sạc", en: "All uploads only when plugged in"), isOn: model.binding(\.allUploadsOnlyOnACPower))
+            Toggle(tr(vi: "Dừng khi mạng tính phí (hotspot)", en: "Pause on metered network (hotspot)"), isOn: model.binding(\.pauseOnExpensiveNetwork))
         }
-        SettingsSection("Dung lượng ổ Mac") {
+        SettingsSection(tr(vi: "Dung lượng ổ Mac", en: "Mac disk space")) {
             FormRow(
-                "Ngưỡng thấp (lowWatermark)",
-                detail: "Dưới mức này dừng backfill; chạy lại khi trống từ \(model.settings.lowWatermarkGB + 5) GB.") {
+                tr(vi: "Ngưỡng thấp (lowWatermark)", en: "Low threshold (lowWatermark)"),
+                detail: tr(
+                    vi: "Dưới mức này dừng backfill; chạy lại khi trống từ \(model.settings.lowWatermarkGB + 5) GB.",
+                    en: "Backfill stops below this; it resumes when \(model.settings.lowWatermarkGB + 5) GB or more is free.")) {
                 gigabyteField(model.binding(\.lowWatermarkGB), unit: "GB", label: "lowWatermark GB")
             }
-            FormRow("Ngưỡng nguy cấp (criticalWatermark)", detail: "Dưới mức này dừng mọi export.") {
+            FormRow(tr(vi: "Ngưỡng nguy cấp (criticalWatermark)", en: "Critical threshold (criticalWatermark)"), detail: tr(vi: "Dưới mức này dừng mọi export.", en: "All exports stop below this.")) {
                 gigabyteField(model.binding(\.criticalWatermarkGB), unit: "GB", label: "criticalWatermark GB")
             }
-            FormRow("Giới hạn staging (mềm)") {
+            FormRow(tr(vi: "Giới hạn staging (mềm)", en: "Staging limit (soft)")) {
                 gigabyteField(model.binding(\.stagingSoftLimitGB), unit: "GB", label: "Staging GB")
             }
             ForEach(model.settingsIssues, id: \.self) { issue in
                 Text(issue.message).font(.caption).foregroundStyle(.red).accessibilityAddTraits(.isStaticText)
             }
-            Text("Ổ Mac đang trống \(VietnameseFormat.bytes(model.macFreeBytes))").font(.caption).foregroundStyle(.secondary)
+            Text(tr(vi: "Ổ Mac đang trống \(VietnameseFormat.bytes(model.macFreeBytes))", en: "Mac disk has \(VietnameseFormat.bytes(model.macFreeBytes)) free")).font(.caption).foregroundStyle(.secondary)
         }
-        SettingsSection("Toàn vẹn & bảo trì") {
-            FormRow("Kiểm tra toàn vẹn mỗi") {
+        SettingsSection(tr(vi: "Toàn vẹn & bảo trì", en: "Integrity and maintenance")) {
+            FormRow(tr(vi: "Kiểm tra toàn vẹn mỗi", en: "Check integrity every")) {
                 HStack {
                     TextField("", value: model.binding(\.integrityCheckIntervalDays), format: .number)
                         .frame(width: 60).multilineTextAlignment(.trailing).textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Số ngày")
-                    Text("ngày")
+                        .accessibilityLabel(tr(vi: "Số ngày", en: "Number of days"))
+                    Text(tr(vi: "ngày", en: "days"))
                 }
             }
             FormRow(
-                "Kiểm tra toàn vẹn",
-                detail: model.lastIntegrityCheck.map { "Lần cuối " + RelativeTimeText.ago($0, now: Date()) } ?? "Chưa kiểm tra lần nào") {
-                Button("Kiểm tra ngay") { model.runIntegrityCheck() }.disabled(!model.hardeningAvailable)
+                tr(vi: "Kiểm tra toàn vẹn", en: "Integrity check"),
+                detail: model.lastIntegrityCheck.map { tr(vi: "Lần cuối ", en: "Last run ") + RelativeTimeText.ago($0, now: Date()) } ?? tr(vi: "Chưa kiểm tra lần nào", en: "Never checked")) {
+                Button(tr(vi: "Kiểm tra ngay", en: "Check now")) { model.runIntegrityCheck() }.disabled(!model.hardeningAvailable)
             }
-            FormRow("Đối soát thư viện", detail: "Liệt kê lại toàn bộ Photos để bắt thay đổi bị sót.") {
-                Button("Đối soát") { model.runReconciliation() }.disabled(!model.hardeningAvailable)
+            FormRow(tr(vi: "Đối soát thư viện", en: "Reconcile library"), detail: tr(vi: "Liệt kê lại toàn bộ Photos để bắt thay đổi bị sót.", en: "Re-list all of Photos to catch missed changes.")) {
+                Button(tr(vi: "Đối soát", en: "Reconcile")) { model.runReconciliation() }.disabled(!model.hardeningAvailable)
             }
-            FormRow("Thử lại job bị hoãn", detail: "Đưa job deferred về hàng chờ.") {
-                Button("Thử lại") { model.retryDeferred() }.disabled(!model.hardeningAvailable)
+            FormRow(tr(vi: "Thử lại job bị hoãn", en: "Retry deferred jobs"), detail: tr(vi: "Đưa job deferred về hàng chờ.", en: "Move deferred jobs back to the queue.")) {
+                Button(tr(vi: "Thử lại", en: "Retry")) { model.retryDeferred() }.disabled(!model.hardeningAvailable)
             }
-            FormRow("Thử lại job bị bỏ qua", detail: "Đưa job skipped về hàng chờ.") {
-                Button("Thử lại") { model.retrySkipped() }.disabled(!model.hardeningAvailable)
+            FormRow(tr(vi: "Thử lại job bị bỏ qua", en: "Retry skipped jobs"), detail: tr(vi: "Đưa job skipped về hàng chờ.", en: "Move skipped jobs back to the queue.")) {
+                Button(tr(vi: "Thử lại", en: "Retry")) { model.retrySkipped() }.disabled(!model.hardeningAvailable)
             }
-            FormRow("Khôi phục trạng thái từ đích", detail: "Ghép lại file đã có ở đích vào cơ sở dữ liệu, không upload lại.") {
-                Button("Khôi phục giúp tôi…") { confirmRecovery = true }.disabled(!model.hardeningAvailable || model.destinations.isEmpty)
+            FormRow(tr(vi: "Khôi phục trạng thái từ đích", en: "Restore state from a destination"), detail: tr(vi: "Ghép lại file đã có ở đích vào cơ sở dữ liệu, không upload lại.", en: "Match files already at the destination back into the database, without uploading again.")) {
+                Button(tr(vi: "Khôi phục giúp tôi…", en: "Restore for me…")) { confirmRecovery = true }.disabled(!model.hardeningAvailable || model.destinations.isEmpty)
             }
             if !model.hardeningAvailable {
-                SettingsNote("Một số thao tác bảo trì chưa khả dụng trong bản build này.")
+                SettingsNote(tr(vi: "Một số thao tác bảo trì chưa khả dụng trong bản build này.", en: "Some maintenance actions are not available in this build."))
             }
             FormRow("Log") {
-                Button("Mở thư mục log") { model.revealLog() }
+                Button(tr(vi: "Mở thư mục log", en: "Open log folder")) { model.revealLog() }
             }
         }
-        .confirmationDialog("Khôi phục trạng thái từ đích nào?", isPresented: $confirmRecovery) {
+        .confirmationDialog(tr(vi: "Khôi phục trạng thái từ đích nào?", en: "Restore state from which destination?"), isPresented: $confirmRecovery) {
             ForEach(model.destinations, id: \.id) { record in
                 Button(record.displayName) { model.startRecovery(record.id) }
             }
-            Button("Huỷ", role: .cancel) {}
+            Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
-            Text("Chỉ chạy khi scan đã hoàn tất. Đích tạm dừng (đang khôi phục) trong lúc đó.")
+            Text(tr(vi: "Chỉ chạy khi scan đã hoàn tất. Đích tạm dừng (đang khôi phục) trong lúc đó.", en: "Runs only when the scan has finished. The destination is paused (restoring) in the meantime."))
         }
     }
 
