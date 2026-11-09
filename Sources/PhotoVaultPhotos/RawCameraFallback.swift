@@ -35,31 +35,32 @@ enum RawCameraFallback {
     /// CR3 is an ISO media file; its `CMT1` box holds a TIFF directory with Make and Model.
     static func canonCMT1(_ data: Data) -> CaptureMetadata? {
         guard let range = data.range(of: Data("CMT1".utf8)) else { return nil }
-        return tiffDirectories(data.subdata(in: range.upperBound..<data.endIndex))
+        return tiffDirectories(data, at: range.upperBound)
     }
 
     /// Make and Model from IFD0 and the directories chained after it. The two magic bytes after the
     /// byte order differ between formats (42 for TIFF, "RO" for ORF, 0x55 for RW2) and are not checked.
-    static func tiffDirectories(_ data: Data) -> CaptureMetadata? {
-        let bytes = [UInt8](data.prefix(scanLimit))
-        guard bytes.count >= 8 else { return nil }
-        let little: Bool
-        switch (bytes[0], bytes[1]) {
-        case (0x49, 0x49): little = true
-        case (0x4D, 0x4D): little = false
-        default: return nil
+    /// Offsets inside the TIFF block count from `base`. Reads `data` in place, without copying it.
+    static func tiffDirectories(_ data: Data, at base: Data.Index? = nil) -> CaptureMetadata? {
+        let base = base ?? data.startIndex
+        let end = min(data.endIndex, base + scanLimit)
+        func byte(_ at: Int) -> UInt8? {
+            let index = base + at
+            return at >= 0 && index < end ? data[index] : nil
         }
+        guard let first = byte(0), let second = byte(1), first == second, first == 0x49 || first == 0x4D else { return nil }
+        let little = first == 0x49
         func u16(_ at: Int) -> UInt16? {
-            guard at >= 0, at + 2 <= bytes.count else { return nil }
-            return little ? UInt16(bytes[at]) | UInt16(bytes[at + 1]) << 8 : UInt16(bytes[at]) << 8 | UInt16(bytes[at + 1])
+            guard let a = byte(at), let b = byte(at + 1) else { return nil }
+            return little ? UInt16(a) | UInt16(b) << 8 : UInt16(a) << 8 | UInt16(b)
         }
         func u32(_ at: Int) -> UInt32? {
             guard let a = u16(at), let b = u16(at + 2) else { return nil }
             return little ? UInt32(a) | UInt32(b) << 16 : UInt32(a) << 16 | UInt32(b)
         }
         func ascii(count: Int, at: Int) -> String? {
-            guard count > 0, at >= 0, at + count <= bytes.count else { return nil }
-            let text = String(decoding: bytes[at..<(at + count)].prefix { $0 != 0 }, as: UTF8.self)
+            guard count > 0, at >= 0, base + at + count <= end else { return nil }
+            let text = String(decoding: data[(base + at)..<(base + at + count)].prefix { $0 != 0 }, as: UTF8.self)
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
@@ -86,33 +87,33 @@ enum RawCameraFallback {
 
     /// The first embedded JPEG whose leading APPn segments include an Exif block, read by ImageIO.
     static func embeddedExif(_ data: Data) -> CaptureMetadata? {
-        let bytes = [UInt8](data)
-        let exif = Array("Exif".utf8) + [0, 0]
-        var index = 0
-        while index + 4 <= bytes.count {
-            guard bytes[index] == 0xFF, bytes[index + 1] == 0xD8, bytes[index + 2] == 0xFF else { index += 1; continue }
-            if hasExifSegment(bytes, jpegAt: index, signature: exif) {
-                let jpeg = Data(bytes[index...])
+        let soi = Data([0xFF, 0xD8, 0xFF])
+        var from = data.startIndex
+        while let range = data.range(of: soi, in: from..<data.endIndex) {
+            if hasExifSegment(data, jpegAt: range.lowerBound) {
+                // ImageIO needs its own buffer: this is the one copy, of the preview onwards.
+                let jpeg = Data(data[range.lowerBound...])
                 let options = [kCGImageSourceTypeIdentifierHint: "public.jpeg", kCGImageSourceShouldCache: false] as CFDictionary
                 guard let source = CGImageSourceCreateWithData(jpeg as CFData, options),
                       let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return nil }
                 return ImageIOMetadataReader.metadata(from: props)
             }
-            index += 2
+            from = range.lowerBound + 2
         }
         return nil
     }
 
-    /// Walks the APPn and comment segments after SOI looking for an APP1 that starts with `signature`.
-    private static func hasExifSegment(_ bytes: [UInt8], jpegAt start: Int, signature: [UInt8]) -> Bool {
+    /// Walks the APPn and comment segments after SOI looking for an APP1 that starts with "Exif\0\0".
+    private static func hasExifSegment(_ data: Data, jpegAt start: Data.Index) -> Bool {
+        let signature: [UInt8] = Array("Exif".utf8) + [0, 0]
         var at = start + 2
         for _ in 0..<16 {
-            guard at + 4 <= bytes.count, bytes[at] == 0xFF else { return false }
-            let marker = bytes[at + 1]
+            guard at + 4 <= data.endIndex, data[at] == 0xFF else { return false }
+            let marker = data[at + 1]
             guard (0xE0...0xEF).contains(marker) || marker == 0xFE else { return false }
-            let length = Int(bytes[at + 2]) << 8 | Int(bytes[at + 3])
+            let length = Int(data[at + 2]) << 8 | Int(data[at + 3])
             guard length >= 2 else { return false }
-            if marker == 0xE1, at + 4 + signature.count <= bytes.count, Array(bytes[(at + 4)..<(at + 4 + signature.count)]) == signature {
+            if marker == 0xE1, at + 4 + signature.count <= data.endIndex, data[(at + 4)..<(at + 4 + signature.count)].elementsEqual(signature) {
                 return true
             }
             at += 2 + length
