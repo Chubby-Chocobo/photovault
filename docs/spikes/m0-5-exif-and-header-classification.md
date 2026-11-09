@@ -1,6 +1,6 @@
 # M0-5: EXIF reading and header classification
 
-- **Status:** run 2026-11-09 (NEF and DNG added the same day); CR3 and Sony or DJI video samples are not in the library
+- **Status:** run 2026-11-09 on the library (NEF and DNG added the same day) and on 24 public RAW samples; Sony or DJI video samples are not in the library
 - **Spec refs:** FR-20 (classification by header), FR-34 (metadata from the primary resource), §8.5, §10 (M0-5), [VERIFY M0-5] at FR-20, [VERIFY] at FR-34 (AVFoundation keys)
 - **Owner time:** 2–3 hours. **Wall time:** about 2 hours.
 
@@ -72,6 +72,42 @@ Conclusions:
 - **ImageIO does not return `OffsetTimeOriginal` for ARW**, though exiftool reads +07:00. The offset is not used for day placement, so nothing changes.
 - **PhotoKit delivered local data in 1 MiB chunks.** Classification costs one chunk for JPEG and ARW. Small HEIC files are read whole, and that read is kept as the staged file.
 - **The video metadata read is far below the 30-second timeout.**
+
+### Other RAW formats (public samples)
+
+The library holds only ARW, NEF and DNG. To cover other formats, the probe ran on one public-domain sample per format from [raw.pixls.us](https://raw.pixls.us/), outside Photos. It used the app's own `HeaderClassifier`, fed in 1 MiB chunks, and `ImageIOMetadataReader` on an extensionless copy, each once with the UTI hint and once without. The UTI comes from `UTType(filenameExtension:)`, and exiftool gives the reference values.
+
+| Format (sample camera) | UTI | `isRaw` | Header with hint | Without hint (old code) | Matches exiftool |
+|---|---|---|---|---|---|
+| ARW (Sony ILCE-7RM5) | `com.sony.arw-raw-image` | yes | camera, 1 MiB | **none** | yes |
+| NEF (Nikon Z 6) | `com.nikon.raw-image` | yes | camera, 1 MiB | camera | yes |
+| NEF, 14-bit lossless (Nikon Z 9) | `com.nikon.raw-image` | yes | camera, 1 MiB | **none** | yes |
+| NRW (Nikon Coolpix P7800) | `com.nikon.nrw-raw-image` | yes | camera, 1 MiB | **none** | yes |
+| PEF (Pentax K-r) | `com.pentax.raw-image` | yes | camera, 1 MiB | **none** | yes |
+| SRW (Samsung NX1) | `com.samsung.raw-image` | yes | model only, 1 MiB | **none** | model yes; ImageIO gives no make (exiftool: SAMSUNG) |
+| CR3 (Canon EOS R5 II, 7.5 MB) | `com.canon.cr3-raw-image` | yes | camera, whole file | camera, whole file | yes |
+| CR3 (Canon EOS R6 III, 35 MB) | `com.canon.cr3-raw-image` | yes | camera, from the complete file (over 32 MiB) | same | yes |
+| CR2 (Canon 5D Mark IV) | `com.canon.cr2-raw-image` | yes | camera, 1 MiB | camera | yes |
+| CRW (Canon PowerShot G5) | `com.canon.crw-raw-image` | yes | camera, whole file | camera | yes |
+| RAF (Fujifilm X-T30 III) | `com.fuji.raw-image` | yes | camera, 6 MiB | camera | yes |
+| ORF (Olympus E-M5 III, OM-5 II) | `com.olympus.raw-image` | yes | camera, 1 MiB | camera | yes |
+| RW2 (Panasonic DC-S5) | `com.panasonic.rw2-raw-image` | yes | camera, 1 MiB | camera | yes |
+| RWL (Leica V-LUX 114) | `com.leica.rwl-raw-image` | yes | camera, 1 MiB | camera | yes |
+| DNG (Leica M10, iPhone 6s Plus) | `com.adobe.raw-image` | yes | camera, 1 MiB | camera | yes |
+| 3FR, FFF (Hasselblad) | `com.hasselblad.3fr-raw-image`, `…fff-raw-image` | yes | camera, 1 MiB | camera | yes |
+| IIQ (Phase One IQ3 100MP, 109 MB) | `com.phaseone.raw-image` | yes | camera, from the complete file | same | yes |
+| MRW (Minolta DiMAGE 7) | `com.konicaminolta.raw-image` | yes | camera, 1 MiB | camera | yes |
+| DCR (Kodak DCS760C) | `com.kodak.raw-image` | yes | camera, 1 MiB | camera | yes |
+| ERF (Epson R-D1) | `com.epson.raw-image` | yes | camera, 1 MiB | camera | yes |
+| X3F (Sigma DP0 Quattro) | none (dynamic UTI) | no | unreadable | unreadable | macOS does not support X3F |
+
+Conclusions:
+
+- **The missing hint broke five formats, not only ARW:** ARW, lossless NEF from the Z 9, NRW, PEF and SRW. With the hint, every format macOS reads names its camera. The camera is in the first 16 KiB for all five.
+- **CR3, CRW and IIQ conclude only on the complete file.** The download is not wasted: the complete file is kept as the staged copy and uploaded from there.
+- **Samsung SRW has a model but no make in ImageIO.** It still counts as a camera (`hasCameraIdentity` needs make or model); only the sidecar lacks the make.
+- **Sigma X3F is not supported by macOS.** It has no system UTI and ImageIO cannot read it.
+- **Regression test:** `RawHeaderFixtureTests` holds the first 64 KiB of the five affected samples (`Tests/PhotoVaultPhotosTests/Fixtures/RawHeaders/`, public domain). Without the hint, all five cases fail.
 
 ## Changes this result drives
 
