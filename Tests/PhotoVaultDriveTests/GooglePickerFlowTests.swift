@@ -73,6 +73,18 @@ private func server(email: String? = "me@example.com", refresh: String? = "r-1")
         #expect(transport.requests.last?.headers["Authorization"] == "Bearer at-1")
     }
 
+    @Test func cancellingTheTaskStopsWaitingForTheBrowserAtOnce() async throws {
+        let waiting = GooglePickerFlow(
+            config: OAuthConfig(clientID: "client-1", clientSecret: "s"), transport: server(), clock: clock,
+            openURL: { _ in true }, loopbackTimeout: 60)
+        let task = Task { try await waiting.run() }
+        try await Task.sleep(for: .milliseconds(200))
+        let started = ContinuousClock.now
+        task.cancel()
+        await #expect(throws: PickerError.cancelled) { _ = try await task.value }
+        #expect(ContinuousClock.now - started < .seconds(5))
+    }
+
     @Test func emailFailureDoesNotFailThePick() async throws {
         let result = try await flow(server(email: nil), opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
         #expect(result.email == nil && result.pickedIds == ["f1"])

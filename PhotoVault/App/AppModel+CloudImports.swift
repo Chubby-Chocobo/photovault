@@ -18,14 +18,21 @@ extension AppModel {
         guard let env, canStartImport, !cloudFlowBusy else { return }
         runCloudFlow { [self] in
             let picked = try await env.cloud.pickerFlow().run()
+            // The account guard needs to know who signed in; without it nothing is stored and nothing starts.
+            guard let email = picked.email?.trimmingCharacters(in: .whitespaces), !email.isEmpty else {
+                env.log.log(.info, category: "import", "google import not started: account unknown")
+                return showNotice(CloudImportText.accountUnverifiedStartNotice, isError: true)
+            }
             let id = SourceID.folder()
             try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
-            let name = CloudImportText.googleDisplayName(singleFolderName: await source.singlePickedFolderName(), pickedCount: picked.pickedIds.count)
+            let folderName = await source.singlePickedFolderName()
+            let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
+            let config = SourceConfig(
+                account: email, remoteItems: picked.pickedIds,
+                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
             do {
-                try await env.coordinator.startImport(
-                    source: source, kind: .googleDrive, displayName: name,
-                    config: SourceConfig(account: picked.email, remoteItems: picked.pickedIds))
+                try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
             } catch {
                 try? DriveImportAuth.removeGrant(for: id, from: env.cloud.keychain)
                 throw error
@@ -40,18 +47,7 @@ extension AppModel {
     func ensureDropboxSignedIn() async -> Bool {
         guard let env, canStartImport, !cloudFlowBusy else { return false }
         if env.cloud.hasDropboxAccount() { return true }
-        cloudFlowBusy = true
-        defer { cloudFlowBusy = false }
-        do {
-            let signIn = try await env.cloud.dropboxAuth().signIn()
-            try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.dropbox).store(signIn)
-            dropboxSignedIn = true
-            env.log.log(.info, category: "import", "dropbox account signed in")
-            return true
-        } catch {
-            reportCloudFlowError(error)
-            return false
-        }
+        return await signInDropbox(env)
     }
 
     /// Client for the folder browser, bound to the account token.
@@ -63,22 +59,28 @@ extension AppModel {
     /// Re-signs in to the Dropbox account used by the folder browser.
     func signInDropboxAgain() async -> Bool {
         guard let env, !cloudFlowBusy else { return false }
-        cloudFlowBusy = true
-        defer { cloudFlowBusy = false }
-        do {
+        return await signInDropbox(env)
+    }
+
+    private func signInDropbox(_ env: AppEnvironment) async -> Bool {
+        let stored: Bool? = await trackedFlow { [self] in
             let signIn = try await env.cloud.dropboxAuth().signIn()
             try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.dropbox).store(signIn)
             dropboxSignedIn = true
+            env.log.log(.info, category: "import", "dropbox account signed in")
             return true
-        } catch {
-            reportCloudFlowError(error)
-            return false
         }
+        return stored == true
     }
 
     /// Copies the account token to `import-<id>` and starts importing `path` (`""` = the whole Dropbox).
-    func importDropboxFolder(path: String, email: String?) async -> Bool {
+    /// The account is required: it is what a later sign-in is checked against.
+    func importDropboxFolder(path: String, email: String) async -> Bool {
         guard let env, canStartImport else { return false }
+        guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+            showNotice(CloudImportText.accountUnverifiedStartNotice, isError: true)
+            return false
+        }
         let id = SourceID.folder()
         do {
             try env.cloud.copyDropboxAccountToken(to: id)
@@ -86,7 +88,7 @@ extension AppModel {
                 try await env.coordinator.startImport(
                     source: env.cloud.dropboxSource(id: id, rootPath: path), kind: .dropbox,
                     displayName: CloudImportText.dropboxDisplayName(path: path),
-                    config: SourceConfig(account: email, remoteItems: [path]))
+                    config: SourceConfig(account: email, remoteItems: [path], sidecarName: CloudImportText.dropboxSidecarName(path: path)))
             } catch {
                 _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw error
@@ -117,7 +119,8 @@ extension AppModel {
     /// Reruns the sign-in of a held or finished import. It must be the account the import reads from; the
     /// import then carries on at once. Nothing changes when the owner chooses another account.
     func reconnectImport(_ item: ImportSnapshot) {
-        guard let env, !cloudFlowBusy else { return }
+        guard let env else { return }
+        guard !cloudFlowBusy else { return showNotice(CloudImportText.waitingForBrowser) }
         let id = item.id
         switch item.kind {
         case .googleDrive:
@@ -160,13 +163,29 @@ extension AppModel {
 
     // MARK: Shared
 
+    /// Runs a browser flow as a task the owner can cancel while it waits for the browser.
     private func runCloudFlow(_ body: @escaping @MainActor () async throws -> Void) {
         cloudFlowBusy = true
-        Task {
-            defer { cloudFlowBusy = false }
-            do { try await body() } catch { reportCloudFlowError(error) }
+        Task { _ = await trackedFlow(body) }
+    }
+
+    /// Marks the flow busy, keeps a way to cancel it, and reports its failure. Nil when it failed or was cancelled.
+    private func trackedFlow<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async -> T? {
+        cloudFlowBusy = true
+        let task = Task { @MainActor in try await body() }
+        cloudFlowCancel = { task.cancel() }
+        defer {
+            cloudFlowBusy = false
+            cloudFlowCancel = nil
+        }
+        do { return try await task.value } catch {
+            reportCloudFlowError(error)
+            return nil
         }
     }
+
+    /// The owner gave up waiting for the browser: the flow's task is cancelled, which closes its local listener.
+    func cancelCloudFlow() { cloudFlowCancel?() }
 
     private func didStartCloudImport(_ provider: String) {
         env?.log.log(.info, category: "import", "\(provider) import started")
@@ -186,11 +205,14 @@ extension AppModel {
 
     /// Cancel and timeout are the owner's own doing: quiet or a short notice, never an error banner.
     func reportCloudFlowError(_ error: any Error) {
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
         if let picker = error as? PickerError {
             switch picker {
             case .cancelled: return
             case .timedOut: showNotice(Self.signInTimedOut)
             case .nothingPicked: showNotice(tr(vi: "Chưa chọn ảnh hay thư mục nào.", en: "No photos or folders were chosen."))
+            case .selectionTooLarge:
+                showNotice(tr(vi: "Đã chọn quá nhiều mục cùng lúc. Hãy chọn ít hơn hoặc chia làm nhiều lần.", en: "Too many items were selected at once. Pick fewer, or import in several rounds."), isError: true)
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
             case .tokenMissing: showNotice(tr(vi: "Google không trả quyền truy cập. Hãy thử lại.", en: "Google did not grant access. Try again."), isError: true)
             }
@@ -199,7 +221,7 @@ extension AppModel {
             case .cancelled: return
             case .timedOut: showNotice(Self.signInTimedOut)
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
-            case .denied: showNotice(tr(vi: "Dropbox đã từ chối quyền truy cập.", en: "Dropbox refused access."), isError: true)
+            case .denied: return // The owner pressed Cancel on Dropbox's page.
             case .portInUse:
                 showNotice(tr(
                     vi: "Một ứng dụng khác đang dùng cổng đăng nhập Dropbox. Đóng nó rồi thử lại.",

@@ -79,9 +79,31 @@ import Testing
         #expect(CloudImportText.accountUnknown(expected: "me@example.com", signedIn: nil))
         #expect(!CloudImportText.accountUnknown(expected: "me@example.com", signedIn: "you@example.com"))
         #expect(!CloudImportText.accountUnknown(expected: nil, signedIn: nil))
-        #expect(CloudImportText.isSameAccount(expected: nil, signedIn: "any@example.com"))
+        #expect(!CloudImportText.isSameAccount(expected: nil, signedIn: "any@example.com"), "an import with no recorded account matches nothing")
+        #expect(!CloudImportText.isSameAccount(expected: " ", signedIn: "any@example.com"))
         vi { #expect(CloudImportText.wrongAccountNotice(expected: "me@example.com") == "Hãy đăng nhập đúng tài khoản me@example.com") }
         en { #expect(CloudImportText.wrongAccountNotice(expected: "me@example.com") == "Sign in with the account me@example.com") }
+    }
+
+    @Test func sidecarNamesDoNotDependOnTheLanguage() {
+        for run in [vi, en] as [((() -> [String]) -> [String])] {
+            let names = run {
+                [CloudImportText.googleSidecarName(singleFolderName: "Đà Lạt", pickedCount: 1),
+                 CloudImportText.googleSidecarName(singleFolderName: "Đà Lạt", pickedCount: 3),
+                 CloudImportText.googleSidecarName(singleFolderName: nil, pickedCount: 1),
+                 CloudImportText.dropboxSidecarName(path: "/Photos/2024"),
+                 CloudImportText.dropboxSidecarName(path: "")]
+            }
+            #expect(names == ["Đà Lạt", "Google Drive", "Google Drive", "2024", "Dropbox"])
+        }
+    }
+
+    @Test func aFileWaitingForRoomIsExplained() {
+        let waiting = snapshot(kind: .dropbox, status: .scanning, reason: "diskFull")
+        #expect(ImportProgressText.waitsForDisk(waiting))
+        #expect(!ImportProgressText.waitsForDisk(snapshot(kind: .dropbox, status: .scanning)))
+        vi { #expect(ImportProgressText.statusLabel(waiting).contains("chỗ trống")) }
+        en { #expect(ImportProgressText.statusLabel(waiting).contains("free disk space")) }
     }
 
     @Test func registrationKeepsCloudRowsOnlyWithGrant() {

@@ -8,11 +8,15 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     public var account: String?
     /// Google Drive: the picked file and folder ids. Dropbox: one root path (`""` = the whole account).
     public var remoteItems: [String]?
+    /// Name written to sidecars. Cloud imports set it to a name that does not depend on the app language
+    /// (the picked folder's name, or the provider's); nil means the display name.
+    public var sidecarName: String?
 
-    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil) {
+    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil) {
         self.bookmark = bookmark
         self.account = account
         self.remoteItems = remoteItems
+        self.sidecarName = sidecarName
     }
 }
 
@@ -44,6 +48,9 @@ public struct SourceRecord: Hashable, Codable, Sendable {
         self.listedAt = listedAt
         self.finishedAt = finishedAt
     }
+
+    /// The name sidecars carry for this import.
+    public var sidecarName: String { config.sidecarName ?? displayName }
 }
 
 public enum ImportItemState: String, Codable, Sendable, CaseIterable {

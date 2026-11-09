@@ -117,6 +117,7 @@ struct SourcesTab: View {
                         .help(tr(vi: "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.", en: "Existing imports keep their own read access."))
                 }
             }
+            if model.cloudFlowBusy { BrowserWaitRow(onCancel: model.cancelCloudFlow) }
             if !model.dropboxImportAvailable {
                 Text(tr(vi: "Nhập từ Dropbox cần khoá ứng dụng Dropbox trong bản build này.", en: "Importing from Dropbox needs a Dropbox app key in this build."))
                     .font(.caption).foregroundStyle(.secondary)

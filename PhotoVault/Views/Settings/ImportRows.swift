@@ -35,7 +35,7 @@ struct ImportRunningRow: View {
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Text(waitingReason ?? ImportProgressText.statusLabel(item)).font(.caption)
-                .foregroundStyle(item.status == .offline || waitingReason != nil ? .orange : .secondary)
+                .foregroundStyle(item.status == .offline || waitingReason != nil || ImportProgressText.waitsForDisk(item) ? .orange : .secondary)
             if item.status != .offline || item.found > 0 {
                 ProgressBar(fraction: ImportProgressText.fraction(item))
                     .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))

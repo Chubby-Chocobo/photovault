@@ -54,6 +54,8 @@ final class AppModel {
     var dropboxSignedIn = false
     /// A Google or Dropbox sign-in is waiting for the browser; further starts are ignored meanwhile.
     var cloudFlowBusy = false
+    /// Cancels the browser sign-in that is running; nil when none is.
+    @ObservationIgnored var cloudFlowCancel: (() -> Void)?
     var hardening: (any HardeningCommands)?
     /// Set before `bootstrap()`: builds the engine adapter for `HardeningCommands`.
     @ObservationIgnored var hardeningFactory: (@MainActor (AppEnvironment) -> any HardeningCommands)?

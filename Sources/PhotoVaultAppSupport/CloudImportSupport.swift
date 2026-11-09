@@ -24,6 +24,17 @@ public enum CloudImportText {
         return tr(vi: "\(number) mục từ Google Drive", en: "\(number) \(L10n.plural(pickedCount, one: "item", other: "items")) from Google Drive")
     }
 
+    /// The name sidecars carry, which does not change with the app language: the single picked folder's name,
+    /// otherwise the provider's.
+    public static func googleSidecarName(singleFolderName: String?, pickedCount: Int) -> String {
+        if let name = singleFolderName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, pickedCount == 1 { return name }
+        return "Google Drive"
+    }
+
+    public static func dropboxSidecarName(path: String) -> String {
+        path.split(separator: "/").last.map(String.init) ?? "Dropbox"
+    }
+
     /// Name of an import of `path` (`""` = the whole account).
     public static func dropboxDisplayName(path: String) -> String {
         let last = path.split(separator: "/").last.map(String.init)
@@ -56,19 +67,27 @@ public enum CloudImportText {
         return (existing + picked).filter { seen.insert($0).inserted }
     }
 
-    /// Case-insensitive; an import with no recorded account accepts any.
     /// The provider did not say who signed in (its account call failed), so nothing can be compared yet.
     public static func accountUnknown(expected: String?, signedIn: String?) -> Bool {
         let known = { (value: String?) in !(value?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) }
         return known(expected) && !known(signedIn)
     }
 
+    /// Shown when an import would start with no way to tell which account it reads from.
+    public static var accountUnverifiedStartNotice: String {
+        tr(vi: "Chưa kiểm tra được tài khoản đang đăng nhập, nên chưa nhập. Hãy thử lại.", en: "The signed-in account could not be checked, so nothing was imported. Try again.")
+    }
+
+    /// Shown while a browser sign-in is open.
+    public static var waitingForBrowser: String { tr(vi: "Đang chờ đăng nhập trong trình duyệt…", en: "Waiting for sign-in in the browser…") }
+
     public static var accountUnverifiedNotice: String {
         tr(vi: "Chưa kiểm tra được tài khoản vừa đăng nhập. Hãy thử lại.", en: "The signed-in account could not be checked. Try again.")
     }
 
+    /// Case-insensitive. An import with no recorded account cannot be checked, so nothing matches it.
     public static func isSameAccount(expected: String?, signedIn: String?) -> Bool {
-        guard let expected = expected?.trimmingCharacters(in: .whitespaces), !expected.isEmpty else { return true }
+        guard let expected = expected?.trimmingCharacters(in: .whitespaces), !expected.isEmpty else { return false }
         guard let signedIn = signedIn?.trimmingCharacters(in: .whitespaces), !signedIn.isEmpty else { return false }
         return expected.caseInsensitiveCompare(signedIn) == .orderedSame
     }

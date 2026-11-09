@@ -28,10 +28,14 @@ final class DropboxBrowserModel {
         failure = nil
         defer { loading = false }
         do {
+            // Who is signed in must be known before anything can be imported.
+            if email == nil { email = try await client.currentAccountEmail() }
             folders = try await client.listFolders(path: currentPath).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         } catch SourceError.accessRevoked {
             folders = []
             failure = .signInRequired
+        } catch is CancellationError {
+            folders = []
         } catch {
             folders = []
             failure = .other
@@ -47,6 +51,19 @@ final class DropboxBrowserModel {
     func goTo(depth: Int) async {
         trail = Array(trail.prefix(depth))
         await load()
+    }
+}
+
+/// Shown while a browser sign-in is open, so it never looks like nothing is happening.
+struct BrowserWaitRow: View {
+    var onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(CloudImportText.waitingForBrowser).font(.caption).foregroundStyle(.secondary)
+            Button(tr(vi: "Huỷ", en: "Cancel"), action: onCancel).controlSize(.small)
+        }
     }
 }
 
@@ -69,19 +86,18 @@ struct DropboxFolderSheet: View {
                 Button(tr(vi: "Nhập thư mục này", en: "Import this folder")) {
                     starting = true
                     Task {
-                        if await model.importDropboxFolder(path: browser.currentPath, email: browser.email) { dismiss() }
+                        if let email = browser.email, await model.importDropboxFolder(path: browser.currentPath, email: email) { dismiss() }
                         starting = false
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(starting || browser.loading || browser.failure != nil)
+                .disabled(starting || browser.loading || browser.failure != nil || browser.email == nil)
             }
         }
         .padding(20)
         .frame(width: 460)
         .task {
             browser.client = model.dropboxBrowserClient()
-            if let client = browser.client { browser.email = try? await client.currentAccountEmail() }
             await browser.load()
         }
     }
@@ -113,12 +129,14 @@ struct DropboxFolderSheet: View {
                         if failure == .signInRequired {
                             guard await model.signInDropboxAgain() else { return }
                             browser.client = model.dropboxBrowserClient()
-                            // The account may be another one; the import row shows this address.
-                            browser.email = try? await browser.client?.currentAccountEmail()
+                            // The account may be another one; load() asks again who is signed in.
+                            browser.email = nil
                         }
                         await browser.load()
                     }
                 }
+                .disabled(model.cloudFlowBusy)
+                if model.cloudFlowBusy { BrowserWaitRow(onCancel: model.cancelCloudFlow) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if browser.folders.isEmpty {

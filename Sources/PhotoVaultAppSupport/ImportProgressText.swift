@@ -17,10 +17,20 @@ public enum ImportProgressText {
 
     /// Status line of one import: a cloud import that waits says so in its own words.
     public static func statusLabel(_ item: ImportSnapshot) -> String {
+        if waitsForDisk(item) {
+            return tr(
+                vi: "Một số tệp đang chờ chỗ trống trên ổ đĩa; chúng sẽ được đọc khi đủ chỗ",
+                en: "Some files are waiting for free disk space; they will be read when there is room")
+        }
         guard item.status == .offline, item.kind == .googleDrive || item.kind == .dropbox else { return statusLabel(item.status) }
         return CloudImportText.needsSignIn(item)
             ? tr(vi: "Cần đăng nhập lại", en: "Sign in again")
             : tr(vi: "Chưa kết nối được, sẽ tiếp tục khi có lại", en: "Can’t connect right now; it will continue when it is back")
+    }
+
+    /// True while a cloud file waits because the Mac has no room to download it yet.
+    public static func waitsForDisk(_ item: ImportSnapshot) -> Bool {
+        item.status == .scanning && item.statusReason == "diskFull"
     }
 
     /// One bar for both stages: reading fills the first half, uploading the second. With nothing to

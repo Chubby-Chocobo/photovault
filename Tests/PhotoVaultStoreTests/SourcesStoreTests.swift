@@ -88,6 +88,16 @@ extension AssetRepository {
     }
 }
 
+@Suite struct SidecarNameTests {
+    @Test func theSidecarNameIsTheDisplayNameUnlessTheConfigSetsOne() {
+        func row(_ config: SourceConfig) -> SourceRecord {
+            SourceRecord(id: .folder(), kind: .googleDrive, mode: .oneTime, displayName: "3 mục từ Google Drive", config: config, status: .scanning, createdAt: t0)
+        }
+        #expect(row(SourceConfig()).sidecarName == "3 mục từ Google Drive")
+        #expect(row(SourceConfig(sidecarName: "Google Drive")).sidecarName == "Google Drive")
+    }
+}
+
 @Suite struct ImportItemRepositoryTests {
     let source = SourceID.folder()
 
@@ -119,6 +129,16 @@ extension AssetRepository {
             let second = try ImportItemRepository.nextGroups(db, sourceId: source, limit: 10)
             #expect(second.map { $0.map(\.relativePath) } == [["d/c.heic", "d/c.mov"], ["e.jpg"]])
             #expect(try ImportItemRepository.nextGroups(db, sourceId: .folder(), limit: 10).isEmpty)
+        }
+    }
+
+    @Test func skippedGroupsAreLeftOutAndTheLimitCountsOnlyTheOthers() async throws {
+        let store = try Store.inMemory()
+        try await store.write { db in
+            try ImportItemRepository.insertIgnoring(db, [item("a.jpg"), item("b.jpg"), item("c.jpg"), item("d.jpg")])
+            let skipped: Set<String> = [FolderItemGrouper.groupKey(relativePath: "a.jpg"), FolderItemGrouper.groupKey(relativePath: "b.jpg")]
+            let next = try ImportItemRepository.nextGroups(db, sourceId: source, limit: 2, excluding: skipped)
+            #expect(next.map { $0.map(\.relativePath) } == [["c.jpg"], ["d.jpg"]])
         }
     }
 

@@ -117,6 +117,17 @@ private func components(_ url: URL) -> [String: String] {
         }
     }
 
+    @Test func cancellingTheTaskStopsWaitingForTheBrowserAtOnce() async throws {
+        let transport = StubTransport { _ in StubResponse(status: 500) }
+        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in true }, loopbackTimeout: 60, port: 53_697)
+        let task = Task { try await auth.signIn() }
+        try await Task.sleep(for: .milliseconds(200))
+        let started = ContinuousClock.now
+        task.cancel()
+        await #expect(throws: DropboxAuthError.cancelled) { try await task.value }
+        #expect(ContinuousClock.now - started < .seconds(5))
+    }
+
     @Test func deniedConsentIsReportedBeforeAnyExchange() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
         let denied = DropboxAuth(appKey: "K", transport: transport, openURL: { url in
