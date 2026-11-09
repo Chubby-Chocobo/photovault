@@ -33,8 +33,8 @@ extension AppModel {
             // The marker is written: the reset finishes whenever PhotoVault next starts.
             env.log.log(.error, category: "reset", "relaunch failed: \(type(of: error))")
             showNotice(tr(
-                vi: "Đã đăng xuất và đánh dấu đặt lại. Hãy thoát rồi mở lại PhotoVault để hoàn tất.",
-                en: "Signed out and marked for reset. Quit and open PhotoVault again to finish."))
+                vi: "Đã đăng xuất và đánh dấu đặt lại, nhưng chưa tự mở lại được PhotoVault. Hãy thoát rồi mở lại: việc đặt lại sẽ hoàn tất ở lần mở tiếp theo.",
+                en: "Signed out and marked for reset, but PhotoVault could not reopen itself. Quit and open it again: the reset finishes on the next launch."))
             return
         }
         // The new process waits for this one's lock, then wipes.

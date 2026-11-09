@@ -71,6 +71,6 @@ struct SyncMilestones: Sendable {
                       en: L10n.plural(done, one: "Older photos are backed up: 1 file", other: "Older photos are backed up: \(L10n.integer(done)) files"))
         guard deferred > 0 else { return base }
         return base + tr(vi: " (\(L10n.integer(deferred)) file tạm hoãn vì lỗi, xem Cài đặt › Nâng cao)",
-                         en: " (\(L10n.integer(deferred)) put off after errors, see Settings › Advanced)")
+                         en: " (\(L10n.integer(deferred)) deferred after errors, see Settings › Advanced)")
     }
 }

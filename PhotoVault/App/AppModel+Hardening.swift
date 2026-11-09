@@ -61,7 +61,7 @@ extension AppModel {
     }
 
     func startRecovery(_ id: DestinationID) {
-        withHardening(tr(vi: "Khôi phục trạng thái từ đích", en: "Recover state from the destination")) { commands in
+        withHardening(tr(vi: "Khôi phục trạng thái từ đích", en: "Restore state from the destination")) { commands in
             let report = try await commands.startRecovery(id)
             let matched = VietnameseFormat.integer(report.matchedFiles)
             let unmatched = VietnameseFormat.integer(report.unmatchedFiles)
