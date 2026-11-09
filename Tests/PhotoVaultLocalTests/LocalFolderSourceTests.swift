@@ -186,3 +186,37 @@ private struct StubMetadata: FileMetadataReading {
         func fileMetadata(of file: URL, uti: String, mediaType: MediaType) -> FileMetadata { .empty }
     }
 }
+
+@Suite struct LocalFolderSourceFaultTests {
+    @Test func aReadErrorOnOneFileIsNotTheFolderGoingAway() throws {
+        let folder = try TestFiles.temporaryDirectory("pv-fault").resolvingSymlinksInPath()
+        for code in [EIO, ETIMEDOUT, ESTALE] {
+            #expect(LocalFolderSource.map(errno: code, folder: folder) == .readFailed(code: Int(code)))
+        }
+        let gone = folder.appendingPathComponent("not-there")
+        #expect(LocalFolderSource.map(errno: EIO, folder: gone) == .unavailable)
+        #expect(LocalFolderSource.map(errno: ENXIO, folder: gone) == .unavailable)
+    }
+
+    @Test func aNameStoredNormalisedIsFoundUnderItsOnDiskSpelling() throws {
+        let folder = try TestFiles.temporaryDirectory("pv-nfd").resolvingSymlinksInPath()
+        let nfd = "Ha\u{0300}"
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent(nfd), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: folder.appendingPathComponent(nfd).appendingPathComponent("a.jpg"))
+        let resolved = try #require(LocalFolderSource.onDiskURL(folder, "H\u{00E0}/a.jpg"))
+        #expect(resolved.deletingLastPathComponent().lastPathComponent.unicodeScalars.map(\.value) == nfd.unicodeScalars.map(\.value))
+        #expect(LocalFolderSource.onDiskURL(folder, "missing/a.jpg") == nil)
+    }
+
+    @Test func iCloudPlaceholdersAreListedSoTheyCanBeCountedAsSkipped() async throws {
+        let base = try TestFiles.temporaryDirectory("pv-icloud").resolvingSymlinksInPath()
+        try Data("x".utf8).write(to: base.appendingPathComponent("a.jpg"))
+        try Data("x".utf8).write(to: base.appendingPathComponent(".Photo.jpg.icloud"))
+        try Data("x".utf8).write(to: base.appendingPathComponent(".hidden.jpg"))
+        try FileManager.default.createDirectory(at: base.appendingPathComponent(".Trash"), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: base.appendingPathComponent(".Trash/old.jpg"))
+        let entries = try LocalFolderSource.list(base)
+        #expect(entries.map(\.relativePath) == [".Photo.jpg.icloud", "a.jpg"])
+        #expect(FolderItemGrouper.isIgnored(relativePath: ".Photo.jpg.icloud"))
+    }
+}

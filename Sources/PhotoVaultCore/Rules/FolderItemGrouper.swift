@@ -47,8 +47,8 @@ public struct AssetDraft: Hashable, Sendable {
 
 /// Turns the files of a folder into asset drafts the way Photos stores them (pure).
 public enum FolderItemGrouper {
-    /// Sidecar files that belong to a photo but are not photos.
-    public static let ignoredExtensions: Set<String> = ["aae", "xmp", "thm", "json"]
+    /// Sidecar files that belong to a photo but are not photos, and iCloud placeholders of files that were never downloaded.
+    public static let ignoredExtensions: Set<String> = ["aae", "xmp", "thm", "json", "icloud"]
 
     public static func isIgnored(relativePath: String) -> Bool {
         ignoredExtensions.contains((relativePath as NSString).pathExtension.lowercased())

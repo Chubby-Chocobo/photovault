@@ -7,7 +7,7 @@ extension LocalFolderSource {
     static let libraryExtensions: Set<String> = ["photoslibrary", "aplibrary", "migratedphotolibrary"]
 
     /// Every photo and video under the folder, plus the sidecar files that belong to them (so they can
-    /// be counted as skipped). Hidden files, packages and symbolic links are left out.
+    /// be counted as skipped, iCloud placeholders included). Other hidden files, packages and symbolic links are left out.
     public func listFiles() async throws -> [FolderFileEntry] {
         let root = root
         return try await queue.run { try Self.withFolder(root) { try Self.list($0) } }
@@ -19,11 +19,18 @@ extension LocalFolderSource {
         ]
         let base = folder.standardizedFileURL
         guard let walker = FileManager.default.enumerator(
-            at: base, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            at: base, includingPropertiesForKeys: keys, options: [.skipsPackageDescendants],
             errorHandler: { _, _ in true })
         else { throw SourceError.unavailable }
         var entries: [FolderFileEntry] = []
         for case let url as URL in walker {
+            let name = url.lastPathComponent
+            let hidden = name.hasPrefix(".")
+            // Hidden entries are skipped, except the placeholders iCloud Drive leaves for files it has not downloaded.
+            if hidden, !name.hasSuffix(".icloud") {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true { walker.skipDescendants() }
+                continue
+            }
             guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
             if values.isSymbolicLink == true { continue }
             if values.isDirectory == true {

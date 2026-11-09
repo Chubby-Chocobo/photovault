@@ -259,7 +259,10 @@ actor ExportWorker {
                 return .failed(started.id)
             }
         }
-        let classification = source.map(ErrorClassifier.classify) ?? folder.map(ErrorClassifier.classify) ?? .itemLevel
+        let classification: ErrorClass
+        if let source { classification = ErrorClassifier.classify(source) } else if let folder {
+            classification = try await classifyFolderFailure(folder, asset: started.asset)
+        } else { classification = .itemLevel }
         let message = source.map { "photos: \($0)" } ?? folder.map { "source: \($0)" } ?? "export failed"
         switch classification {
         case .permanent(let reason):
@@ -271,9 +274,11 @@ actor ExportWorker {
             if case .destinationLevel = classification {
                 if folder != nil { try await holdSource(of: started.asset, at: now) } else { photosLost = true }
             }
+            // A folder that is away is waiting, not failing: no error is recorded against the file.
+            let held = folder != nil && { if case .destinationLevel = classification { true } else { false } }()
             try await env.store.write { db in
                 try EngineQueries.resetExportToNone(db, key: key, type: type, retryAt: now.addingTimeInterval(Self.transientRetryDelay))
-                try ResourceRepository.noteExportError(db, key: key, type: type, message: message)
+                if !held { try ResourceRepository.noteExportError(db, key: key, type: type, message: message) }
             }
         case .itemLevel:
             let delay = Backoff().delay(forAttempt: started.resource.exportAttempts)

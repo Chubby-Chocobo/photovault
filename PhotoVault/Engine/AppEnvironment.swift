@@ -176,15 +176,12 @@ struct AppEnvironment: Sendable {
             dailyCapFile: capFile, folderSources: folderSources)
     }
 
-    /// One read-only adapter per import that has not finished. A stale bookmark is refreshed in place.
+    /// One read-only adapter per import, finished or not. A stale bookmark is refreshed in place.
     private static func openFolderSources(store: Store, log: AppLogSink) -> [LocalFolderSource] {
-        let rows = (try? store.read { db in try SourceRepository.fetchAll(db) }) ?? []
-        return rows.filter { $0.kind == .localFolder && $0.status.isOpen }.compactMap { row in
-            guard let bookmark = row.config.bookmark else {
-                log.log(.error, category: "launch", "import \(row.id) has no folder bookmark")
-                return nil
-            }
-            return makeFolderSource(id: row.id, bookmark: bookmark, store: store, log: log)
+        // Finished imports too: a destination added later still receives their files.
+        let rows = (try? store.read { db in try SourceRepository.withBookmarks(db) }) ?? []
+        return rows.compactMap { row in
+            row.config.bookmark.map { makeFolderSource(id: row.id, bookmark: $0, store: store, log: log) }
         }
     }
 

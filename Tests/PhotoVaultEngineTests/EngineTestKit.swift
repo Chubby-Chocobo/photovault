@@ -141,7 +141,7 @@ final class Harness: @unchecked Sendable {
     /// Reads sidecars and hashes of local destinations (recovery); nil like a production build without it.
     var localContent: (any LocalContentReading)?
     /// Content sources shared by every engine the harness builds (Photos is always registered).
-    let sources: SourceRegistry
+    var sources: SourceRegistry
     private(set) var organizationEnabled: Bool
     /// Replace the fake destinations of the same id in every registry the harness builds.
     var overrides: [any Destination] = []

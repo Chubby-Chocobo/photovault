@@ -79,3 +79,47 @@ extension AssetKey {
             .compactMap(AssetKey.init(rawValue:))
     }
 }
+
+/// A folder source whose `inspect` fails with the folder-level error for one file, while the folder itself answers.
+struct BadFileSource: FolderImportSource {
+    let inner: LocalFolderSource
+    var badPath = "bad.jpg"
+    var id: SourceID { inner.id }
+    func probe() async throws { try await inner.probe() }
+    func listFiles() async throws -> [FolderFileEntry] { try await inner.listFiles() }
+    func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
+        if relativePath == badPath { throw SourceError.unavailable }
+        return try await inner.inspect(relativePath: relativePath, uti: uti, mediaType: mediaType, control: control)
+    }
+    func exportResource(_ l: ResourceLocator, to d: URL, control: ExportControl) async throws -> ExportedFile {
+        try await inner.exportResource(l, to: d, control: control)
+    }
+}
+
+extension Harness {
+    /// Emulates a relaunch the way the app does it: a new registry holding an adapter for every source row.
+    func reopenSources(_ folders: [ImportFolder]) async throws {
+        sources = SourceRegistry(photos: photos)
+        let rows = try read { db in try SourceRepository.fetchAll(db) }
+        for row in rows {
+            if let folder = folders.first(where: { $0.id == row.id }) { await sources.add(folder.source()) }
+        }
+        try await restart()
+    }
+
+    func lastSuccess() throws -> Date? { try read { try KeyValueRepository.date($0, KeyValueRepository.Key.lastSuccessfulSyncAt) } }
+}
+
+/// Answers a probe but cannot list: the folder comes and goes between two calls.
+struct FlappingSource: FolderImportSource {
+    let inner: LocalFolderSource
+    var id: SourceID { inner.id }
+    func probe() async throws { try await inner.probe() }
+    func listFiles() async throws -> [FolderFileEntry] { throw SourceError.unavailable }
+    func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
+        try await inner.inspect(relativePath: relativePath, uti: uti, mediaType: mediaType, control: control)
+    }
+    func exportResource(_ l: ResourceLocator, to d: URL, control: ExportControl) async throws -> ExportedFile {
+        try await inner.exportResource(l, to: d, control: control)
+    }
+}

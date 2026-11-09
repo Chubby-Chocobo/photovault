@@ -18,6 +18,17 @@ extension AppModel {
     func importFolder() {
         guard let env, canStartImport else { return }
         guard let pick = FolderPicker.chooseImportFolder() else { return }
+        let existing = destinations.compactMap { record in
+            record.kind == .localFolder ? record.config.displayPath.map { (name: record.displayName, path: $0) } : nil
+        }
+        let candidates = [pick.url.path, pick.url.resolvingSymlinksInPath().path]
+        for path in candidates {
+            if let reason = ImportFolderGuard.conflict(candidate: path, destinations: existing, container: env.layout.root.resolvingSymlinksInPath().path)
+                ?? ImportFolderGuard.conflict(candidate: path, destinations: existing, container: env.layout.root.path) {
+                showNotice(reason, isError: true)
+                return
+            }
+        }
         let source = AppEnvironment.makeFolderSource(id: .folder(), bookmark: pick.bookmark, store: env.store, log: env.log)
         let name = pick.url.lastPathComponent
         Task {

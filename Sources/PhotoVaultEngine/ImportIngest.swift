@@ -53,7 +53,9 @@ enum ImportIngest {
         for member in input.draft.members {
             try ResourceRepository.upsert(db, ResourceRecord(
                 assetKey: key, type: member.type, isRaw: member.file.isRaw, originalFilename: member.file.originalFilename,
-                uti: member.file.uti, sizeBytes: input.inspected[member.file.relativePath]?.size))
+                uti: member.file.uti, sizeBytes: input.inspected[member.file.relativePath]?.size,
+                // The hash read now is what the export must reproduce.
+                sha256: input.inspected[member.file.relativePath]?.sha256))
         }
         return (key, revived)
     }

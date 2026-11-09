@@ -12,9 +12,22 @@ extension ExportWorker {
             sourceId: asset.sourceId, localId: asset.localId, type: started.resource.type,
             originalFilename: started.resource.originalFilename)
         let file = try await content.exportResource(locator, to: url, control: started.permit.control)
-        // An imported asset is named by the hash of its primary file: other bytes mean the file changed since.
-        if asset.assetKey.isContent, started.isPrimary, file.sha256 != asset.assetKey.identifier { throw SourceError.fileChanged }
+        // The bytes must be the ones hashed at import (every file of the asset, not only the primary).
+        if asset.sourceId != .photos {
+            let expected = started.resource.sha256 ?? (started.isPrimary && asset.assetKey.isContent ? asset.assetKey.identifier : nil)
+            if let expected, file.sha256 != expected { throw SourceError.fileChanged }
+        }
         return file
+    }
+
+    /// How a folder error is handled. A folder that is away holds an open import; for an import that has
+    /// finished (or whose row is gone) nobody is waiting for the folder, so the file counts as missing.
+    func classifyFolderFailure(_ error: SourceError, asset: AssetRecord) async throws -> ErrorClass {
+        let base = ErrorClassifier.classify(error)
+        guard case .destinationLevel = base else { return base }
+        let id = asset.sourceId
+        let status = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.status }
+        return status?.isOpen == true ? base : .permanent(.resourceMissing)
     }
 
     /// A folder that cannot be read holds only its own job: the source row goes `offline` (its assets

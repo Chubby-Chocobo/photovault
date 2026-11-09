@@ -19,6 +19,13 @@ struct CloudIdBackfill: Sendable {
         var localId: String
     }
 
+    /// Photos assets without a cloud identifier, in key order. The unary plus keeps the planner off the
+    /// `asset_source` index, which would scan every Photos asset; the key order is walked instead.
+    static let pendingBatchSQL = """
+        SELECT asset_key, local_id FROM asset
+        WHERE cloud_id IS NULL AND deleted_at IS NULL AND +source_id = 'photos' AND asset_key > ? ORDER BY asset_key LIMIT ?
+        """
+
     /// One pass over every asset without a cloud identifier. A mapping error aborts the pass and is
     /// rethrown: callers that need the pass complete (reconciliation, recovery) must not go on.
     /// - Parameter force: ignore the retry pause of unresolvable assets.
@@ -34,10 +41,7 @@ struct CloudIdBackfill: Sendable {
             try Task.checkCancellation()
             let start = cursor
             let batch: [Pending] = try await env.store.read { db in
-                try Row.fetchAll(db, sql: """
-                    SELECT asset_key, local_id FROM asset
-                    WHERE cloud_id IS NULL AND deleted_at IS NULL AND source_id = 'photos' AND asset_key > ? ORDER BY asset_key LIMIT ?
-                    """, arguments: [start, Self.batchSize]).map { Pending(key: $0["asset_key"], localId: $0["local_id"]) }
+                try Row.fetchAll(db, sql: Self.pendingBatchSQL, arguments: [start, Self.batchSize]).map { Pending(key: $0["asset_key"], localId: $0["local_id"]) }
             }
             guard let last = batch.last else { break }
             cursor = last.key

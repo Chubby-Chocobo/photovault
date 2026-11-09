@@ -25,6 +25,12 @@ public enum SourceRepository {
         try Row.fetchAll(db, sql: "SELECT * FROM source ORDER BY created_at, id").map(decode)
     }
 
+    /// Sources that need an adapter when the app starts: every folder source with a bookmark, finished or not.
+    /// A finished import's files may still be read for a destination added later.
+    public static func withBookmarks(_ db: Database) throws -> [SourceRecord] {
+        try fetchAll(db).filter { $0.kind == .localFolder && $0.config.bookmark != nil }
+    }
+
     /// `finished_at` is set when the job reaches `completed` or `cancelled`, and cleared otherwise.
     public static func setStatus(_ db: Database, id: SourceID, status: SourceStatus, reason: String?, now: Date) throws {
         let finished: Date? = status.isOpen ? nil : now

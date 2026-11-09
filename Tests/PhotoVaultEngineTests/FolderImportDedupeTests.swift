@@ -113,7 +113,7 @@ import Testing
         #expect(await h.drive.files.count == 1)
         let again = ImportFolder(again: first)
         let id = try await h.startImport(again)
-        #expect(try h.importCounts(id) == [.duplicate: 1, .imported: 1], "the uploaded file is covered; the removed one is imported again")
+        #expect(try h.importCounts(id) == [.imported: 2], "the uploaded file moves to the new job; the removed one is imported again")
         #expect(await h.drive.files.count == 2)
         let keys = try h.read { db in try String.fetchAll(db, sql: "SELECT asset_key FROM asset") }
         #expect(keys.count == 2 && Set(keys).count == 2)

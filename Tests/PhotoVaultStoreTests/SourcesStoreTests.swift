@@ -179,3 +179,16 @@ extension AssetRepository {
         }
     }
 }
+
+@Suite struct SourceAdapterRowsTests {
+    @Test func everyFolderSourceWithABookmarkNeedsAnAdapterWhateverItsStatus() async throws {
+        let store = try Store.inMemory()
+        func row(_ status: SourceStatus, bookmark: Data?) -> SourceRecord {
+            SourceRecord(id: .folder(), kind: .localFolder, mode: .oneTime, displayName: "x", config: SourceConfig(bookmark: bookmark), status: status, createdAt: t0)
+        }
+        let rows = [row(.scanning, bookmark: Data([1])), row(.completed, bookmark: Data([2])), row(.cancelled, bookmark: Data([3])), row(.completed, bookmark: nil)]
+        try await store.write { db in for r in rows { try SourceRepository.insert(db, r) } }
+        let needed = try await store.read { db in try SourceRepository.withBookmarks(db) }
+        #expect(Set(needed.map(\.id)) == Set(rows.prefix(3).map(\.id)))
+    }
+}
