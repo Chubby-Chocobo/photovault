@@ -33,7 +33,16 @@ final class ResourceRequestSession: @unchecked Sendable {
     ) {
         let options = PHAssetResourceRequestOptions()
         options.isNetworkAccessAllowed = true
-        options.progressHandler = { _ in onProgress() }
+        // Only real progress counts: a stuck download may keep reporting the same fraction.
+        let highest = OSAllocatedUnfairLock(initialState: -1.0)
+        options.progressHandler = { fraction in
+            let advanced = highest.withLock { value -> Bool in
+                guard fraction > value else { return false }
+                value = fraction
+                return true
+            }
+            if advanced { onProgress() }
+        }
         let id = PHAssetResourceManager.default().requestData(
             for: resource,
             options: options,
