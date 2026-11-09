@@ -8,7 +8,8 @@ import PhotoVaultEngine
 import PhotoVaultPhotos
 
 /// Builds the adapters and sign-in flows of Google Drive and Dropbox imports. One Keychain store holds
-/// every token: `import-<id>` per import and `dropbox-account` for the folder browser.
+/// every token, under the same service as the Google destination token: `import-<id>` per import and
+/// `dropbox-account` for the folder browser.
 struct CloudImportServices: Sendable {
     let googleConfig: OAuthConfig
     let oauth: OAuthClient
@@ -16,6 +17,8 @@ struct CloudImportServices: Sendable {
     let keychain: any KeychainStore
     let dropboxAppKey: String
     let scratchDirectory: URL
+    /// Holds one folder per import with the map of which remote file each path names.
+    let stateRoot: URL
 
     var googleConfigured: Bool { !googleConfig.clientID.isEmpty }
     var dropboxConfigured: Bool { !dropboxAppKey.isEmpty }
@@ -25,16 +28,21 @@ struct CloudImportServices: Sendable {
     // MARK: Tokens
 
     func hasGrant(_ id: SourceID) -> Bool {
-        ((try? keychain.read(account: CloudImportKeychain.importAccount(id))) ?? nil) != nil
+        ((try? keychain.read(account: CloudTokenAccount.importGrant(id))) ?? nil) != nil
     }
 
     func hasDropboxAccount() -> Bool {
-        ((try? keychain.read(account: CloudImportKeychain.dropboxAccount)) ?? nil) != nil
+        ((try? keychain.read(account: CloudTokenAccount.dropbox)) ?? nil) != nil
     }
 
     func copyDropboxAccountToken(to id: SourceID) throws {
-        guard let token = try keychain.read(account: CloudImportKeychain.dropboxAccount) else { throw DestinationError.reauthRequired }
-        try keychain.write(token, account: CloudImportKeychain.importAccount(id))
+        guard let token = try keychain.read(account: CloudTokenAccount.dropbox) else { throw DestinationError.reauthRequired }
+        try keychain.write(token, account: CloudTokenAccount.importGrant(id))
+    }
+
+    /// Every cloud item in the Keychain, whether or not a database row still names it.
+    func storedTokenAccounts() throws -> [String] {
+        CloudImportKeychain.accountsToDelete(stored: try keychain.accounts())
     }
 
     /// Deletes every named item; returns how many could not be deleted.
@@ -54,8 +62,10 @@ struct CloudImportServices: Sendable {
         let auth = DriveImportAuth(sourceId: id, oauth: oauth, keychain: keychain, initial: initial)
         return DriveImportSource(
             id: id, pickedIds: pickedIds, auth: auth, transport: transport,
-            scratchDirectory: scratchDirectory, metadata: ImageIOMetadataReader())
+            scratchDirectory: scratchDirectory, stateDirectory: stateDirectory(for: id), metadata: ImageIOMetadataReader())
     }
+
+    private func stateDirectory(for id: SourceID) -> URL { stateRoot.appendingPathComponent(id.rawValue, isDirectory: true) }
 
     // MARK: Dropbox
 
@@ -72,9 +82,9 @@ struct CloudImportServices: Sendable {
     }
 
     func dropboxSource(id: SourceID, rootPath: String) -> DropboxImportSource {
-        let authorizer = dropboxAuthorizer(account: CloudImportKeychain.importAccount(id))
+        let authorizer = dropboxAuthorizer(account: CloudTokenAccount.importGrant(id))
         return DropboxImportSource(
             id: id, rootPath: rootPath, client: dropboxClient(authorizer: authorizer),
-            scratchDirectory: scratchDirectory, metadata: ImageIOMetadataReader())
+            scratchDirectory: scratchDirectory, stateDirectory: stateDirectory(for: id), metadata: ImageIOMetadataReader())
     }
 }

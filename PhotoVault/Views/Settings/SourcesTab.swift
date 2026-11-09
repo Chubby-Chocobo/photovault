@@ -132,7 +132,7 @@ struct SourcesTab: View {
             if !finished.isEmpty {
                 Divider()
                 Text(tr(vi: "Đã xong", en: "Finished")).font(.subheadline.weight(.semibold))
-                ForEach(finished) { ImportFinishedRow(item: $0) }
+                ForEach(finished) { item in ImportFinishedRow(item: item, onSignInAgain: { model.reconnectImport(item) }) }
             }
         }
     }

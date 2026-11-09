@@ -7,19 +7,13 @@ import PhotoVaultCore
 public actor DriveImportAuth: DriveAuthorizing {
     private static let expirySkew: TimeInterval = 60
 
-    public static func keychainAccount(for sourceId: SourceID) -> String { CloudTokenAccount.importGrant(sourceId) }
-
     /// Keeps the grant of a finished pick for `sourceId`.
     public static func store(refreshToken: String, for sourceId: SourceID, in keychain: any KeychainStore) throws {
-        try keychain.write(Data(refreshToken.utf8), account: keychainAccount(for: sourceId))
-    }
-
-    public static func hasGrant(for sourceId: SourceID, in keychain: any KeychainStore) -> Bool {
-        (try? keychain.read(account: keychainAccount(for: sourceId))) != nil
+        try keychain.write(Data(refreshToken.utf8), account: CloudTokenAccount.importGrant(sourceId))
     }
 
     public static func removeGrant(for sourceId: SourceID, from keychain: any KeychainStore) throws {
-        try keychain.delete(account: keychainAccount(for: sourceId))
+        try keychain.delete(account: CloudTokenAccount.importGrant(sourceId))
     }
 
     private let account: String
@@ -32,7 +26,7 @@ public actor DriveImportAuth: DriveAuthorizing {
     /// - Parameter initial: the access token the pick just produced, so the first call needs no refresh.
     public init(sourceId: SourceID, oauth: OAuthClient, keychain: any KeychainStore, clock: any Clock = SystemClock(),
                 initial: (accessToken: String, expiresAt: Date)? = nil) {
-        account = Self.keychainAccount(for: sourceId)
+        account = CloudTokenAccount.importGrant(sourceId)
         self.oauth = oauth
         self.keychain = keychain
         self.clock = clock

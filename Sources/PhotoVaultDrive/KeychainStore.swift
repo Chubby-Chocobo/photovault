@@ -9,6 +9,8 @@ public protocol KeychainStore: Sendable {
     func write(_ data: Data, account: String) throws
     /// Deleting a missing item is not an error.
     func delete(account: String) throws
+    /// Every account name stored under this store's service.
+    func accounts() throws -> [String]
 }
 
 /// Data-protection keychain item: no ACL prompts across rebuilds, never leaves this Mac.
@@ -27,6 +29,15 @@ public struct SystemKeychainStore: KeychainStore {
             kSecUseDataProtectionKeychain as String: true,
             kSecAttrSynchronizable as String: false,
         ]
+    }
+
+    /// Every item of the service, attributes only (no secret is read).
+    static func listQuery(service: String = SystemKeychainStore.service) -> [String: Any] {
+        var query = Self.query(account: "", service: service)
+        query[kSecAttrAccount as String] = nil
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        return query
     }
 
     public func read(account: String) throws -> Data? {
@@ -56,6 +67,14 @@ public struct SystemKeychainStore: KeychainStore {
     public func delete(account: String) throws {
         let status = SecItemDelete(Self.query(account: account, service: serviceName) as CFDictionary)
         if status != errSecItemNotFound { try Self.check(status) }
+    }
+
+    public func accounts() throws -> [String] {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(Self.listQuery(service: serviceName) as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        try Self.check(status)
+        return (result as? [[String: Any]])?.compactMap { $0[kSecAttrAccount as String] as? String } ?? []
     }
 
     static func check(_ status: OSStatus) throws {

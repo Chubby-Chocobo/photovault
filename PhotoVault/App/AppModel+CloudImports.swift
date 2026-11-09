@@ -44,7 +44,7 @@ extension AppModel {
         defer { cloudFlowBusy = false }
         do {
             let signIn = try await env.cloud.dropboxAuth().signIn()
-            try await env.cloud.dropboxAuthorizer(account: CloudImportKeychain.dropboxAccount).store(signIn)
+            try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.dropbox).store(signIn)
             dropboxSignedIn = true
             env.log.log(.info, category: "import", "dropbox account signed in")
             return true
@@ -57,7 +57,7 @@ extension AppModel {
     /// Client for the folder browser, bound to the account token.
     func dropboxBrowserClient() -> DropboxClient? {
         guard let cloud = env?.cloud else { return nil }
-        return cloud.dropboxClient(authorizer: cloud.dropboxAuthorizer(account: CloudImportKeychain.dropboxAccount))
+        return cloud.dropboxClient(authorizer: cloud.dropboxAuthorizer(account: CloudTokenAccount.dropbox))
     }
 
     /// Re-signs in to the Dropbox account used by the folder browser.
@@ -67,7 +67,7 @@ extension AppModel {
         defer { cloudFlowBusy = false }
         do {
             let signIn = try await env.cloud.dropboxAuth().signIn()
-            try await env.cloud.dropboxAuthorizer(account: CloudImportKeychain.dropboxAccount).store(signIn)
+            try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.dropbox).store(signIn)
             dropboxSignedIn = true
             return true
         } catch {
@@ -88,7 +88,7 @@ extension AppModel {
                     displayName: CloudImportText.dropboxDisplayName(path: path),
                     config: SourceConfig(account: email, remoteItems: [path]))
             } catch {
-                _ = env.cloud.deleteTokens(accounts: [CloudImportKeychain.importAccount(id)])
+                _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw error
             }
             didStartCloudImport("dropbox")
@@ -102,7 +102,7 @@ extension AppModel {
     /// Removes the Dropbox account token. Imports keep their own tokens.
     func signOutDropbox() {
         guard let env else { return }
-        let failed = env.cloud.deleteTokens(accounts: [CloudImportKeychain.dropboxAccount])
+        let failed = env.cloud.deleteTokens(accounts: [CloudTokenAccount.dropbox])
         dropboxSignedIn = env.cloud.hasDropboxAccount()
         if failed > 0 {
             showNotice(tr(vi: "Không xoá được thông tin đăng nhập Dropbox.", en: "Could not remove the Dropbox sign-in."), isError: true)
@@ -114,7 +114,8 @@ extension AppModel {
 
     // MARK: Sign in again
 
-    /// Reruns the start flow of a held import and replaces its token; the engine continues by itself.
+    /// Reruns the sign-in of a held or finished import. It must be the account the import reads from; the
+    /// import then carries on at once. Nothing changes when the owner chooses another account.
     func reconnectImport(_ item: ImportSnapshot) {
         guard let env, !cloudFlowBusy else { return }
         let id = item.id
@@ -122,26 +123,37 @@ extension AppModel {
         case .googleDrive:
             runCloudFlow { [self] in
                 let picked = try await env.cloud.pickerFlow().run()
+                guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
+                // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
+                var config = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config } ?? SourceConfig()
+                let merged = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: picked.pickedIds)
                 try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
-                // The new grant covers what was picked now, so the import follows this pick.
-                let config = SourceConfig(account: picked.email ?? item.account, remoteItems: picked.pickedIds)
-                try await env.store.write { db in try SourceRepository.setConfig(db, id: id, config) }
+                config.remoteItems = merged
+                config.account = config.account ?? picked.email
+                let stored = config
+                try await env.store.write { db in try SourceRepository.setConfig(db, id: id, stored) }
                 await env.coordinator.registerSources([
-                    env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))])
-                didReconnectCloudImport()
+                    env.cloud.driveSource(id: id, pickedIds: merged, initial: (picked.accessToken, picked.expiresAt))])
+                await didReconnectCloudImport(id)
             }
         case .dropbox:
             runCloudFlow { [self] in
                 let signIn = try await env.cloud.dropboxAuth().signIn()
-                try await env.cloud.dropboxAuthorizer(account: CloudImportKeychain.importAccount(id)).store(signIn)
+                guard CloudImportText.isSameAccount(expected: item.account, signedIn: signIn.email) else { return refuseOtherAccount(item) }
+                try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.importGrant(id)).store(signIn)
                 // A job whose token was missing at launch has no adapter yet.
                 let root = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config.remoteItems?.first } ?? ""
                 await env.coordinator.registerSources([env.cloud.dropboxSource(id: id, rootPath: root)])
-                didReconnectCloudImport()
+                await didReconnectCloudImport(id)
             }
         case .localFolder, .photos:
             break
         }
+    }
+
+    private func refuseOtherAccount(_ item: ImportSnapshot) {
+        env?.log.log(.info, category: "import", "sign-in refused: another account")
+        showNotice(CloudImportText.wrongAccountNotice(expected: item.account), isError: true)
     }
 
     // MARK: Shared
@@ -160,10 +172,14 @@ extension AppModel {
         Task { await refreshSnapshot() }
     }
 
-    private func didReconnectCloudImport() {
+    /// Clears the hold so the import resumes in the next cycle, not after the cooldown.
+    private func didReconnectCloudImport(_ id: SourceID) async {
         env?.log.log(.info, category: "import", "cloud import signed in again")
+        do { try await env?.coordinator.resumeImportAfterSignIn(id) } catch {
+            env?.log.log(.error, category: "import", "could not resume the import: \(type(of: error))")
+        }
         requestSync(.manual)
-        Task { await refreshSnapshot() }
+        await refreshSnapshot()
     }
 
     /// Cancel and timeout are the owner's own doing: quiet or a short notice, never an error banner.
@@ -188,6 +204,8 @@ extension AppModel {
                     en: "Another app is using the Dropbox sign-in port. Close it and try again."), isError: true)
             case .malformedResponse: showNotice(tr(vi: "Dropbox trả lời không hợp lệ. Hãy thử lại.", en: "Dropbox sent an unexpected answer. Try again."), isError: true)
             }
+        } else if case DestinationError.reauthRequired = error {
+            showNotice(tr(vi: "Cần đăng nhập Dropbox lại.", en: "Sign in to Dropbox again."), isError: true)
         } else if case SourceError.accessRevoked = error {
             showNotice(tr(vi: "Cần đăng nhập Dropbox lại.", en: "Sign in to Dropbox again."), isError: true)
         } else if error is SourceError {

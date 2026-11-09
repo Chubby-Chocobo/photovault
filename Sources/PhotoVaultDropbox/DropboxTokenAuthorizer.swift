@@ -11,12 +11,7 @@ public protocol DropboxAccessTokenProviding: Sendable {
 
 /// Keeps one refresh token in the Keychain and the short-lived access token in memory.
 public actor DropboxTokenAuthorizer: DropboxAccessTokenProviding {
-    /// Token of the signed-in Dropbox account used by the folder browser.
-    public static let accountTokenKey = CloudTokenAccount.dropbox
     private static let expirySlack: TimeInterval = 60
-
-    /// Keychain account of the token that belongs to one import.
-    public static func importTokenKey(_ sourceId: SourceID) -> String { CloudTokenAccount.importGrant(sourceId) }
 
     private let auth: DropboxAuth
     private let keychain: any KeychainStore
@@ -35,17 +30,6 @@ public actor DropboxTokenAuthorizer: DropboxAccessTokenProviding {
     public func store(_ signIn: DropboxSignIn) throws {
         try Self.keychainCall { try keychain.write(Data(signIn.refreshToken.utf8), account: keychainAccount) }
         cached = signIn.accessToken
-    }
-
-    /// True when a refresh token is stored (an import can be re-registered at launch).
-    public func hasStoredToken() -> Bool {
-        ((try? keychain.read(account: keychainAccount)) ?? nil) != nil
-    }
-
-    /// Removes the stored token, for example when an import is removed.
-    public func forget() throws {
-        cached = nil
-        try Self.keychainCall { try keychain.delete(account: keychainAccount) }
     }
 
     public func accessToken(forceRefresh: Bool) async throws -> String {

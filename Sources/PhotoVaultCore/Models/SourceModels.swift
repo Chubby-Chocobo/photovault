@@ -57,6 +57,11 @@ public enum CloudTokenAccount {
 
     /// The grant one cloud import reads with.
     public static func importGrant(_ id: SourceID) -> String { "import-\(id.rawValue)" }
+
+    /// True for every item a cloud import or the Dropbox account keeps in the Keychain.
+    public static func isCloudItem(_ account: String) -> Bool { account == dropbox || account.hasPrefix(importGrantPrefix) }
+
+    private static let importGrantPrefix = "import-"
 }
 
 public enum SourceMode: String, Codable, Sendable, CaseIterable {

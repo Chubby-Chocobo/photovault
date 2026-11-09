@@ -30,10 +30,8 @@ struct ImportRunningRow: View {
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small)
             }
             Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
-            if item.kind == .googleDrive, CloudImportText.needsSignIn(item) {
-                // The new grant covers only what is picked again, so a different pick changes the import.
-                Text(tr(vi: "Khi Google Picker mở, hãy chọn lại đúng những ảnh và thư mục đã chọn lần trước.",
-                        en: "When Google Picker opens, pick the same photos and folders as last time."))
+            if CloudImportText.needsSignIn(item), item.account != nil {
+                Text(CloudImportText.wrongAccountNotice(expected: item.account))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Text(waitingReason ?? ImportProgressText.statusLabel(item)).font(.caption)
@@ -55,6 +53,7 @@ struct ImportRunningRow: View {
 
 struct ImportFinishedRow: View {
     var item: ImportSnapshot
+    var onSignInAgain: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -68,10 +67,19 @@ struct ImportFinishedRow: View {
             }
             Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
             Text(ImportProgressText.summaryLine(item)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            if CloudImportText.needsSignIn(item) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(tr(vi: "Cần đăng nhập lại để các ảnh còn chờ được backup. ", en: "Sign in again so the photos still waiting can be backed up. ")
+                         + (item.account != nil ? CloudImportText.wrongAccountNotice(expected: item.account) : ""))
+                        .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
+                }
+            }
             if let hint = CloudImportText.emptyGoogleHint(item) {
                 Text(hint).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: CloudImportText.needsSignIn(item) ? .contain : .combine)
     }
 }

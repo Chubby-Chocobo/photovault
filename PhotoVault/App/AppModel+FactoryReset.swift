@@ -16,8 +16,12 @@ extension AppModel {
         await env.coordinator.pauseAll()
         do {
             try await env.auth.signOut()
-            let imports = (try? await env.store.read { db in try SourceRepository.fetchAll(db) }) ?? []
-            let failed = env.cloud.deleteTokens(accounts: CloudImportKeychain.accountsToDelete(imports: imports))
+            // Found in the Keychain itself: a grant must go even when its database row is missing or unreadable.
+            var accounts = [CloudTokenAccount.dropbox]
+            do { accounts = try env.cloud.storedTokenAccounts() } catch {
+                env.log.log(.error, category: "reset", "cloud tokens could not be listed: \(type(of: error))")
+            }
+            let failed = env.cloud.deleteTokens(accounts: accounts)
             if failed > 0 { env.log.log(.error, category: "reset", "\(failed) cloud tokens could not be deleted") }
             try FactoryReset.request(env.layout)
         } catch {

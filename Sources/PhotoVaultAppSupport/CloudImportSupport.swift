@@ -39,21 +39,36 @@ public enum CloudImportText {
             en: "No photos could be read. Import again and select the photos inside the folder (⌘A selects all), not just the folder.")
     }
 
+    /// A cloud import the provider no longer lets in: an open one is held, a finished one waits for its files.
     public static func needsSignIn(_ item: ImportSnapshot) -> Bool {
-        (item.kind == .googleDrive || item.kind == .dropbox) && item.status == .offline && item.statusReason == "signInRequired"
+        (item.kind == .googleDrive || item.kind == .dropbox) && item.statusReason == "signInRequired"
+    }
+
+    /// Shown when the owner signed in to another account than the import reads from.
+    public static func wrongAccountNotice(expected: String?) -> String {
+        let email = expected ?? tr(vi: "đã dùng trước đó", en: "used before")
+        return tr(vi: "Hãy đăng nhập đúng tài khoản \(email)", en: "Sign in with the account \(email)")
+    }
+
+    /// The ids of a new pick added to the ones the import already reads, in order and without repeats.
+    public static func mergedPicks(existing: [String], picked: [String]) -> [String] {
+        var seen = Set<String>()
+        return (existing + picked).filter { seen.insert($0).inserted }
+    }
+
+    /// Case-insensitive; an import with no recorded account accepts any.
+    public static func isSameAccount(expected: String?, signedIn: String?) -> Bool {
+        guard let expected = expected?.trimmingCharacters(in: .whitespaces), !expected.isEmpty else { return true }
+        guard let signedIn = signedIn?.trimmingCharacters(in: .whitespaces), !signedIn.isEmpty else { return false }
+        return expected.caseInsensitiveCompare(signedIn) == .orderedSame
     }
 }
 
 /// Keychain items that belong to cloud imports and the Dropbox account.
 public enum CloudImportKeychain {
-    public static let dropboxAccount = CloudTokenAccount.dropbox
-
-    public static func importAccount(_ id: SourceID) -> String { CloudTokenAccount.importGrant(id) }
-
-    /// Every item Factory Reset removes: one grant per cloud import and the Dropbox account token.
-    public static func accountsToDelete(imports: [SourceRecord]) -> [String] {
-        imports.filter { $0.kind == .googleDrive || $0.kind == .dropbox }.map { importAccount($0.id) } + [dropboxAccount]
-    }
+    /// Every item Factory Reset removes, found by listing the Keychain, so a grant whose import row is
+    /// missing or unreadable is removed too.
+    public static func accountsToDelete(stored: [String]) -> [String] { stored.filter(CloudTokenAccount.isCloudItem) }
 
     /// Imports to register at launch: Mac folders as stored, cloud imports only while their grant exists.
     public static func registrable(_ rows: [SourceRecord], hasGrant: (SourceID) -> Bool) -> [SourceRecord] {

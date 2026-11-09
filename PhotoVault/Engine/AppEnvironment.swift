@@ -164,7 +164,8 @@ struct AppEnvironment: Sendable {
         let cloud = CloudImportServices(
             googleConfig: OAuthConfig(clientID: clientID, clientSecret: clientSecret.isEmpty ? nil : clientSecret),
             oauth: oauth, transport: transport, keychain: SystemKeychainStore(), dropboxAppKey: dropboxAppKey,
-            scratchDirectory: layout.staging.appendingPathComponent("cloud-import", isDirectory: true))
+            scratchDirectory: layout.staging.appendingPathComponent("cloud-import", isDirectory: true),
+            stateRoot: layout.root.appendingPathComponent("cloud-imports", isDirectory: true))
         let folderSources = Self.openImportSources(store: store, cloud: cloud, log: log)
 
         let system = SystemMonitor()

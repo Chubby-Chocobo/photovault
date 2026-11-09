@@ -113,6 +113,8 @@ struct DropboxFolderSheet: View {
                         if failure == .signInRequired {
                             guard await model.signInDropboxAgain() else { return }
                             browser.client = model.dropboxBrowserClient()
+                            // The account may be another one; the import row shows this address.
+                            browser.email = try? await browser.client?.currentAccountEmail()
                         }
                         await browser.load()
                     }

@@ -10,12 +10,6 @@ import Testing
         return DropboxTokenAuthorizer(auth: auth, keychain: keychain, keychainAccount: account, clock: clock)
     }
 
-    @Test func keysAreScopedPerImport() {
-        let id = SourceID.folder()
-        #expect(DropboxTokenAuthorizer.importTokenKey(id) == "import-\(id.rawValue)")
-        #expect(DropboxTokenAuthorizer.accountTokenKey == "dropbox-account")
-    }
-
     @Test func refreshesFromTheStoredTokenAndCachesUntilExpiry() async throws {
         let keychain = MemoryKeychain()
         try keychain.write(Data("RT".utf8), account: "import-a")
@@ -32,7 +26,6 @@ import Testing
     @Test func missingTokenMeansAccessRevoked() async throws {
         let authorizer = make(MemoryKeychain(), account: "import-a", transport: StubTransport { _ in StubResponse(status: 500) })
         await #expect(throws: SourceError.accessRevoked) { try await authorizer.accessToken(forceRefresh: false) }
-        #expect(await authorizer.hasStoredToken() == false)
     }
 
     @Test func storeKeepsRefreshTokenUnderItsAccountOnly() async throws {
@@ -44,7 +37,5 @@ import Testing
         #expect(try keychain.read(account: "import-a") == Data("RT".utf8))
         #expect(try keychain.read(account: "import-b") == nil)
         #expect(try await authorizer.accessToken(forceRefresh: false) == "AT")
-        try await authorizer.forget()
-        #expect(try keychain.read(account: "import-a") == nil)
     }
 }

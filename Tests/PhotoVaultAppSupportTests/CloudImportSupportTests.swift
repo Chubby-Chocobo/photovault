@@ -51,19 +51,34 @@ import Testing
         #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .localFolder, status: .completed)) == nil)
     }
 
-    @Test func signInRequiredOnlyForOfflineCloudImports() {
+    @Test func signInRequiredForCloudImportsHeldOrFinished() {
         #expect(CloudImportText.needsSignIn(snapshot(kind: .dropbox, status: .offline, reason: "signInRequired")))
         #expect(CloudImportText.needsSignIn(snapshot(kind: .googleDrive, status: .offline, reason: "signInRequired")))
+        #expect(CloudImportText.needsSignIn(snapshot(kind: .googleDrive, status: .completed, reason: "signInRequired")))
         #expect(!CloudImportText.needsSignIn(snapshot(kind: .dropbox, status: .offline, reason: "unavailable")))
+        #expect(!CloudImportText.needsSignIn(snapshot(kind: .dropbox, status: .completed)))
         #expect(!CloudImportText.needsSignIn(snapshot(kind: .localFolder, status: .offline, reason: "signInRequired")))
-        #expect(!CloudImportText.needsSignIn(snapshot(kind: .dropbox, status: .importing, reason: "signInRequired")))
     }
 
-    @Test func keychainCleanupCoversCloudGrantsAndDropboxAccount() {
-        let drive = record(.googleDrive), box = record(.dropbox), folder = record(.localFolder, bookmark: Data([1]))
-        let accounts = CloudImportKeychain.accountsToDelete(imports: [drive, box, folder])
-        #expect(accounts == ["import-\(drive.id.rawValue)", "import-\(box.id.rawValue)", "dropbox-account"])
-        #expect(CloudImportKeychain.accountsToDelete(imports: []) == ["dropbox-account"])
+    @Test func keychainCleanupTakesEveryCloudItemIndependentOfDatabaseRows() {
+        let stored = ["refresh-token", "import-folder-1", "dropbox-account", "import-folder-2", "other"]
+        #expect(CloudImportKeychain.accountsToDelete(stored: stored) == ["import-folder-1", "dropbox-account", "import-folder-2"])
+        #expect(CloudImportKeychain.accountsToDelete(stored: []).isEmpty)
+    }
+
+    @Test func mergingPicksKeepsOrderAndDropsRepeats() {
+        #expect(CloudImportText.mergedPicks(existing: ["a", "b"], picked: ["b", "c", "a", "d"]) == ["a", "b", "c", "d"])
+        #expect(CloudImportText.mergedPicks(existing: [], picked: ["x"]) == ["x"])
+        #expect(CloudImportText.mergedPicks(existing: ["x"], picked: []) == ["x"])
+    }
+
+    @Test func accountComparisonIgnoresCase() {
+        #expect(CloudImportText.isSameAccount(expected: "Me@Example.com", signedIn: "me@example.COM"))
+        #expect(!CloudImportText.isSameAccount(expected: "me@example.com", signedIn: "you@example.com"))
+        #expect(!CloudImportText.isSameAccount(expected: "me@example.com", signedIn: nil))
+        #expect(CloudImportText.isSameAccount(expected: nil, signedIn: "any@example.com"))
+        vi { #expect(CloudImportText.wrongAccountNotice(expected: "me@example.com") == "Hãy đăng nhập đúng tài khoản me@example.com") }
+        en { #expect(CloudImportText.wrongAccountNotice(expected: "me@example.com") == "Sign in with the account me@example.com") }
     }
 
     @Test func registrationKeepsCloudRowsOnlyWithGrant() {
