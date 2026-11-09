@@ -200,3 +200,37 @@ import Testing
         #expect(SidecarBuilder.buildXMP(input()) == SidecarBuilder.buildXMP(other))
     }
 }
+
+@Suite struct SidecarSourceBlockTests {
+    func input(source: SidecarSource? = nil) -> SidecarInput {
+        var asset = PolicyFixtures.asset("l:ABC")
+        asset.cloudId = "cloud-1"
+        return SidecarInput(asset: asset, albumTitles: [], place: nil, deviceDisplayName: nil, resources: [],
+                            archiveTimeZone: PolicyFixtures.vietnam, source: source)
+    }
+
+    @Test func photosSidecarHasNoSourceBlock() {
+        let text = String(decoding: SidecarBuilder.buildJSON(input()).data, as: UTF8.self)
+        #expect(!text.contains("\"source\""))
+        // Frozen bytes: adding the source feature must not change what Photos assets write.
+        #expect(SidecarBuilder.buildJSON(input()).sha256 == "3fbd684903d20b48508886b87ca6c984df55f8d240b4504d86c8f9d014398bc4")
+    }
+
+    @Test func sourceBlockIsTheOnlyAddition() throws {
+        let plain = SidecarBuilder.buildJSON(input())
+        let source = SidecarSource(kind: "localFolder", name: "Trip", path: "2024/IMG_1.HEIC", dateSource: .fileDate)
+        let withSource = SidecarBuilder.buildJSON(input(source: source))
+        var object = try #require(JSONSerialization.jsonObject(with: withSource.data) as? [String: Any])
+        let block = try #require(object.removeValue(forKey: "source") as? [String: String])
+        #expect(block == ["kind": "localFolder", "name": "Trip", "path": "2024/IMG_1.HEIC", "dateSource": "fileDate"])
+        let plainObject = try #require(JSONSerialization.jsonObject(with: plain.data) as? [String: Any])
+        #expect(NSDictionary(dictionary: object) == NSDictionary(dictionary: plainObject))
+        #expect(plain != withSource)
+    }
+
+    @Test func dateSourceIsOptional() throws {
+        let source = SidecarSource(kind: "localFolder", name: "T", path: "a.jpg", dateSource: nil)
+        let text = String(decoding: SidecarBuilder.buildJSON(input(source: source)).data, as: UTF8.self)
+        #expect(text.contains("\"source\"") && !text.contains("dateSource"))
+    }
+}

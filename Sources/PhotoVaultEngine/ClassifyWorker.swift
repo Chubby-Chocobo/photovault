@@ -79,7 +79,7 @@ actor ClassifyWorker {
     private func loadWork(_ key: AssetKey) async throws -> Work? {
         let snapshot = await env.settingsSnapshot()
         return try await env.store.read { db in
-            guard let asset = try AssetRepository.fetch(db, key: key), asset.categoryProvisional, asset.deletedAt == nil else { return nil }
+            guard let asset = try AssetRepository.fetch(db, key: key), asset.categoryProvisional, asset.deletedAt == nil, asset.sourceId == .photos else { return nil }
             let destinations = try DestinationRepository.fetchAll(db)
             guard Eligibility.needsClassification(asset, destinations: destinations, settings: snapshot.settings, archiveTimeZone: snapshot.timeZone)
             else { return nil }

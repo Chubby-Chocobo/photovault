@@ -61,6 +61,8 @@ struct AppEnvironment: Sendable {
     let backups: DatabaseBackup
     let notificationLedger: NotificationLedgerFile
     let dailyCapFile: DailyCapFile
+    /// Adapters of imports that were still open when the app last ran; registered before recovery.
+    let folderSources: [LocalFolderSource]
 
     static let setupReadmeSection = "README › Google Cloud setup"
 
@@ -157,6 +159,7 @@ struct AppEnvironment: Sendable {
             }
         }
         let registry = DestinationRegistry(live)
+        let folderSources = Self.openFolderSources(store: store, log: log)
 
         let system = SystemMonitor()
         let photos = PhotoKitSource()
@@ -170,7 +173,29 @@ struct AppEnvironment: Sendable {
             coordinator: SyncCoordinator(env: environment), photos: photos, drive: drive, auth: auth, transport: transport,
             googleConfigured: !clientID.isEmpty, fileLog: fileLog, log: log, system: system, disk: disk, backups: backups,
             notificationLedger: NotificationLedgerFile(url: layout.root.appendingPathComponent("notification-ledger.json")),
-            dailyCapFile: capFile)
+            dailyCapFile: capFile, folderSources: folderSources)
+    }
+
+    /// One read-only adapter per import, finished or not. A stale bookmark is refreshed in place.
+    private static func openFolderSources(store: Store, log: AppLogSink) -> [LocalFolderSource] {
+        // Finished imports too: a destination added later still receives their files.
+        let rows = (try? store.read { db in try SourceRepository.withBookmarks(db) }) ?? []
+        return rows.compactMap { row in
+            row.config.bookmark.map { makeFolderSource(id: row.id, bookmark: $0, store: store, log: log) }
+        }
+    }
+
+    static func makeFolderSource(id: SourceID, bookmark: Data, store: Store, log: AppLogSink) -> LocalFolderSource {
+        let root = SecurityScopedBookmarkRoot(bookmark: bookmark, readOnly: true) { fresh in
+            Task {
+                do {
+                    try await store.write { db in try SourceRepository.setConfig(db, id: id, SourceConfig(bookmark: fresh)) }
+                } catch {
+                    log.log(.error, category: "source", "could not persist refreshed bookmark for \(id)")
+                }
+            }
+        }
+        return LocalFolderSource(id: id, root: root, metadata: ImageIOMetadataReader())
     }
 }
 

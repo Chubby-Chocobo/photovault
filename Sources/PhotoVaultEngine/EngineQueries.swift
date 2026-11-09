@@ -139,6 +139,7 @@ enum EngineQueries {
               AND (r.next_export_attempt_at IS NULL OR r.next_export_attempt_at <= :now)
               AND j.state = 'pending' AND j.target_gen <= r.content_gen
               AND d.status = 'active' AND d.recovery_required = 0
+              AND NOT EXISTS (SELECT 1 FROM source s WHERE s.id = a.source_id AND s.status = 'offline')
               AND (:backfill = 1 OR j.origin IN ('incremental', 'refresh'))
             GROUP BY r.asset_key, r.res_type
             ORDER BY prio, a.creation_date DESC, r.asset_key, r.res_type
@@ -213,5 +214,19 @@ enum EngineQueries {
 
     static func uploadedBytes(_ db: Database) throws -> Int64 {
         try SnapshotCounterRepository.uploadedBytes(db)
+    }
+}
+
+extension EngineQueries {
+    /// Files of an import that reached a destination and all that will or did (sidecars and skipped
+    /// or cancelled jobs are not files the owner is waiting for).
+    static func importUploadProgress(_ db: Database, sourceId: SourceID) throws -> (done: Int, total: Int) {
+        let row = try Row.fetchOne(db, sql: """
+            SELECT COALESCE(SUM(j.state = 'done'), 0) AS done, COUNT(*) AS total
+            FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
+            WHERE a.source_id = ? AND j.res_type < 1000
+              AND j.state IN ('pending', 'uploading', 'deferred', 'missingRemote', 'done')
+            """, arguments: [sourceId.rawValue])
+        return (row?["done"] ?? 0, row?["total"] ?? 0)
     }
 }

@@ -38,6 +38,23 @@ public struct SidecarExtendedMetadata: Hashable, Sendable {
     }
 }
 
+/// Where an imported asset came from. Present only for assets that do not come from Photos.
+public struct SidecarSource: Hashable, Sendable {
+    public var kind: String
+    /// Name of the import (the folder's name).
+    public var name: String
+    /// Path of the primary file inside the import.
+    public var path: String
+    public var dateSource: DateSource?
+
+    public init(kind: String, name: String, path: String, dateSource: DateSource? = nil) {
+        self.kind = kind
+        self.name = name
+        self.path = path
+        self.dateSource = dateSource
+    }
+}
+
 /// Everything a sidecar depends on. The same input always yields the same bytes.
 public struct SidecarInput: Sendable {
     public static let currentSchemaVersion = 1
@@ -53,11 +70,13 @@ public struct SidecarInput: Sendable {
     /// nil when the SDK has no extended metadata; JSON then says `"extendedMetadata":"unavailable"`.
     public var extendedMetadata: SidecarExtendedMetadata?
     public var schemaVersion: Int
+    /// nil for Photos assets, whose sidecars carry no `source` block.
+    public var source: SidecarSource?
 
     public init(
         asset: AssetRecord, albumTitles: [String], place: GeoPlace?, deviceDisplayName: String?,
         resources: [SidecarResource], archiveTimeZone: TimeZone, extendedMetadata: SidecarExtendedMetadata? = nil,
-        schemaVersion: Int = SidecarInput.currentSchemaVersion
+        schemaVersion: Int = SidecarInput.currentSchemaVersion, source: SidecarSource? = nil
     ) {
         self.asset = asset
         self.albumTitles = albumTitles
@@ -67,6 +86,7 @@ public struct SidecarInput: Sendable {
         self.archiveTimeZone = archiveTimeZone
         self.extendedMetadata = extendedMetadata
         self.schemaVersion = schemaVersion
+        self.source = source
     }
 }
 

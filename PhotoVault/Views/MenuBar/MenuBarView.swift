@@ -57,6 +57,7 @@ private struct RunningContent: View {
             if model.photosAuthorization != .authorized && model.photosAuthorization != .notDetermined { PhotosDeniedCard() }
             if let snapshot = model.snapshot {
                 BackfillSection(snapshot: snapshot)
+                ImportsCard()
                 DestinationsSection(snapshot: snapshot)
                 CountersSection(snapshot: snapshot)
             }

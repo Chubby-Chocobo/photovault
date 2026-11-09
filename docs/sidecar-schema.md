@@ -4,7 +4,7 @@ Sidecars are the `<stem>.json` and `<stem>.xmp` files written next to each backe
 
 Checked against the code on 2026-11-09. The examples below were produced by running `SidecarBuilder.buildJSON` and `buildXMP` on the input described in [Examples](#examples).
 
-**Engine wiring (as of this check):** `SidecarFactory.build` in `Sources/PhotoVaultEngine/SidecarPlanner.swift` builds the input from the database and calls `buildJSON` or `buildXMP`. It passes no extended metadata, so the JSON carries `"extendedMetadata": "unavailable"`. `SidecarPlanner` writes the first sidecar only after every original job of the asset at that destination has finished (`done` or `skipped`), as spec FR-93 requires. The engine is still changing, so re-check this line when Phase 09 lands.
+**Engine wiring (as of this check):** `SidecarFactory.build` in `Sources/PhotoVaultEngine/SidecarPlanner.swift` builds the input from the database and calls `buildJSON` or `buildXMP`. For an asset imported from a folder it also passes the [`source`](#source) block. It passes no extended metadata, so the JSON carries `"extendedMetadata": "unavailable"`. `SidecarPlanner` writes the first sidecar only after every original job of the asset at that destination has finished (`done` or `skipped`), as spec FR-93 requires. The engine is still changing, so re-check this line when Phase 09 lands.
 
 ## Files
 
@@ -26,8 +26,8 @@ Types: `string`, `number` (integer or fixed-decimal), `bool`, `array`, `object`.
 | Key | Type | When | Source | Format |
 |---|---|---|---|---|
 | `schemaVersion` | number | always | `SidecarInput.schemaVersion`, `1` | integer |
-| `assetKey` | string | always | `asset.assetKey` | `c:<cloudId>` or `l:<localId>` |
-| `localIdentifier` | string | always | `asset.localId` | PhotoKit local identifier |
+| `assetKey` | string | always | `asset.assetKey` | `c:<cloudId>` or `l:<localId>`; `x:<sha256>` for a file imported from a folder |
+| `localIdentifier` | string | always | `asset.localId` | PhotoKit local identifier; for an imported file `<sourceId>/<relative path of the primary file>` |
 | `cloudIdentifier` | string | `asset.cloudId` is set | `asset.cloudId` | PhotoKit cloud identifier |
 | `creationDate` | string | `asset.creationDate` is set | UTC | `yyyy-MM-ddTHH:mm:ss.SSSZ` |
 | `archiveLocalDateTime` | string | `creationDate` is set | archive timezone | `yyyy-MM-ddTHH:mm:ss`, no offset |
@@ -45,6 +45,7 @@ Types: `string`, `number` (integer or fixed-decimal), `bool`, `array`, `object`.
 | `burstIdentifier` | string | `asset.burstIdentifier` is set | `asset.burstIdentifier` | |
 | `location` | object | `asset.location` is set | `asset.location` | `{ "latitude": number, "longitude": number }`, 6 decimals. **Exact coordinates, not rounded.** |
 | `place` | object | `SidecarInput.place` is set | geocode of the asset's cell | see below |
+| `source` | object | the asset was imported from a folder (`SidecarInput.source` is set) | the import | see [`source`](#source); absent for Photos assets |
 | `camera` | object | at least one camera field is set | asset and device name | see below |
 | `albums` | array of string | always (may be empty) | `SidecarInput.albumTitles` | sorted by UTF-8 bytes, duplicates removed |
 | `resources` | array of object | always (may be empty) | `SidecarInput.resources` | see below |
@@ -62,6 +63,28 @@ Types: `string`, `number` (integer or fixed-decimal), `bool`, `array`, `object`.
 | `locality` | string | the geocode has it |
 
 Each key is omitted when nil. The object can be empty if every field is nil.
+
+### `source`
+
+Written only for assets imported from a folder (`ImportIngest`, `SidecarFactory.sourceBlock`). A Photos asset's sidecar has no `source` key, so its bytes did not change when sources were added (the schema stays at version 1 because the key is optional).
+
+| Key | Type | When | Source |
+|---|---|---|---|
+| `kind` | string | always | the source kind, `localFolder` |
+| `name` | string | always | the import's display name (the folder's name) |
+| `path` | string | always | path of the primary file inside the folder, NFC |
+| `dateSource` | string | the primary's import row has it | `exif`, `video` or `fileDate`: which rule gave the creation date |
+
+Example (keys sorted like the rest of the file):
+
+```json
+  "source": {
+    "dateSource": "exif",
+    "kind": "localFolder",
+    "name": "Da Lat trip",
+    "path": "day2/DSC01234.ARW"
+  },
+```
 
 ### `camera`
 

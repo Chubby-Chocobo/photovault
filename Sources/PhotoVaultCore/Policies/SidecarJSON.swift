@@ -140,6 +140,7 @@ extension SidecarBuilder {
         }
         if let place = input.place { root["place"] = placeJSON(place) }
         if let camera = cameraJSON(asset, deviceName: input.deviceDisplayName) { root["camera"] = camera }
+        if let source = input.source { root["source"] = sourceJSON(source) }
         if let extended = input.extendedMetadata {
             if let caption = extended.caption { root["caption"] = .string(caption) }
             root["keywords"] = .array(extended.keywords.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }.map { .string($0) })
@@ -147,6 +148,12 @@ extension SidecarBuilder {
             root["extendedMetadata"] = .string("unavailable")
         }
         return SidecarFile(data: Data(JSONValue.object(root).render().utf8))
+    }
+
+    private static func sourceJSON(_ source: SidecarSource) -> JSONValue {
+        var fields: [String: JSONValue] = ["kind": .string(source.kind), "name": .string(source.name), "path": .string(source.path)]
+        if let dateSource = source.dateSource { fields["dateSource"] = .string(dateSource.rawValue) }
+        return .object(fields)
     }
 
     private static func placeJSON(_ place: GeoPlace) -> JSONValue {

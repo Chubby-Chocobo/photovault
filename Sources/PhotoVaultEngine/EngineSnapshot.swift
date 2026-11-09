@@ -50,6 +50,51 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var skipped: Int
     public var missingRemote: Int
     public var updatedAt: Date
+    /// One-time imports, newest first (running ones and finished ones).
+    public var imports: [ImportSnapshot] = []
+}
+
+/// Progress of one folder import, for Settings and the menu bar.
+public struct ImportSnapshot: Sendable, Equatable, Identifiable {
+    public var id: SourceID
+    /// The folder's name. Shown in the app only; never written to logs or the activity list.
+    public var displayName: String
+    public var status: SourceStatus
+    public var createdAt: Date
+    public var finishedAt: Date?
+    /// Files found in the folder.
+    public var found: Int
+    /// Files read and decided on (imported, already backed up, skipped, failed or cancelled).
+    public var processed: Int
+    public var imported: Int
+    public var duplicates: Int
+    public var unsupported: Int
+    public var failed: Int
+    /// Upload jobs of this import that finished, and all that will or did upload (every destination).
+    public var filesUploaded: Int
+    public var filesTotal: Int
+
+    public var isFinished: Bool { !status.isOpen }
+
+    public init(
+        id: SourceID, displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
+        processed: Int = 0, imported: Int = 0, duplicates: Int = 0, unsupported: Int = 0, failed: Int = 0,
+        filesUploaded: Int = 0, filesTotal: Int = 0
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.status = status
+        self.createdAt = createdAt
+        self.finishedAt = finishedAt
+        self.found = found
+        self.processed = processed
+        self.imported = imported
+        self.duplicates = duplicates
+        self.unsupported = unsupported
+        self.failed = failed
+        self.filesUploaded = filesUploaded
+        self.filesTotal = filesTotal
+    }
 }
 
 public enum CycleBlock: Sendable, Equatable {

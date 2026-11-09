@@ -13,21 +13,21 @@ public enum AssetRepository {
         let day = asset.creationDate.map { ArchiveDay(date: $0, timeZone: timeZone).description }
         try db.execute(sql: """
         INSERT INTO asset (
-            asset_key, asset_key_hash, local_id, cloud_id, creation_date, creation_day, modification_date,
+            asset_key, asset_key_hash, source_id, local_id, cloud_id, creation_date, creation_day, modification_date,
             media_type, media_subtypes, category, category_reason, category_provisional,
             placement_category, placement_day, name_stem, placed_at, is_hidden, is_favorite,
             burst_identifier, burst_is_pick, location_lat, location_lon, geo_cell, pixel_width, pixel_height,
             duration, camera_make, camera_model, lens_model, has_adjustments, adjustment_hash,
             edit_check_pending, inserted_at, first_seen_at, last_seen_at, deleted_at)
         VALUES (
-            :asset_key, :asset_key_hash, :local_id, :cloud_id, :creation_date, :creation_day, :modification_date,
+            :asset_key, :asset_key_hash, :source_id, :local_id, :cloud_id, :creation_date, :creation_day, :modification_date,
             :media_type, :media_subtypes, :category, :category_reason, :category_provisional,
             :placement_category, :placement_day, :name_stem, :placed_at, :is_hidden, :is_favorite,
             :burst_identifier, :burst_is_pick, :location_lat, :location_lon, :geo_cell, :pixel_width, :pixel_height,
             :duration, :camera_make, :camera_model, :lens_model, :has_adjustments, :adjustment_hash,
             :edit_check_pending, :inserted_at, :first_seen_at, :last_seen_at, :deleted_at)
         ON CONFLICT(asset_key) DO UPDATE SET
-            local_id = excluded.local_id, cloud_id = excluded.cloud_id,
+            source_id = excluded.source_id, local_id = excluded.local_id, cloud_id = excluded.cloud_id,
             creation_date = excluded.creation_date, creation_day = excluded.creation_day,
             modification_date = excluded.modification_date, media_type = excluded.media_type,
             media_subtypes = excluded.media_subtypes, category = excluded.category,
@@ -44,7 +44,7 @@ public enum AssetRepository {
             last_seen_at = excluded.last_seen_at, deleted_at = excluded.deleted_at
         """, arguments: [
             "asset_key": asset.assetKey.rawValue, "asset_key_hash": asset.assetKey.sha256Hex,
-            "local_id": asset.localId, "cloud_id": asset.cloudId, "creation_date": asset.creationDate,
+            "source_id": asset.sourceId.rawValue, "local_id": asset.localId, "cloud_id": asset.cloudId, "creation_date": asset.creationDate,
             "creation_day": day, "modification_date": asset.modificationDate,
             "media_type": asset.mediaType.rawValue, "media_subtypes": Int64(asset.mediaSubtypes.rawValue),
             "category": asset.category?.rawValue, "category_reason": asset.categoryReason?.rawValue,
@@ -206,6 +206,16 @@ public enum AssetRepository {
             insertedAt: row["inserted_at"],
             firstSeenAt: try row.require("first_seen_at", table: table),
             lastSeenAt: try row.require("last_seen_at", table: table),
-            deletedAt: row["deleted_at"])
+            deletedAt: row["deleted_at"],
+            sourceId: try row.parse("source_id", table: table) { (raw: String) in SourceID(rawValue: raw) })
+    }
+
+    /// A live asset that has a resource with this SHA-256 (an exported Photos asset, or an earlier import).
+    public static func liveAsset(_ db: Database, withResourceSHA256 sha256: String) throws -> AssetKey? {
+        let raw: String? = try String.fetchOne(db, sql: """
+        SELECT a.asset_key FROM resource r JOIN asset a ON a.asset_key = r.asset_key
+        WHERE r.sha256 = ? AND a.deleted_at IS NULL LIMIT 1
+        """, arguments: [sha256])
+        return raw.flatMap { AssetKey(rawValue: $0) }
     }
 }

@@ -33,6 +33,7 @@ private struct SettingsTabContent: View {
                 case .content: ContentTab()
                 case .organization: OrganizationTab()
                 case .places: PlacesTab()
+                case .sources: SourcesTab()
                 case .destinations: DestinationsTab()
                 case .advanced: AdvancedTab()
                 }

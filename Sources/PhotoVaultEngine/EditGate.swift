@@ -51,7 +51,7 @@ struct EditGate: Sendable {
     }
 
     private func decide(_ asset: AssetRecord) async throws -> Decision {
-        guard asset.deletedAt == nil, asset.hasAdjustments else { return .clear }
+        guard asset.deletedAt == nil, asset.sourceId == .photos, asset.hasAdjustments else { return .clear }
         let hash: String?
         do {
             hash = try await env.photos.adjustmentDataHash(localId: asset.localId)
