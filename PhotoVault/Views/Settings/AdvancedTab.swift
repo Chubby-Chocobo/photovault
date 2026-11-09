@@ -6,6 +6,7 @@ import SwiftUI
 struct AdvancedTab: View {
     @Environment(AppModel.self) private var model
     @State private var confirmRecovery = false
+    @State private var confirmReset = false
 
     var body: some View {
         SettingsSection(tr(vi: "Tốc độ & điện năng", en: "Speed and power")) {
@@ -76,6 +77,25 @@ struct AdvancedTab: View {
             Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
         } message: {
             Text(tr(vi: "Chỉ chạy khi scan đã hoàn tất. Đích tạm dừng (đang khôi phục) trong lúc đó.", en: "Runs only when the scan has finished. The destination is paused (restoring) in the meantime."))
+        }
+        SettingsSection(tr(vi: "Đặt lại", en: "Reset")) {
+            FormRow(
+                tr(vi: "Đặt lại từ đầu", en: "Start over"),
+                detail: tr(vi: "Xoá mọi dữ liệu của PhotoVault trên Mac này và mở lại phần thiết lập lần đầu. Ảnh đã backup ở đích vẫn giữ nguyên.", en: "Delete all of PhotoVault’s data on this Mac and open first-time setup again. Photos already backed up at your destinations stay.")) {
+                Button(tr(vi: "Đặt lại từ đầu…", en: "Start over…"), role: .destructive) { confirmReset = true }
+                    .disabled(model.factoryResetInProgress)
+            }
+        }
+        .alert(tr(vi: "Đặt lại PhotoVault từ đầu?", en: "Start PhotoVault over?"), isPresented: $confirmReset) {
+            Button(tr(vi: "Đặt lại và mở lại", en: "Reset and reopen"), role: .destructive) {
+                guard !model.factoryResetInProgress else { return }
+                Task { await model.factoryReset() }
+            }
+            Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(tr(
+                vi: "PhotoVault sẽ đăng xuất Google, xoá cơ sở dữ liệu, file tạm, bản sao lưu cơ sở dữ liệu và log trên Mac này, rồi tự mở lại phần thiết lập lần đầu. Ngôn ngữ giao diện được giữ.\n\nKhông có gì ở Google Drive hay NAS bị xoá. Hãy tự chuyển thư mục backup cũ vào Thùng rác trước khi thiết lập lại; nếu không, PhotoVault sẽ đề nghị dùng lại nó.",
+                en: "PhotoVault will sign out of Google, delete its database, temporary files, database snapshots and log on this Mac, then reopen first-time setup. The interface language is kept.\n\nNothing on Google Drive or your NAS is deleted. Move the old backup folder to the Trash yourself before setting up again; otherwise PhotoVault offers to reuse it."))
         }
     }
 
