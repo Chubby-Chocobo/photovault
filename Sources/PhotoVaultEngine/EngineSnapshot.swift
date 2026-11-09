@@ -50,6 +50,31 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var skipped: Int
     public var missingRemote: Int
     public var updatedAt: Date
+    /// One-time imports, newest first (running ones and finished ones).
+    public var imports: [ImportSnapshot] = []
+}
+
+/// Progress of one folder import, for Settings and the menu bar.
+public struct ImportSnapshot: Sendable, Equatable, Identifiable {
+    public var id: SourceID
+    /// The folder's name. Shown in the app only; never written to logs or the activity list.
+    public var displayName: String
+    public var status: SourceStatus
+    public var createdAt: Date
+    public var finishedAt: Date?
+    /// Files found in the folder.
+    public var found: Int
+    /// Files read and decided on (imported, already backed up, skipped, failed or cancelled).
+    public var processed: Int
+    public var imported: Int
+    public var duplicates: Int
+    public var unsupported: Int
+    public var failed: Int
+    /// Upload jobs of this import that finished, and all that will or did upload (every destination).
+    public var filesUploaded: Int
+    public var filesTotal: Int
+
+    public var isFinished: Bool { !status.isOpen }
 }
 
 public enum CycleBlock: Sendable, Equatable {

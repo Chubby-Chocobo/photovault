@@ -11,7 +11,10 @@ extension ExportWorker {
         let locator = ResourceLocator(
             sourceId: asset.sourceId, localId: asset.localId, type: started.resource.type,
             originalFilename: started.resource.originalFilename)
-        return try await content.exportResource(locator, to: url, control: started.permit.control)
+        let file = try await content.exportResource(locator, to: url, control: started.permit.control)
+        // An imported asset is named by the hash of its primary file: other bytes mean the file changed since.
+        if asset.assetKey.isContent, started.isPrimary, file.sha256 != asset.assetKey.identifier { throw SourceError.fileChanged }
+        return file
     }
 
     /// A folder that cannot be read holds only its own job: the source row goes `offline` (its assets

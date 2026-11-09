@@ -1,7 +1,7 @@
 ---
 phase: 05
 title: "Engine: folder import job"
-status: pending
+status: completed
 priority: P1
 size: L
 human_effort: 2-4h

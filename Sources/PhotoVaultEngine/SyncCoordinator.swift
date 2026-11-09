@@ -25,6 +25,8 @@ public actor SyncCoordinator {
     let exporter: ExportWorker
     let uploader: UploadRunner
     let recovery: StartupRecovery
+    /// Job kinds created beside the originals (sidecars); used by in-transaction steps of owner commands.
+    let planningExtensions: [any JobPlanningExtension]
 
     /// Cycle and owner commands take turns on this lane (NFR-01).
     let lane = ExclusiveLane()
@@ -68,7 +70,8 @@ public actor SyncCoordinator {
         organization = services
         self.hardening = hardening
         self.reconciler = reconciler ?? hardening.reconciler
-        self.stages = stages + services.stages + hardening.stages
+        self.stages = stages + services.stages + hardening.stages + [ImportStage(env: env, extensions: extensions)]
+        self.planningExtensions = extensions
         self.staging = staging
         resourceGuard = guardActor
         baseline = Baseline(env: env)
@@ -216,7 +219,7 @@ public actor SyncCoordinator {
             overall: overall, scanState: raw.scan, destinations: raw.destinations, backfillDoneAssets: raw.backfill.done,
             backfillTotalAssets: raw.backfill.total, bytesUploaded: raw.bytes, etaSeconds: eta,
             pending: raw.totals.pending + raw.totals.uploading, deferred: raw.totals.deferred, skipped: raw.totals.skipped,
-            missingRemote: raw.totals.missingRemote, updatedAt: now)
+            missingRemote: raw.totals.missingRemote, updatedAt: now, imports: raw.imports)
     }
 }
 

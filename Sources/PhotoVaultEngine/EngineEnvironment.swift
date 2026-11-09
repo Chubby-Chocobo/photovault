@@ -27,6 +27,8 @@ public enum CrashPoint: String, CaseIterable, Sendable {
     case afterUploadBeforeCommit
     case afterCommitBeforeRelease
     case afterExportBeforeCommit
+    case afterImportInspectBeforeCommit
+    case afterImportGroupCommit
 }
 
 /// Test seam: `reach` may throw an `EngineAbort` error to emulate the process dying at `point`.
@@ -49,6 +51,12 @@ public struct EngineTuning: Sendable {
     public var stagingIdleExpiry: TimeInterval = 2 * 3600
     public var transientRetries = ErrorClassifier.transientRetries
     public var maxCycleIterations = 100_000
+    /// Files of a folder import recorded per transaction while listing.
+    public var importListBatch = 500
+    /// Whole file groups of a folder import read and ingested per stage run.
+    public var importBatchGroups = 100
+    /// A stage run stops reading after this many bytes (it always finishes the group it is in).
+    public var importBatchBytes: Int64 = 2 * GlobalSettings.GiB
     /// Pause between the exports recovery makes to tell look-alike files apart (FR-51).
     public var recoveryExportInterval: TimeInterval = 2
     /// At most this many look-alike candidates are exported per recovery run.

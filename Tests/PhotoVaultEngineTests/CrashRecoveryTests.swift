@@ -49,7 +49,7 @@ import Testing
         #expect(twins.values.allSatisfy { $0.count == 1 }, "no folder was created twice")
     }
 
-    @Test(arguments: Target.allCases, CrashPoint.allCases.filter { $0 != .afterExportBeforeCommit })
+    @Test(arguments: Target.allCases, CrashPoint.allCases.filter { ![.afterExportBeforeCommit, .afterImportInspectBeforeCommit, .afterImportGroupCommit].contains($0) })
     func crashAtEveryUploadStep(_ target: Target, _ point: CrashPoint) async throws {
         let (h, destination) = try await prepare(target)
         h.injector.arm(point)
