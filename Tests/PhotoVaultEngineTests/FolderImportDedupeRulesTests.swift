@@ -96,3 +96,28 @@ import Testing
         #expect(await h.drive.files.count == 2)
     }
 }
+
+@Suite struct CancelledImportKeepsExportingTests {
+    @Test func assetsKeptAfterACancelUploadToADestinationAddedLater() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        try await h.baseline(.googleDrive)
+        h.tuning.importBatchGroups = 1
+        try await h.restart()
+        let folder = try ImportFolder()
+        for index in 0..<2 { try folder.add("p\(index).jpg", metadata: ImportFolder.photo(at: h.clock.now.addingTimeInterval(-Double(3 + index) * 86_400))) }
+        let hits = HitCounter()
+        h.injector.onReach { point in
+            if point == .afterImportGroupCommit, hits.next() == 2 { throw SimulatedCrash(point: point.rawValue) }
+        }
+        let id = try await folder.startAndRun(h)
+        try await h.coordinator.cancelImport(id)
+        h.injector.onReach(nil)
+        #expect(await h.drive.files.count == 1)
+        try h.addNAS(scope: .full)
+        try await h.coordinator.destinationAdded(h.nasId)
+        for _ in 0..<4 { await h.run(); h.clock.advance(by: 3600) }
+        #expect(await h.nas.files.count == 1, "the file that was kept reaches the new destination")
+        #expect(try h.jobs(.pending).isEmpty)
+    }
+}

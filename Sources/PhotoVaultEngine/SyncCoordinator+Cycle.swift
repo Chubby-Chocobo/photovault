@@ -229,9 +229,9 @@ extension SyncCoordinator {
                     JOIN destination d ON d.id = j.destination_id
                     LEFT JOIN resource r ON r.asset_key = j.asset_key AND r.res_type = j.res_type
                     WHERE j.state IN ('pending', 'uploading') AND d.status = 'active'
-                      AND (j.last_error IS NOT NULL OR r.last_error IS NOT NULL)
-                      AND NOT EXISTS (SELECT 1 FROM asset a JOIN source s ON s.id = a.source_id
-                                      WHERE a.asset_key = j.asset_key AND s.status = 'offline')
+                      AND (j.last_error IS NOT NULL OR (r.last_error IS NOT NULL AND NOT EXISTS (
+                            SELECT 1 FROM asset a JOIN source s ON s.id = a.source_id
+                            WHERE a.asset_key = j.asset_key AND s.status = 'offline')))
                     """) ?? 0
                 guard failing == 0 else { return }
             }

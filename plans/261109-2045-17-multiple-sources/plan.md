@@ -193,7 +193,7 @@ Every phase is its own commit range on the feature branch, so reverting it is sa
 - Review later: yes
 
 ### Every folder source stays readable; a finished import never waits for its folder
-- Chosen: at launch the app registers an adapter for every folder source that has a bookmark, finished or not, so a destination added later receives imported files like Photos assets. When the import is finished or cancelled and the folder is gone or unreachable, the export skips the job as `resourceMissing` instead of retrying. While the import is open the job is held and the folder `offline`. Held exports record no error and do not count as a failing sync. A deferred job does not block completion; the sweeper retries it and the source stays readable.
+- Chosen: at launch the app registers an adapter for every folder source that has a bookmark, finished or not, so a destination added later receives imported files like Photos assets. A cancelled import's adapter stays registered, and its kept assets remain export candidates (only an `offline` source is excluded). When the import is finished or cancelled, a file that is gone while the folder answers is skipped as `resourceMissing`; so is a job whose source row is gone or has no bookmark. If the folder itself is away (an unplugged disk), the export waits an hour at a time with no recorded error and resumes by itself when the folder is back. While the import is open the job is held and the folder `offline`. Held exports record no error and do not count as a failing sync; a real upload error (`upload_job.last_error`) of an offline import's asset still does. A deferred job does not block completion; the sweeper retries it and the source stays readable.
 - Alternatives: read only open imports (reopened jobs retry forever); let a closed offline source keep holding
 - Why: owner decision (2026-11-09). A skipped job is visible and retryable by the owner; an endless retry made "last successful sync" stop and raised a false "sync stalled".
 - Review later: yes
@@ -214,7 +214,7 @@ Every phase is its own commit range on the feature branch, so reverting it is sa
 - Names are stored NFC (keys, display); a volume that spells a name differently is found by looking the name up in its directory when the direct open fails.
 - iCloud Drive placeholders (`.name.icloud`) are listed and counted as skipped; other hidden files are still left out.
 - An import folder that is, holds or sits inside a local destination root or the app's data folder is refused (`ImportFolderGuard`).
-- Known limits, left as they are: `cancelImport` runs in one transaction; `listFiles` does not yield to owner commands on a huge tree; a second notification sound can play when a job finishes while the app is in front.
+- Known limits, left as they are: `cancelImport` runs in one transaction; `listFiles` does not yield to owner commands on a huge tree; a second notification sound can play when a job finishes while the app is in front; a dataless iCloud file inside a picked folder can block the source's serial read queue until it downloads.
 
 ## Risks (top)
 

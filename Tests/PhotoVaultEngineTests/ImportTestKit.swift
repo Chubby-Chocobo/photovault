@@ -53,8 +53,8 @@ final class ImportFolder: @unchecked Sendable {
 extension Harness {
     /// Starts an import of `folder` and lets the cycle run until it has nothing left to do.
     @discardableResult
-    func startImport(_ folder: ImportFolder, settle rounds: Int = 6) async throws -> SourceID {
-        let id = try await coordinator.startFolderImport(source: folder.source(), displayName: "Trip", bookmark: nil)
+    func startImport(_ folder: ImportFolder, settle rounds: Int = 6, bookmark: Data? = nil) async throws -> SourceID {
+        let id = try await coordinator.startFolderImport(source: folder.source(), displayName: "Trip", bookmark: bookmark)
         await settle(rounds: rounds)
         return id
     }

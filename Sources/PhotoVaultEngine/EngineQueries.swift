@@ -139,7 +139,7 @@ enum EngineQueries {
               AND (r.next_export_attempt_at IS NULL OR r.next_export_attempt_at <= :now)
               AND j.state = 'pending' AND j.target_gen <= r.content_gen
               AND d.status = 'active' AND d.recovery_required = 0
-              AND NOT EXISTS (SELECT 1 FROM source s WHERE s.id = a.source_id AND s.status IN ('offline', 'cancelled'))
+              AND NOT EXISTS (SELECT 1 FROM source s WHERE s.id = a.source_id AND s.status = 'offline')
               AND (:backfill = 1 OR j.origin IN ('incremental', 'refresh'))
             GROUP BY r.asset_key, r.res_type
             ORDER BY prio, a.creation_date DESC, r.asset_key, r.res_type

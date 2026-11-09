@@ -54,13 +54,13 @@ import Testing
         #expect(await h.nas.files.count == 1, "the new destination receives the imported file")
     }
 
-    @Test func aFinishedImportWhoseFolderIsGoneSkipsItsJobsAndSyncStillCounts() async throws {
+    @Test func aFinishedImportWhoseFileIsGoneWhileTheFolderAnswersSkipsItsJob() async throws {
         let h = try await harness()
         let folder = try ImportFolder()
-        try folder.add("a.jpg", metadata: ImportFolder.photo(at: when(h)))
-        let id = try await h.startImport(folder)
+        let file = try folder.add("a.jpg", metadata: ImportFolder.photo(at: when(h)))
+        let id = try await h.startImport(folder, bookmark: Data([1]))
         try h.addNAS(scope: .full)
-        try FileManager.default.removeItem(at: folder.url)
+        try FileManager.default.removeItem(at: file)
         try await h.reopenSources([folder])
         try await h.coordinator.destinationAdded(h.nasId)
         for _ in 0..<4 { await h.run(); h.clock.advance(by: 3600) }
@@ -68,6 +68,37 @@ import Testing
         #expect(skipped.count == 1 && skipped[0].stateReason == .resourceMissing)
         #expect(try h.source(id)?.status == .completed, "a finished job does not reopen")
         #expect(try h.lastSuccess() != nil)
+    }
+
+    @Test func aFinishedImportWhoseFolderIsAwayWaitsForItAndResumesByItself() async throws {
+        let h = try await harness()
+        let folder = try ImportFolder()
+        try folder.add("a.jpg", metadata: ImportFolder.photo(at: when(h)))
+        let id = try await h.startImport(folder, bookmark: Data([1]))
+        try h.addNAS(scope: .full)
+        let away = folder.url.deletingLastPathComponent().appendingPathComponent("Away")
+        try FileManager.default.moveItem(at: folder.url, to: away)
+        try await h.reopenSources([folder])
+        try await h.coordinator.destinationAdded(h.nasId)
+        for _ in 0..<4 { await h.run(); h.clock.advance(by: 3 * 3600) }
+        #expect(try h.jobs(.skipped).isEmpty, "an unplugged disk does not lose the file")
+        #expect(try h.jobs(.pending, destination: h.nasId).count == 1)
+        let errors = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM resource WHERE last_error IS NOT NULL") }
+        #expect(errors == 0)
+        #expect(try h.source(id)?.status == .completed)
+        try FileManager.default.moveItem(at: away, to: folder.url)
+        for _ in 0..<3 { await h.run(); h.clock.advance(by: 3 * 3600) }
+        #expect(await h.nas.files.count == 1)
+        #expect(try h.jobs(.done, destination: h.nasId).count == 1)
+    }
+
+    @Test func aFailingUploadOfAnOfflineImportsAssetStillCountsAgainstSync() async throws {
+        let h = try await harness()
+        let source = FakeContentSource()
+        let key = try await h.seedImported("held", source: source, status: .offline)
+        try h.write { db in try db.execute(sql: "UPDATE upload_job SET last_error = 'upload failed' WHERE asset_key = ?", arguments: [key.rawValue]) }
+        await h.run()
+        #expect(try h.lastSuccess() == nil, "a real upload error is not hidden by the folder being away")
     }
 
     @Test func anImportWhoseAdapterIsNotRegisteredIsSkippedOnceFinished() async throws {

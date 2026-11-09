@@ -20,14 +20,21 @@ extension ExportWorker {
         return file
     }
 
-    /// How a folder error is handled. A folder that is away holds an open import; for an import that has
-    /// finished (or whose row is gone) nobody is waiting for the folder, so the file counts as missing.
-    func classifyFolderFailure(_ error: SourceError, asset: AssetRecord) async throws -> ErrorClass {
+    /// How long an export waits when the folder of a finished import is away (an unplugged disk is
+    /// usually plugged back in; nothing is lost by waiting).
+    static let closedSourceRetry: TimeInterval = 3600
+
+    /// How a folder error is handled. A folder that is away holds an open import (the import comes
+    /// back by itself). For a finished or cancelled import the file is lost only when nothing can
+    /// reopen it (its row is gone or has no bookmark); otherwise the export waits, quietly, for the folder.
+    func classifyFolderFailure(_ error: SourceError, asset: AssetRecord) async throws -> (errorClass: ErrorClass, retryDelay: TimeInterval) {
         let base = ErrorClassifier.classify(error)
-        guard case .destinationLevel = base else { return base }
+        guard case .destinationLevel = base else { return (base, Self.transientRetryDelay) }
         let id = asset.sourceId
-        let status = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.status }
-        return status?.isOpen == true ? base : .permanent(.resourceMissing)
+        let source = try await env.store.read { db in try SourceRepository.fetch(db, id: id) }
+        if source?.status.isOpen == true { return (base, Self.transientRetryDelay) }
+        guard let source, source.config.bookmark != nil else { return (.permanent(.resourceMissing), Self.transientRetryDelay) }
+        return (base, Self.closedSourceRetry)
     }
 
     /// A folder that cannot be read holds only its own job: the source row goes `offline` (its assets

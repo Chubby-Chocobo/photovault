@@ -33,7 +33,7 @@ extension SyncCoordinator {
             let env = env
             let settings = await env.settingsSnapshot()
             let extensions = planningExtensions
-            let closed = try await env.store.write { db -> Bool in
+            _ = try await env.store.write { db -> Bool in
                 guard let source = try SourceRepository.fetch(db, id: id), source.status.isOpen else { return false }
                 try ImportItemRepository.cancelPending(db, sourceId: id)
                 let context = try env.context(db, settings)
@@ -52,7 +52,7 @@ extension SyncCoordinator {
                 try AssetFinalizer.recount(db, days: dirty, context: context)
                 return try ImportCompletion.finish(db, id: id, as: .cancelled, now: context.now)
             }
-            if closed { await env.sources.remove(id) }
+            // The adapter stays: the assets kept by a cancel can still go to a destination added later.
         }
         await publish()
     }
