@@ -46,15 +46,24 @@ jobs:
           fi
       - name: Build package
         run: swift build
-      # Complete RAW files too large for git: listed with checksums in the test manifest, cached
-      # under its hash, so a download only happens when the manifest changes.
+      # Complete RAW files too large for git, listed with checksums in the test manifest. The cache
+      # is saved right after the fetch, so a failing test run does not throw the download away, and
+      # an older corpus is restored when only the expectations changed.
       - name: Restore media corpus
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .media-corpus
           key: media-corpus-${{ hashFiles('Tests/PhotoVaultPhotosTests/Fixtures/MediaCorpus/manifest.json') }}
+          restore-keys: media-corpus-
       - name: Fetch media corpus
         run: python3 -I scripts/fetch-media-corpus.py .media-corpus
+      - name: Save media corpus
+        if: steps.corpus.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .media-corpus
+          key: ${{ steps.corpus.outputs.cache-primary-key }}
       - name: Test package
         env:
           PHOTOVAULT_MEDIA_CORPUS: ${{ github.workspace }}/.media-corpus
