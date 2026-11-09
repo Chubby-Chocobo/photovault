@@ -21,6 +21,8 @@ struct HeaderClassifier {
     }
 
     static let maxParseIncrement = 1 << 20
+    /// Largest prefix held in memory; past it the complete file is read instead.
+    static let defaultMaxBuffered = 32 << 20
 
     private let source: CGImageSource
     private let parseStride: Int
@@ -39,7 +41,7 @@ struct HeaderClassifier {
     ///   - maxBuffered: largest prefix kept in memory.
     ///   - typeHint: the resource's UTI. Without it ImageIO takes a Sony ARW for a plain TIFF and
     ///     finds no properties at all, so every RAW would look like a photo without a camera.
-    init(parseStride: Int = 64 << 10, maxBuffered: Int = 32 << 20, typeHint: String? = nil) {
+    init(parseStride: Int = 64 << 10, maxBuffered: Int = defaultMaxBuffered, typeHint: String? = nil) {
         self.parseStride = max(1, parseStride)
         self.maxBuffered = max(self.parseStride, maxBuffered)
         self.nextParseAt = self.parseStride

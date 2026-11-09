@@ -24,6 +24,22 @@ swift test --scratch-path .build-docs
 - Tests added by the audit fixes are in these suites: `SettingsFormTests`, `DestinationRulesEditorTests`, `SettingsSavableTests`, `JobTransitionsTests`, `DriveQueryTests`, `DriveAPIRequestTests`, `ResumableFlowTests`, `ClassifyPassWalkTests`, `DeletedAssetAndClockTests`, `DirtyQueueSweepTests`, `EditGateTests`, `EngineQueriesApplyTests`, `ExportPassFailureTests`, `IntegrityRootStateTests`, `LastSuccessfulSyncTests`, `PlaceRefreshTests`, `RecoveryTriggerTests`, `ResourceGuardTests`, `SettingsStoreTests`, `UploadResumeParentTests`, `ViewRepairTests`, `LocalResilienceTests`, `ImageIOMetadataReaderTests`, `UTTypeResolverTests`, `PhotosErrorMapperTests`, `StalledRequestGuardTests`, `DatabaseBackupTests`, `PlacementTests`, `DayStatTests`, `SnapshotCounterTests`.
 - An earlier snapshot taken while the Drive fixes were half applied showed 3 loopback OAuth failures; they do not reproduce on the final tree (`OAuthPrimitivesTests` 8 of 8 pass on their own and in the full run).
 - Two timing-sensitive tests were made deterministic: `AuthSessionTests` no longer shares one fake clock between parallel tests, and `TriggerDebouncerTests` polls for the expected fire instead of fixed sleeps.
+- **Real-file camera detection** is covered at two levels:
+  - `RawHeaderFixtureTests` uses the opening bytes of 21 public-domain RAW files kept in git.
+  - `MediaCorpusTests` uses 27 complete files (about 750 MB) that CI fetches by checksum and caches.
+  - `RawCameraFallbackTests` and `HeaderReadTests` add synthetic cases.
+
+  Run locally on 2026-11-09 from a clean build directory. The test count is the same either way, because without the corpus `MediaCorpusTests` is reported as skipped:
+
+  ```text
+  swift test
+  ✔ Test run with 839 tests in 139 suites passed after 19.937 seconds.     (MediaCorpusTests skipped)
+  PHOTOVAULT_MEDIA_CORPUS=.media-corpus swift test
+  ✔ Suite MediaCorpusTests passed after 1.309 seconds.
+  ✔ Test run with 839 tests in 139 suites passed after 20.751 seconds.
+  ```
+
+  Ten deliberate breakages each turn these suites red. They are listed in [the M0-5 spike](./spikes/m0-5-exif-and-header-classification.md).
 - Per-target counts: [codebase-summary.md](./architecture/codebase-summary.md#test-targets).
 
 ## Spec §11 coverage

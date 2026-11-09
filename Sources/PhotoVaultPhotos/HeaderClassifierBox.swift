@@ -10,8 +10,8 @@ final class HeaderClassifierBox: @unchecked Sendable {
 
     private let state: OSAllocatedUnfairLock<State>
 
-    init(typeHint: String?) {
-        state = OSAllocatedUnfairLock(uncheckedState: State(classifier: HeaderClassifier(typeHint: typeHint)))
+    init(typeHint: String?, maxBuffered: Int = HeaderClassifier.defaultMaxBuffered) {
+        state = OSAllocatedUnfairLock(uncheckedState: State(classifier: HeaderClassifier(maxBuffered: maxBuffered, typeHint: typeHint)))
     }
 
     /// Feeds a chunk; returns `true` once the answer is conclusive and the read should stop.

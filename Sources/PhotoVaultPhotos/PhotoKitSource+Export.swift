@@ -51,17 +51,27 @@ extension PhotoKitSource {
             if case .absent(let metadata) = classifier.outcome { return Self.conclusive(metadata) }
             throw PhotosErrorMapper.map(error)
         }
+        var file: ExportedFile?
         if classifier.stoppedEarly {
             // Completed without error after we stopped: the file may be truncated, so do not keep it.
             writer.abort()
+        } else {
+            file = try? writer.finish()
+            if file == nil { writer.abort() }
+        }
+        return Self.headerResult(classifier, completeFile: file, uti: uti)
+    }
+
+    /// The answer of a header read whose stream ended without error. `completeFile` is the whole
+    /// resource when it arrived (nil when the read stopped early).
+    static func headerResult(_ classifier: HeaderClassifierBox, completeFile file: ExportedFile?, uti: String?) -> HeaderResult {
+        if classifier.stoppedEarly {
             switch classifier.outcome {
-            case .present(let metadata), .absent(let metadata): return Self.conclusive(metadata)
+            case .present(let metadata), .absent(let metadata): return conclusive(metadata)
             default: return HeaderResult(metadata: nil, isConclusive: false, completeFile: nil)
             }
         }
         let outcome = classifier.finish()
-        let file = try? writer.finish()
-        if file == nil { writer.abort() }
         if classifier.overflowed, let file {
             // Too large to classify in memory: read the properties from the complete file instead.
             return HeaderResult(metadata: ImageIOMetadataReader.imageMetadata(of: file.url, uti: uti), isConclusive: true, completeFile: file)
