@@ -15,7 +15,7 @@ struct MenuBarView: View {
             case .needsOnboarding:
                 OnboardingPrompt()
             case .running:
-                RunningContent()
+                CappedScrollView(limit: CappedScrollView<EmptyView>.screenLimit) { RunningContent() }
             }
             Divider()
             MenuBarActions()
