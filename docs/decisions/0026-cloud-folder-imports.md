@@ -30,7 +30,7 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 - **Chosen:** list the children of each picked folder recursively under `drive.file`. Google may return nothing for a picked folder under this scope. In that case the import finishes with what was readable. The pre-pick sheet tells the owner to open the folder and select the photos inside (⌘A). An import that finds 0 files says the same.
 - **Unverified:** whether a folder grant reaches its children under `drive.file`. Forum reports say no. The design works either way; the owner's E2E run settles it.
 - **Alternatives:** refuse folder picks; ask for `drive.readonly`.
-- **Skips:** Google Docs, Sheets and other `application/vnd.google-apps.*` files; shortcuts; trashed items; anything with an `appProperties` key starting `pv` (PhotoVault's own uploads). Duplicate names in one folder get distinct relative paths (`name (2).jpg`), in id order.
+- **Skips:** Google Docs, Sheets and other `application/vnd.google-apps.*` files; shortcuts; trashed items; anything with an `appProperties` key starting `pv` (PhotoVault's own uploads). Duplicate names in one folder get distinct relative paths (`name (2).jpg`), in id order the first time. Each import saves which remote file every relative path names in `remote-ids.json`, in its own folder under the app's data folder, and writes it before the listing returns. Reads resolve a path through that map. A path the map does not know triggers one shared new listing, which only adds paths and files that are new: a path never moves to another file. Drive calls pass `supportsAllDrives` and `includeItemsFromAllDrives`, so picks in Shared drives work.
 
 ### Dropbox: Full Dropbox, PKCE, fixed loopback port, in-app folder browser
 
@@ -41,6 +41,7 @@ The owner chose a Google account per import through Google's Picker, not a fixed
   - `token_access_type=offline`.
   - Redirect `http://localhost:53682/oauth2/callback`. Dropbox needs an exact registered URI, so the port is fixed. The listener binds to 127.0.0.1.
   - The account token (`dropbox-account`) is kept only for browsing. Each import keeps its own copy (`import-<sourceId>`), so signing out or switching account does not break finished imports.
+  - Files are read by Dropbox id (`id:…`) and the same `remote-ids.json` map, so Unicode form and letter case of names do not matter. Folder names in relative paths come from the folder entries' own `name`, because Dropbox keeps the case of `path_display` only for its last component.
   - The folder browser is a SwiftUI sheet over `list_folder`, folders only. The owner can also choose the whole Dropbox (root path `""`).
   - Without an App key, the Dropbox item is disabled with a hint.
 - **Alternatives:** the Dropbox Chooser (web JavaScript, needs a hosted page); app-folder access (cannot reach `/Camera Uploads`); moving the shared OAuth pieces into their own module now (more churn, no behaviour change).
@@ -58,26 +59,37 @@ The owner chose a Google account per import through Google's Picker, not a fixed
 - **Why:** keeps `ExportWorker`, the disk guard and crash recovery identical to Mac folders.
 - **Known limit:** each cloud file is downloaded twice. Review if large video imports make it hurt.
 
-### A revoked grant
+### A revoked grant, and a throttled one
 
-- **Chosen:** the adapters throw `SourceError.accessRevoked` on `invalid_grant`, or on a 401 that still fails after one refresh.
+- **Chosen:** the adapters throw `SourceError.accessRevoked` on `invalid_grant` or `invalid_client` from the token endpoint, or on a 401 that still fails after one refresh. Any other refusal of the token endpoint is "unavailable", not "revoked".
   - On an open import, the source goes to `offline` with `statusReason = "signInRequired"`. The app shows "Cần đăng nhập lại" (sign in again) on that import, and the action reuses the start flow. The job holds.
-  - On a closed import, the job is skipped (`resourceMissing`), so it is visible and the owner can retry it.
+  - On a closed import, the exports wait, as for a disk that is away: they retry hourly, record no error and do not count as a failing sync. The import row keeps `statusReason = "signInRequired"` and Settings shows "Đăng nhập lại" on the finished row. This also covers a cloud import whose token is missing at launch (no adapter). A file that is gone while the source answers is still skipped.
+  - Signing in again must be the same account (Google: same email, and the new pick is added to the old one; Dropbox: same email). Another account changes nothing and shows "Hãy đăng nhập đúng tài khoản <email>". A command to the engine then clears the hold, so the import resumes in the next cycle.
   - A network failure is not a revoked grant: an open import holds as `offline` and resumes by itself, as for a disconnected folder (FR-116).
-- **Alternatives:** keep retrying hourly forever.
-- **Why:** waiting cannot fix a revoked grant, and an endless retry raises a false "sync stalled".
+  - A rate limit or a 5xx (Drive 403 `rateLimitExceeded`/`userRateLimitExceeded`, 429, 5xx; Dropbox 429, 5xx) is `SourceError.busy`: the item stays pending, the job is not marked offline and it waits a short cooldown (30 s) before reading again. An export retries later without costing an attempt.
+  - An adapter throws only `SourceError` (or a cancellation). Anything else that still gets out is caught by the engine, which holds that job and goes on with the others, Photos backups included.
+- **Alternatives:** keep retrying hourly forever; skip a closed import's jobs when the grant is revoked (the first version of this decision, reversed because it lost files that a new sign-in would have saved).
+- **Why:** waiting cannot fix a revoked grant, so the open job says so; but a closed import's files are still wanted by a destination added later, so they wait instead of being given up.
 - **Review later:** yes, after the owner tests revocation at the Google and Dropbox account pages.
+
+### Disk space for the scratch copy
+
+- **Chosen:** before a cloud file is downloaded to read its hash, the engine checks the free space of the staging volume against the file's size plus the critical reserve. When it does not fit, the job pauses briefly (like a throttle) and the file stays pending.
+- **Why:** Mac folders are read in place; cloud files are not, and a very large video could fill the disk.
 
 ## Tokens and privacy
 
 - Each cloud import keeps its own refresh token in the Keychain (`import-<sourceId>`). At launch an import with a token is registered again.
-- Factory reset (FR-117) deletes these tokens and the Dropbox account token, after it has tried to revoke them.
+- Factory reset (FR-117) lists the Keychain items of the app's service and deletes every `import-*` item and `dropbox-account`, whether or not a database row names them. It does not revoke them at the provider: every import copy shares the account's Dropbox refresh token, and revoking it would disable all of them.
+- Signing out of the Google backup destination revokes the app's grant for that Google account at Google. Imports from the same account share that revocation: they then wait and show "Đăng nhập lại". Google also allows at most 100 refresh tokens per account for one client, so very many picks or sign-ins can evict the oldest, which then asks to sign in again.
+- The Dropbox redirect uses `localhost` while the listener binds `127.0.0.1` only. A browser that resolves `localhost` to `::1` could reach another program on that port; PKCE still stops that program from using the code. This is a known, accepted risk.
 - Logs and the activity list never carry file names, paths, folder ids or emails. The email and the folder name show only in Settings, the menu bar card and the completion notification.
 
 ## Consequences
 
 - Two new Keychain-held secrets per import, and one for the Dropbox account. Their deletion is part of factory reset.
 - The owner needs two setup steps outside the app: enable the Google Picker API, and register a Dropbox app with the redirect and permissions in the [README](../../README.md#dropbox-setup).
+- Each import keeps a small `remote-ids.json` in the app's data folder (`cloud-imports/<id>/`). Factory reset wipes the data folder with it.
 - A Drive import of a picked folder may hold fewer files than the owner expects. The sheet and the empty-import message say so.
 - No schema change: `source` rows and the sidecar `source` block carry the new kinds as strings.
 

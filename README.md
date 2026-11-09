@@ -87,6 +87,8 @@ Needed only for the Dropbox import. Do this once, in your own Dropbox account.
 
 Without an App key, the Dropbox item in Settings is disabled and shows a hint. The app uses PKCE, so no secret is needed.
 
+Dropbox tokens live in the same Keychain service as the Google token (`com.annh.photovault.google`), under the account names `dropbox-account` and `import-<id>`.
+
 ## Signing
 
 The app needs a stable signature. macOS ties its Photos and folder permissions (TCC) to the signature and the bundle ID `com.annh.photovault`. Each change of signature asks for those permissions again.
@@ -236,14 +238,16 @@ Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or
   - Tip: a picked folder may not give access to the photos inside it. To be sure, open the folder in the Picker and select the photos (⌘A).
   - If the import finds no files, it says so and suggests the same.
 - **Dropbox:** sign in once in the browser, then choose a folder in PhotoVault's folder browser, or the whole Dropbox. Needs the App key ([Dropbox setup](#dropbox-setup)).
-- **Cần đăng nhập lại** (sign in again): Google or Dropbox revoked the access, or refused the token. An open import shows this and waits. Use the sign-in action on that import to continue. A finished import skips its missing files; import the same folder again to pick them up.
+- **Cần đăng nhập lại** (sign in again): Google or Dropbox revoked the access, or the token is missing. An open import shows this and waits; so does a finished import whose files are still needed for a backup. Use the sign-in action on that import to continue. Sign in with the same account the import reads from: another account is refused with a notice and changes nothing. For Google, the new pick is added to the old one.
+- **Throttling:** when Google or Dropbox slows a download down, the import pauses for a short time and tries the same file again. No file is marked as failed for it.
+- **Signing out of the Google backup destination** also revokes the app's access for that Google account, so imports from the same account then wait and show "Cần đăng nhập lại".
 - Read-only: nothing in Drive or Dropbox is changed or deleted.
 
 ## Start over (factory reset)
 
 Settings → **Nâng cao** (Advanced) → **Đặt lại từ đầu…** (Start over…) returns PhotoVault to first-time setup.
 1. Before resetting, move the old backup folder on Drive (and on the NAS, if you use one) to the Trash yourself. The app never deletes backup data. If the old folder is still there and was written by 0.2.0 or later (the current layout), onboarding offers to reuse it; a folder from 0.1.0 is never offered (see [Upgrading from 0.1.0](#upgrading-from-010)).
-2. On confirm, PhotoVault signs out of Google and relaunches. The refresh token is removed from the Keychain, and revoked at Google when Google can be reached. The Dropbox account and the token of each Drive or Dropbox import are removed from the Keychain too.
+2. On confirm, PhotoVault signs out of Google and relaunches. The refresh token is removed from the Keychain, and revoked at Google when Google can be reached. Every Drive or Dropbox token (the Dropbox account and one per import) is found by listing the Keychain and removed, whether or not the import still exists in the database.
 3. Before opening anything, the new process deletes the database, staging files, database snapshots, logs and the notification history.
 4. Two things are kept: the interface language, and `drive-daily-cap.json`. Google counts the 750 GB a day per account, not per database. If you then sign in with a different Google account, it starts from the old account's count for the rest of that 24 hours.
 5. Onboarding then creates a new root and syncs into it. If the reset is cut short, for example by a crash, it finishes at the next launch.

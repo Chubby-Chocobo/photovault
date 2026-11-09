@@ -64,7 +64,8 @@ Phases 02 and 03 run in parallel. Their file sets do not overlap.
    - An expired token refreshes once; a revoked one is reported.
 4. Offline and revoked access:
    - A network failure holds an open import (`offline`). A finished import waits, as for a disk that is away.
-   - A revoked grant on an open import shows "cần đăng nhập lại" and holds. On a closed import the job is skipped, so the owner can retry it.
+   - A revoked grant on an open import shows "cần đăng nhập lại" and holds. On a closed import the exports wait hourly, with no error, and the finished row shows "Đăng nhập lại".
+   - A rate limit or 5xx is `SourceError.busy`: the item stays pending and the job pauses for a short cooldown.
 5. Tokens:
    - Each cloud import keeps its own refresh token in the Keychain (`import-<sourceId>`) and is re-registered at launch when that token exists.
    - Factory reset deletes these tokens and the Dropbox account token.
@@ -144,9 +145,15 @@ Phases 02 and 03 run in parallel. Their file sets do not overlap.
 - Review later: yes, if large video imports make it hurt.
 
 ### A revoked grant
-- Chosen: adapters throw `SourceError.accessRevoked` on `invalid_grant` or a 401 after a refresh.
+- Chosen: adapters throw `SourceError.accessRevoked` on `invalid_grant`, `invalid_client` or a 401 after a refresh.
   - On an open import, the import stage sets the source to `offline` with `statusReason = "signInRequired"`. The app shows "Cần đăng nhập lại" for that import; the action reuses the start flow.
-  - On a closed import, the job is skipped (`resourceMissing`), so it is visible and can be retried.
-- Alternatives: wait hourly forever.
-- Why: waiting cannot fix a revoked grant, and an endless retry raises a false "sync stalled".
+  - On a closed import (revoked, or no token at launch), the exports wait hourly, record no error and do not count as a failing sync. The row keeps `statusReason = "signInRequired"` and the finished row in Settings shows "Đăng nhập lại". A file gone while the source answers is still skipped.
+  - Signing in again must be the same account; another account is refused with a notice and changes nothing. For Google the new pick is merged with the old one.
+- Alternatives: skip a closed import's jobs (the first version; reversed after review because it lost files a new sign-in would save).
+- Why: waiting cannot fix a revoked grant, so the open job says so; a closed import's files stay wanted for destinations added later.
 - Review later: yes.
+
+### Throttling, stable paths and the disk
+- Chosen: a rate limit or 5xx is `SourceError.busy` (item stays pending, job not offline, 30 s cooldown; exports retry without an attempt). Each import saves `relativePath → remote id` in `remote-ids.json` before listing returns; reads resolve through it and a miss runs one shared listing that only adds. Dropbox reads by id. A cloud download to scratch space waits when it would eat the critical disk reserve. One delegate-based streamer serves both providers.
+- Why: all found in review as ways to lose or mislabel a file.
+- Review later: no.
