@@ -174,9 +174,27 @@ actor ResourceGuard {
     func enforce() async -> Bool {
         let settings = await env.settingsSnapshot().settings
         guard let capacity = try? env.disk.capacity(of: env.stagingDirectory) else { return false }
-        guard capacity.available < settings.criticalWatermarkBytes else { return false }
+        let critical = capacity.available < settings.criticalWatermarkBytes
+        await recordDiskFull(critical)
+        guard critical else { return false }
         cancelAllActive()
         return true
+    }
+
+    /// Keeps `kv.mac_disk_full_since` (FR-61): set at the first pass that finds the disk below the
+    /// critical watermark, cleared once it is above again. The owner is told when it lasts 24 hours.
+    private func recordDiskFull(_ full: Bool) async {
+        let now = env.clock.now
+        let key = KeyValueRepository.Key.macDiskFullSince
+        do {
+            try await env.store.write { db in
+                let since = try KeyValueRepository.date(db, key)
+                if full, since == nil { try KeyValueRepository.set(db, key, now) }
+                if !full, since != nil { try KeyValueRepository.set(db, key, nil) }
+            }
+        } catch {
+            env.log.log(.error, category: "disk", "could not record the disk-full time: \(type(of: error))")
+        }
     }
 
     private func cancelAllActive() {

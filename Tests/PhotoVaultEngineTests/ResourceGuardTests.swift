@@ -45,6 +45,22 @@ private let GiB = GlobalSettings.GiB
         #expect(denial(await guardActor.admit(rateLimited: true, estimatedBytes: 1, sizeLimit: nil)) == .stopAll(.criticalDisk))
     }
 
+    @Test func theTimeTheDiskFirstFilledIsKeptUntilItHasRoomAgain() async throws {
+        let h = try await Harness()
+        let guardActor = makeGuard(h)
+        let key = KeyValueRepository.Key.macDiskFullSince
+        h.disk.set(available: 4 * GiB)
+        await guardActor.enforce()
+        let first = try h.read { try KeyValueRepository.date($0, key) }
+        #expect(first != nil)
+        h.clock.advance(by: 3600)
+        await guardActor.enforce()
+        #expect(try h.read { try KeyValueRepository.date($0, key) } == first, "the start of the episode is not moved")
+        h.disk.set(available: 50 * GiB)
+        await guardActor.enforce()
+        #expect(try h.read { try KeyValueRepository.date($0, key) } == nil)
+    }
+
     @Test func lowWatermarkHoldsOnlyRateLimitedWorkWithHysteresis() async throws {
         let h = try await Harness()
         let guardActor = makeGuard(h)
