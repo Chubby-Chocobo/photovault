@@ -117,3 +117,81 @@ No issues found in these areas:
 
 Status: DONE_WITH_CONCERNS
 Summary: Tests catch hint, stride and isRaw regressions inside the classifier and reader, but the PR's CI is red on macos-15 because of OS-dependent RAF expectations, the cache is never saved on failure, and production call sites remain untested.
+
+---
+
+## Round 2 (67c1808..d19920f)
+
+Read-only re-review of the same scope at `d19920f`.
+
+### Verification
+
+- `swift test --scratch-path .build-review5` (fresh dir): 839 tests in 139 suites passed, exit 0, 0 warnings.
+- With `PHOTOVAULT_MEDIA_CORPUS` set: 839 tests passed. The corpus suite ran 27 staged-file, 27 category and 23 fallback cases.
+- **PR CI run 42572051199 (`macos-15-arm64`, `d19920f`): passed** (3m52s).
+  - The cache missed on both keys; all 27 files were fetched, then "Cache saved with key: media-corpus-879d3f…".
+  - On macOS 15, `fujifilm-raf` now passes through the embedded-preview fallback.
+- **Mutation probes:** each mutation was run alone on a scratch copy, through the Photos and Engine test targets with the corpus set. The baseline was green. Every claimed mutation is caught.
+
+| Mutation | Result |
+|---|---|
+| Staged-file reader hint dropped | 8 issues (capture-date check plus `stagedFilesAreReadAsTheirResourceType`) |
+| Fallback disabled in the reader | 2 |
+| Embedded-preview step removed | 6 |
+| CR3 `CMT1` step removed | 5 |
+| Overflow reads the complete file with `uti: nil` | 1 (`HeaderReadTests`) |
+| Export passes `""` (`ExportWorker.swift:200`) | 7 |
+| `typeHint` dropped inside `HeaderClassifierBox` | 23 |
+| 32 MiB cap raised | 2 |
+| Fallback allowed for any non-empty UTI | 3 |
+| `HeaderClassifierBox(typeHint: nil)` at the call site (`PhotoKitSource+Export.swift:38`) | **not caught**: the acknowledged PhotoKit-bound gap |
+
+- **Fuzzing:** a standalone `-O` build (bounds checks on) made 234,208 calls into `RawCameraFallback.metadata(in:)`. Inputs:
+  - 4,000 random buffers, part of them with II/MM, `CMT1` or JPEG-Exif magic;
+  - every prefix up to 4 KiB of the 48 real files, plus 100 random cuts each;
+  - 300 byte-flip variants each, also as `Data` slices with a non-zero `startIndex`.
+
+  Results:
+  - No crash or trap.
+  - Random inputs gave 0 false hits.
+  - The 16 MiB worst cases (`FF D8 FF E0` repeated, all zeros) took 0.02 s or less.
+- **False positives:** the fallback only runs when the UTI conforms to `public.camera-raw-image` and ImageIO lacks the make or the model. It fills only nil fields. A RAW is already `camera` at scan (`CategoryClassifier.swift:29`, `!hasRaw`), so a wrong match can only mislabel by-device and sidecar data. A random match needs `CMT1` or `FF D8 FF E1 … Exif\0\0` followed by a valid IFD with an ASCII Make/Model, and fuzzing found none. I found no realistic false positive.
+- **Round 1 findings:**
+  - Critical 1, Important 2 and Important 3 are resolved.
+  - Important 4 is resolved except the acknowledged call-site `typeHint` gap.
+  - Suggestions 5–8 are resolved. Suggestion 5's cap regression is now caught by `HeaderReadTests`; Suggestion 6's budgets were removed.
+
+### Remaining findings
+
+No Critical or Important findings remain.
+
+**Suggestion R2-1: the spike doc miscounts the fallback.**
+- Where: `docs/spikes/m0-5-exif-and-header-classification.md:117` says "names the camera for 26 of the 27 corpus files", then lists 4 it cannot handle (CRW, IIQ, MRW, X3F).
+- The manifest and the test run show 23 (`theFileItselfNamesTheCamera` with 23 cases).
+
+**Suggestion R2-2: the HEIC test can pass vacuously.**
+- Where: `Tests/PhotoVaultPhotosTests/HeaderReadTests.swift:45` returns silently when HEIC encoding is unavailable. Line 54 checks "a whole download must be kept" only `if delivered == data.count`.
+- Failure: on a machine without a HEIC encoder, or if the classifier starts stopping early, the "HEIC read whole and kept" claim is asserted by nothing.
+- Fix:
+  - use `try #require` (or a `.enabled(if:)` trait) for the encoder;
+  - assert `!classifier.stoppedEarly` before the keep check, or make the keep check unconditional.
+
+**Suggestion R2-3: the race guard can go silent on a slow machine.**
+- Where: `Tests/PhotoVaultEngineTests/StagingClaimTests.swift:29-33` samples `existedWhenClaimed` after the lease is granted, not at grant time.
+- On a slow runner, two interleavings look the same, because the file is already gone when sampled and the assertion is skipped:
+  - a claim granted between the release's check and its unlink (the bug this test exists for);
+  - a legitimate claim taken after the release finished.
+- The fix removes the flake but can mask the regression.
+- Fix: count the rounds where `claimed && existedWhenClaimed`, and require at least one (`#expect(exercised > 0)`). Then a run where the window was never hit is reported, not silently green.
+
+**Suggestion R2-4: each fallback call makes several full-size copies of the scan buffer.**
+- Where: `Sources/PhotoVaultPhotos/RawCameraFallback.swift:24, 38, 44, 89, 95`. The file read, the `CMT1` `subdata`, two `[UInt8]` conversions and `Data(bytes[index...])` each copy up to 16 MiB, so a non-TIFF RAW (CR3, RAF) allocates about 80 MB transiently.
+- Scale: `maxConcurrentExports = 2` puts the transient peak at about 160 MB. Only RAWs where ImageIO lacks a field are affected, so it is low impact.
+- Fix: convert to `[UInt8]` once in `metadata(in:)`, and pass the array or an offset into the three steps.
+
+### Verdict (Round 2)
+
+No Critical or Important remains. CI is green on macOS 15. R2-1 to R2-4 are non-blocking; R2-1 and R2-2 are quick fixes worth taking before merge.
+
+Status: DONE
+Summary: All round-1 blockers are resolved and every claimed mutation is caught. Fuzzing found no crash or false positive, and CI run 42572051199 is green on macOS 15. Four non-blocking suggestions remain: a doc miscount, a HEIC test that can pass vacuously, a race test that can go silent, and fallback buffer copies.

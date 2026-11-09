@@ -114,7 +114,7 @@ Conclusions:
   - a HEIC is read whole, and the download is kept as the staged copy.
 - **macOS 15 cannot read the Fujifilm X-T30 III RAF; macOS 26 can.** CI runs macOS 15. A camera newer than the installed macOS gets no properties from ImageIO, so the same by-device and sidecar gap appears there.
   - The reader now falls back to the file itself when a RAW lacks make or model. It looks in the first TIFF directories (most formats), then the `CMT1` box of a CR3, then an embedded JPEG preview's Exif (RAF).
-  - The fallback names the camera for 26 of the 27 corpus files without ImageIO. It cannot for CRW, IIQ and MRW, which macOS has long supported, and X3F is not RAW to the app.
+  - The fallback names the camera for 23 of the 27 corpus files without ImageIO. It cannot for CRW, IIQ and MRW, which macOS has long supported, and X3F is not RAW to the app.
   - It also supplies the make that ImageIO leaves out for Samsung SRW (SAMSUNG).
 - **Sigma X3F is not supported by macOS.** It has no system UTI, so the app does not treat it as RAW, and ImageIO cannot read it.
 - **Regression tests** (each checked by breaking the code on purpose: dropping the UTI in either reader, removing the fallback or one of its steps, misclassifying DNG, losing the UTI or the complete-file read on overflow, passing no UTI from the export step, raising the 32 MiB buffer limit; all ten fail):
