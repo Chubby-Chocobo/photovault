@@ -23,6 +23,6 @@ The first layout put camera photos in `YYYY/MM/` and gave a day its own folder o
 
 ## Consequences
 
-- No migration from the `YYYY/MM` layout. Updating means quitting the app, removing its local database, letting onboarding run again, and moving the old root to the Drive trash by hand (the app never deletes files on destinations).
+- No migration from the `YYYY/MM` layout. Updating means using Settings › Nâng cao › Đặt lại từ đầu… (the factory reset), letting onboarding run again, and moving the old root to the Trash by hand (the app never deletes files on destinations). Do not delete the database by hand: the app stops syncing a database in the old layout and tells the owner to start over, and it does not offer an old root for reuse ([0025](0025-old-layout-block-and-reset.md)).
 - Same geocoding budget as before: at most two requests per cell.
 - A country with several official languages gets one of them (Switzerland → German, India → Hindi).

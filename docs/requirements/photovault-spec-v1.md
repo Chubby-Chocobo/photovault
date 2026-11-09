@@ -100,6 +100,8 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 - Đổi tên root = `files.update name`.
 - Đổi root hoặc đổi tài khoản → xác nhận → reset trạng thái đích Drive → FR-51 nếu đích mới có dữ liệu → chạy lại.
 - Đăng xuất → revoke + xoá Keychain; DB giữ nguyên. Đăng nhập lại bằng user ID khác = đổi tài khoản.
+
+**FR-117 Bắt đầu lại (factory reset, quyết định 0025):** Settings › Nâng cao › "Đặt lại từ đầu…" (xác nhận). App đăng xuất Google (xoá Keychain, revoke nếu có mạng), ghi dấu `factory-reset-requested` rồi tự mở lại. Tiến trình mới giữ khoá instance (đợi tối đa 15 giây khoá của tiến trình cũ), trước khi mở DB xoá hết dữ liệu trong thư mục dữ liệu (DB, staging, bản sao DB, log, lịch sử thông báo) và xoá dấu sau cùng; giữ ngôn ngữ giao diện và `drive-daily-cap.json` (Google tính hạn mức ngày theo tài khoản). Crash giữa chừng: lần mở sau làm tiếp. Không đụng gì ở Drive/NAS; owner tự chuyển thư mục backup cũ vào Thùng rác nếu không muốn dùng lại. Nếu không tự mở lại được, app báo việc đặt lại sẽ hoàn tất ở lần mở tiếp theo.
 ### 4.2 Phát hiện thay đổi
  
 **FR-10 Scan metadata** (không export):
@@ -239,6 +241,9 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 - **FR-50** Asset key (8.1).
 - **FR-51 Khôi phục từ đích** — bắt buộc khi DB rỗng mà đích có dữ liệu, khi dùng lại root, khi thêm lại NAS cũ (có `.photovault/destination.json`), hoặc owner bấm. **Chỉ chạy khi scan `complete`.** Thuật toán 8.15; trong lúc đó đích không nhận upload.
+- **FR-118 Bố cục cũ (0.1.0), quyết định 0025:** không migration và không bao giờ di chuyển hay xoá dữ liệu ở đích ("sync lại, không migrate").
+  - *DB cũ:* khi mở, nếu bất kỳ `upload_job.remote_logical_parent` hoặc `remote_folder.logical_path` khớp `(camera|screenshot|saved)/<YYYY>[/…]`, kết quả `kv.legacy_layout = 1` được lưu một lần. Khi đó chu kỳ sync, khôi phục khởi động và các lệnh ghi job/move không làm gì; trạng thái tổng là "cần bắt đầu lại" (thẻ đỏ ở menu bar, nút mở Settings › Nâng cao, Sync now bị khoá, không thông báo). DB mới sau FR-117 không bị chặn.
+  - *Thư mục gốc cũ:* khi onboarding, thêm đích hoặc đổi root/tài khoản gặp một root có thư mục năm `YYYY` ở cấp gốc hoặc dưới `Screenshots`/`Saved`, app không đề nghị dùng lại; báo đó là bản sao lưu 0.1.0, cách xử lý là chuyển vào Thùng rác hoặc chọn thư mục khác/tạo root mới. FR-51 từ chối một root như vậy (`notReady(.legacyLayout)`) trước khi ghi gì.
 - **FR-52** `VACUUM INTO` mỗi 24 giờ và trước migration (giữ 7 bản). DB hỏng → bản sao gần nhất + FR-51.
 - **FR-53** Mỗi chu kỳ, theo batch ≤ 500: `cloudIdentifierMappings` cho asset `l:` có `cloud_id IS NULL`. Bắt buộc chạy hết trước reconciliation.
 - **FR-54 Một instance:** `flock` độc quyền trên `<container>/photovault.lock`. Instance thứ hai báo "đang chạy" rồi thoát.
@@ -499,7 +504,7 @@ Luôn dùng archive timezone, không dùng `TimeZone.current`. `creationDate` sa
 2. `day_stat.promoted` chỉ còn nghĩa "ngày này được đặt tên địa danh": bật ở asset `camera` đầu tiên của ngày, `place_state = pending`. Không demote.
 3. Count vẫn tính lại từ DB (cho tiến độ và địa danh), không cộng dồn.
 4. Không bao giờ xoá thư mục ngày; đổi tên (địa danh) không đổi đường dẫn logic.
-5. Đổi từ layout `Năm/Tháng` cũ không có migration: owner xoá DB cục bộ và sync lại (quyết định 0023).
+5. Đổi từ layout `Năm/Tháng` cũ không có migration: app chặn DB cũ và owner dùng "Đặt lại từ đầu" rồi sync lại vào root mới (quyết định 0023, 0025; FR-117, FR-118).
 ### 8.8 Phạm vi & eligibility (tính thuần tuý, theo từng đích)
  
 ```

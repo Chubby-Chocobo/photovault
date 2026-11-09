@@ -35,5 +35,6 @@ Spec references use the FR, NFR, §, and T codes of [photovault-spec-v1.md](../r
 | [0022](0022-interface-languages.md) | Interface languages: Vietnamese and English text pairs, switched live | Accepted | issue #11 |
 | [0023](0023-day-folders-and-place-name-rule.md) | Day folders in every branch; fixed place-name languages | Accepted | FR-40, FR-82, FR-104–106, §8.7 |
 | [0024](0024-multiple-sources-and-folder-import.md) | Several sources, one layout: source model and one-time folder import | Accepted | §2, §3, §8.1, §8.2, §8.4, §8.8, §8.12, §15, FR-110–116 |
+| [0025](0025-old-layout-block-and-reset.md) | Upgrading from 0.1.0: block the old layout, start over with a factory reset | Accepted | FR-117, FR-118, FR-08, FR-51, §8.7 |
 
 Adding a decision: copy the next free number, keep the same five sections, and link it from this table and from the affected spec or code notes. A `[VERIFY]` default that the code uses goes in a group file (0012–0014) or its own file, and its spike goes in [docs/spikes/](../spikes/README.md).

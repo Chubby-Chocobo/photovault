@@ -2,7 +2,20 @@
 
 Personal macOS menu-bar app. It backs up the Photos library (originals and edits) to one Google Drive folder and to any number of local or NAS folders. It never deletes backup data and never changes the Photos library. Photos is the main, ongoing source; Settings › Nguồn (Sources) can also import a folder of photos from this Mac once, and the imported files get the same folder layout, names and sidecars as Photos assets ([decision 0024](docs/decisions/0024-multiple-sources-and-folder-import.md)).
 
-> **Status:** the engine, the core packages, the menu bar, onboarding and Settings are in the repo. The M0 spikes have not been run, so several defaults are unverified. See [docs/spikes/README.md](docs/spikes/README.md).
+> **Status:** the engine, the core packages, the menu bar, onboarding and Settings are in the repo. Of the M0 spikes, M0-1b and M0-5 ran on 2026-11-09 and M0-6 ran too (its 24-hour repeat is still due); M0-1, M0-2, M0-3 and M0-4 are pending an owner run, so several defaults are unverified. See [docs/spikes/README.md](docs/spikes/README.md).
+
+## Upgrading from 0.1.0
+
+Version 0.2.0 files photos in a new folder layout (one folder per day under `Camera Uploads`, `Screenshots` and `Saved`; see [Folder layout](#folder-layout)). Backup data is never moved or deleted, so an old backup is not converted: you start over with a new root folder.
+
+If you already have a 0.1.0 backup:
+
+1. Open 0.2.0. It finds the 0.1.0 database and stops syncing at once, without touching your Drive or NAS. The menu bar shows a red card, "Bản sao lưu này dùng bố cục thư mục cũ (0.1.0)" (this backup uses the old folder layout), and Settings › **Nâng cao** (Advanced) opens with the reset section at the top.
+2. In Google Drive, and on the NAS if you use one, move the old PhotoVault root folder to the Trash. Do not reuse it: 0.2.0 refuses a folder with the old layout (the year folders `2026/11/…`), because adopting it would move every file or upload everything twice. Leaving it in place and creating a new root with another name also works.
+3. In Settings › **Nâng cao** (Advanced) click **Đặt lại từ đầu…** (Start over…) and confirm. PhotoVault signs out of Google, deletes its own data on this Mac and reopens first-time setup. See [Start over](#start-over-factory-reset).
+4. Set up again with a new root folder. The whole library is uploaded again into the new layout.
+
+Why: [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md) and [decision 0025](docs/decisions/0025-old-layout-block-and-reset.md).
 
 Other references: the full spec is [docs/requirements/photovault-spec-v1.md](docs/requirements/photovault-spec-v1.md) (copy of GitHub issue #1), decisions are in [docs/decisions/](docs/decisions/README.md), and the sidecar format is in [docs/sidecar-schema.md](docs/sidecar-schema.md).
 
@@ -106,7 +119,7 @@ PhotoVault/
 └── Favorites/2026-04-26/
 ```
 
-Files are named `YYYY-MM-DD HH.mm.ss_<original name>`; an asset's original, RAW, Live Photo video, edited version and sidecars sit together. Updating from a build with the old `YYYY/MM` layout means starting over: see [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md).
+Files are named `YYYY-MM-DD HH.mm.ss_<original name>`; an asset's original, RAW, Live Photo video, edited version and sidecars sit together. Updating from a build with the old `YYYY/MM` layout means starting over: see [Upgrading from 0.1.0](#upgrading-from-010) and [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md).
 
 ## Configuration
 
@@ -163,7 +176,7 @@ Keep `privacy.html` true to what the app does: when the app starts using new Goo
 
 ## Using the app
 
-The menu bar shows the overall state, one line per destination, backfill progress, and the actions Sync now, Pause/Resume, Open Drive, Reveal NAS, recent activity, Settings, View log and Quit. View log opens an in-app log window (level filter, search, copy, reveal folder); the log rotates over 5 files of 5 MB, so it never takes more than 25 MB. The interface is described in [docs/design/README.md](docs/design/README.md), with interactive mockups in `docs/design/mockups/`.
+The menu bar shows the overall state, one line per destination, backfill progress, the card of a folder import that is running (progress, Cancel; see [Import from a folder](#import-from-a-folder)), and the actions Sync now, Pause/Resume, Open Drive, Reveal NAS, recent activity, Settings, View log and Quit. View log opens an in-app log window (level filter, search, copy, reveal folder); the log rotates over 5 files of 5 MB, so it never takes more than 25 MB. The interface is described in [docs/design/README.md](docs/design/README.md), with interactive mockups in `docs/design/mockups/`.
 
 If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder or Launchpad): the running app shows Settings, or onboarding if it is not finished. On macOS 26, System Settings → Menu Bar chooses which apps keep an icon.
 
@@ -185,7 +198,7 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 
 ## Import from a folder
 
-Settings › **Nguồn** › **Nhập ảnh…** › **Từ thư mục trên Mac…** picks a folder. PhotoVault reads it recursively, groups RAW+JPEG and Live Photo pairs, reads the dates and places inside the files, skips what is already backed up, and then backs the rest up like any other photo. The folder is only read: nothing in it is changed or deleted. Progress shows in Settings and in the menu bar; **Huỷ** stops a job (files already uploaded stay), and a notification and one line in Recent activity report the result.
+Settings › **Nguồn** (Sources) › **Nhập ảnh…** (Import photos…) › **Từ thư mục trên Mac…** (From a folder on this Mac…) picks a folder. PhotoVault reads it recursively, groups RAW+JPEG and Live Photo pairs, reads the dates and places inside the files, skips what is already backed up, and then backs the rest up like any other photo. The folder is only read: nothing in it is changed or deleted. Progress shows in Settings and in the menu bar; **Huỷ** (Cancel) stops a job (files already uploaded stay), and a notification and one line in Recent activity report the result.
 
 - **Photos access is still required.** An import runs in the same cycle as Photos, so it waits until setup is done and Photos is allowed.
 - **Only folders on this Mac** (internal, external or a mounted share). Google Drive, Dropbox, Flickr and another Google account come later.
@@ -195,8 +208,8 @@ Settings › **Nguồn** › **Nhập ảnh…** › **Từ thư mục trên Mac
 
 ## Start over (factory reset)
 
-Settings → Nâng cao → **Đặt lại từ đầu…** returns PhotoVault to first-time setup.
-1. Before resetting, move the old backup folder on Drive (and on the NAS, if you use one) to the Trash yourself. The app never deletes backup data. If the old folder is still there, onboarding offers to reuse it.
+Settings → **Nâng cao** (Advanced) → **Đặt lại từ đầu…** (Start over…) returns PhotoVault to first-time setup.
+1. Before resetting, move the old backup folder on Drive (and on the NAS, if you use one) to the Trash yourself. The app never deletes backup data. If the old folder is still there and was written by 0.2.0 or later (the current layout), onboarding offers to reuse it; a folder from 0.1.0 is never offered (see [Upgrading from 0.1.0](#upgrading-from-010)).
 2. On confirm, PhotoVault signs out of Google and relaunches. The refresh token is removed from the Keychain, and revoked at Google when Google can be reached.
 3. Before opening anything, the new process deletes the database, staging files, database snapshots, logs and the notification history.
 4. Two things are kept: the interface language, and `drive-daily-cap.json`. Google counts the 750 GB a day per account, not per database. If you then sign in with a different Google account, it starts from the old account's count for the rest of that 24 hours.
