@@ -15,9 +15,11 @@ public protocol KeychainStore: Sendable {
 public struct SystemKeychainStore: KeychainStore {
     public static let service = "com.annh.photovault.google"
 
-    public init() {}
+    private let serviceName: String
 
-    static func query(account: String) -> [String: Any] {
+    public init(service: String = SystemKeychainStore.service) { serviceName = service }
+
+    static func query(account: String, service: String = SystemKeychainStore.service) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -28,7 +30,7 @@ public struct SystemKeychainStore: KeychainStore {
     }
 
     public func read(account: String) throws -> Data? {
-        var query = Self.query(account: account)
+        var query = Self.query(account: account, service: serviceName)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -43,16 +45,16 @@ public struct SystemKeychainStore: KeychainStore {
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
-        let status = SecItemUpdate(Self.query(account: account) as CFDictionary, attributes as CFDictionary)
+        let status = SecItemUpdate(Self.query(account: account, service: serviceName) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            try Self.check(SecItemAdd(Self.query(account: account).merging(attributes) { $1 } as CFDictionary, nil))
+            try Self.check(SecItemAdd(Self.query(account: account, service: serviceName).merging(attributes) { $1 } as CFDictionary, nil))
         } else {
             try Self.check(status)
         }
     }
 
     public func delete(account: String) throws {
-        let status = SecItemDelete(Self.query(account: account) as CFDictionary)
+        let status = SecItemDelete(Self.query(account: account, service: serviceName) as CFDictionary)
         if status != errSecItemNotFound { try Self.check(status) }
     }
 
