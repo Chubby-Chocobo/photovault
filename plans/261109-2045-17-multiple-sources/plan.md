@@ -90,7 +90,7 @@ Every phase is its own commit range on the feature branch, so reverting it is sa
 - Why: the same bytes get the same key in every job, so re-running an import, overlapping folders or a later Drive import of the same files dedupe for free. After a database loss, a re-run import produces the keys already written in `pvAssetId` and the sidecars, so recovery (8.15) can match them (spec goal 5).
 - Review later: yes
 
-### Dedupe = exact SHA-256 or fingerprint against any live asset
+### Dedupe = exact SHA-256 or fingerprint against any live asset (narrowed below)
 - Chosen: an import item is a duplicate when (a) its `x:` key exists, (b) a live asset has a resource with the same `sha256` (Photos assets already exported), or (c) a live asset has the same capture second, original stem (case-insensitive) and pixel size or duration. The fingerprint reuses `NameFingerprint.dateText`. The duplicate is counted, not ingested.
 - Alternatives: hash only (misses Photos assets still in the backfill, and re-encoded copies); waiting until the Photos asset is exported (could hold a job for weeks); exporting Photos candidates just to hash them (iCloud downloads, rate limits)
 - Why: Photos is the main source and its backfill can take weeks, so most overlaps are with Photos assets that are not exported yet. A false fingerprint match needs the same second, the same file stem and the same size, and in that case the photo is still backed up from Photos. Two gaps stay. A Photos asset that some destination's scope excludes (newOnly, hidden) blocks its folder copy too. A photo added to Photos *after* it was imported is uploaded again (the reverse case is not handled).
@@ -185,6 +185,36 @@ Every phase is its own commit range on the feature branch, so reverting it is sa
 - Alternatives: also flip completed jobs to offline
 - Why: a completed job must not reopen, which would write a second summary row.
 - Review later: no
+
+### The fingerprint only stands in for a missing hash (supersedes the dedupe rule above)
+- Chosen: the same key or the same SHA-256 of any live resource always decides. The fingerprint (same capture second, stem and size or duration) applies only when the file's date comes from EXIF or video metadata, and only to a Photos asset whose primary resource has no SHA-256 yet (not exported). It never matches another import or a file dated from the file system. Every imported file's hash is stored on its resource at ingest.
+- Alternatives: keep matching any live asset; drop the fingerprint
+- Why: owner decision. Never losing a photo beats one extra upload: `originals/IMG_1234.JPG` and `edited/IMG_1234.JPG`, or a copied tree, share a stem, second and size but are different files.
+- Review later: yes
+
+### Every folder source stays readable; a finished import never waits for its folder
+- Chosen: at launch the app registers an adapter for every folder source that has a bookmark, finished or not, so a destination added later receives imported files like Photos assets. When the import is finished or cancelled and the folder is gone or unreachable, the export skips the job as `resourceMissing` instead of retrying. While the import is open the job is held and the folder `offline`. Held exports record no error and do not count as a failing sync. A deferred job does not block completion; the sweeper retries it and the source stays readable.
+- Alternatives: read only open imports (reopened jobs retry forever); let a closed offline source keep holding
+- Why: owner decision (2026-11-09). A skipped job is visible and retryable by the owner; an endless retry made "last successful sync" stop and raised a false "sync stalled".
+- Review later: yes
+
+### A resumed import goes back to reading while files wait; a flapping folder cools down
+- Chosen: an offline import resumes to `scanning` while files are pending, to `importing` only when everything was read. A job that was just held is not probed again for 30 seconds, so a folder that answers a probe but fails the next call cannot keep the cycle busy. One file that cannot be read fails only that file (item `failed`, reason `read`) while the folder still answers; the adapter maps per-file I/O errors to `readFailed` when the folder exists.
+- Alternatives: resume straight to `importing`; hold the whole job on any read error
+- Why: pending files were never read again after a pause, and one bad file held the whole import.
+- Review later: no
+
+### A cancelled import's live assets are taken over by the next import of the same bytes
+- Chosen: a key match against a live asset whose import is cancelled (or whose row is gone) is ingested again under the new job, like a revived asset: `source_id` and `local_id` move, jobs are recomputed. In-flight uploads at cancel time finish; they do not block the cancel.
+- Alternatives: count it as a duplicate (its later jobs never run because a cancelled source is not readable)
+- Why: otherwise a new destination's jobs for that asset wait forever.
+- Review later: no
+
+### Smaller choices
+- Names are stored NFC (keys, display); a volume that spells a name differently is found by looking the name up in its directory when the direct open fails.
+- iCloud Drive placeholders (`.name.icloud`) are listed and counted as skipped; other hidden files are still left out.
+- An import folder that is, holds or sits inside a local destination root or the app's data folder is refused (`ImportFolderGuard`).
+- Known limits, left as they are: `cancelImport` runs in one transaction; `listFiles` does not yield to owner commands on a huge tree; a second notification sound can play when a job finishes while the app is in front.
 
 ## Risks (top)
 
