@@ -1,6 +1,6 @@
 # M0-5: EXIF reading and header classification
 
-- **Status:** pending owner run
+- **Status:** run 2026-11-09; NEF, CR3, DNG and Sony or DJI video samples are not in the library
 - **Spec refs:** FR-20 (classification by header), FR-34 (metadata from the primary resource), §8.5, §10 (M0-5), [VERIFY M0-5] at FR-20, [VERIFY] at FR-34 (AVFoundation keys)
 - **Owner time:** 2–3 hours. **Wall time:** about 2 hours.
 
@@ -43,19 +43,37 @@ Duration: 2–3 hours.
 
 ## Results
 
-### Owner to fill in
+Run on 2026-11-09, macOS 26.6.2, `exiftool` 13.55. Samples are identified by a hash tag, not a file name. Raw logs are outside the repo.
+
+The library holds HEIC, Sony ARW (RAW only, no JPEG twin), JPEG, PNG, Live Photos, MOV and MP4. It has no NEF, CR3 or DNG, and no Sony or DJI video small enough to fetch; those rows are skipped.
 
 | Sample | Make and model (probe / exiftool) | Lens and date match | Header bytes read | Header answer = full-file answer | Video load time (s) |
 |---|---|---|---|---|---|
-|  |  |  |  |  |  |
+| ARW × 3 (before the fix) | SONY ILCE-7M4 / SONY ILCE-7M4 | yes; offset no (see below) | whole file, 35–37 MB | **no: header said "no camera"** | — |
+| ARW × 3 (after the fix) | SONY ILCE-7M4 / same | yes | 1 MiB (one chunk) | yes | — |
+| HEIC × 2 (iPhone 7 Plus) | match | yes | whole file (about 1.1–1.4 MB) | yes | — |
+| Live Photo still × 2 | match | yes | whole file (about 1.1 MB) | yes | — |
+| JPEG, Nikon D7000 | match | yes, offset +07:00 | 1 MiB | yes | — |
+| JPEG without make × 2 | empty / empty | yes | whole file (52–70 KB) | yes, "no camera" | — |
+| Edited JPEG × 3 (iPhone 6) | match | yes | 1 MiB | yes | — |
+| Edited PNG | empty / empty | ImageIO reads a date that exiftool's `DateTimeOriginal` lacks | whole file | yes | — |
+| MOV × 3 (iPhone 7 Plus) | match | — | — | — | < 0.01 |
+| MP4 × 3 (no camera tags) | empty / empty | — | — | — | < 0.01 |
 
-Conclusions (free text):
+`adjustmentDataHash` was non-nil for all 4 edited samples.
+
+Conclusions:
+
+- **Bug found and fixed: every Sony ARW was classified as a photo without a camera.** Without a type hint, ImageIO reads an ARW as a plain TIFF and returns no properties at all. This happens both in the incremental header source and on staged files, which have no extension. Under FR-20 rule 3 every RAW would have gone to `saved`. Both paths now pass the resource UTI as `kCGImageSourceTypeIdentifierHint`. With the hint, make and model are readable from the first 64 KB. Tests: `HeaderClassifierTests.theResourceTypeIsGivenToImageIO`, `ImageIOMetadataReaderTests.stagedFilesAreReadAsTheirResourceType`. Checked again on the real files: 20 of 20 header answers equal the full-file answer.
+- **ImageIO does not return `OffsetTimeOriginal` for ARW**, though exiftool reads +07:00. The offset is not used for day placement, so nothing changes.
+- **PhotoKit delivered local data in 1 MiB chunks.** Classification costs one chunk for JPEG and ARW. Small HEIC files are read whole, and that read is kept as the staged file.
+- **The video metadata read is far below the 30-second timeout.**
 
 ## Changes this result drives
 
 | Setting or constant | File and symbol | Default now |
 |---|---|---|
-| Header answer rule | `Sources/PhotoVaultPhotos/HeaderClassifier.swift`, `evaluate(isFinal:)` | complete status or whole file |
+| Header answer rule | `Sources/PhotoVaultPhotos/HeaderClassifier.swift`, `evaluate(isFinal:)` | complete status or whole file; the resource UTI is passed to ImageIO |
 | Answer on the last chunk | `Sources/PhotoVaultPhotos/PhotoKitSource+Export.swift`, `conclusive` | cancel, no `completeFile` |
 | Camera identity rule | `Sources/PhotoVaultCore/Models/Snapshots.swift`, `hasCameraIdentity` | make or model non-empty |
 | Video metadata timeout | `Sources/PhotoVaultPhotos/ImageIOMetadataReader.swift`, `videoTimeout` | 30 seconds |

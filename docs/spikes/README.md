@@ -2,19 +2,19 @@
 
 Spec §10 requires these measurements before the defaults are trusted. They need the owner's Photos library, Google account and NAS, so the build agent could not run them. Each file below is the procedure for one spike, with a Results table for the owner to fill in.
 
-Status of every spike: **pending owner run**.
+Status: M0-1b, M0-5 and M0-6 were run on 2026-11-09 (M0-6 still needs its 24-hour repeat); the others are **pending owner run**.
 
 ## Index
 
 | Spike | Question | Changes (short) | Owner time | Wall time | Status |
 |---|---|---|---|---|---|
 | [M0-1](m0-1-icloud-export-disk.md) | Does Photos reclaim disk after exporting iCloud-only originals? | watermarks, backfill rate, free-space metric | about 1 h | about 25 h | pending owner run |
-| [M0-1b](m0-1b-resource-bytes-and-mapping.md) | Are exported bytes exact? Which resources and UTIs map to what? | RAW detection, resource plan, cancel handling | 1–2 h | 1–2 h | pending owner run |
+| [M0-1b](m0-1b-resource-bytes-and-mapping.md) | Are exported bytes exact? Which resources and UTIs map to what? | RAW detection, resource plan, cancel handling | 1–2 h | 1–2 h | run 2026-11-09 |
 | [M0-2](m0-2-change-history-and-identifiers.md) | What do change history, cloud IDs and adjustment data really do? | change handling, cloud-ID mapping, edit gate, deployment target | 2–3 h | 2–3 h | pending owner run |
 | [M0-3](m0-3-google-drive-behaviour.md) | How does Drive behave for resumable upload, shortcuts, IDs and quota? | views, cap, token bucket, appProperties limit | 3–4 h | 1 day (upload runs) | pending owner run |
 | [M0-4](m0-4-signing-sandbox-and-filesystems.md) | Do signing, sandbox, Keychain, bookmarks and filesystems behave? | entitlements, bookmark handling, rename fallbacks | 3–4 h | 2 days (Personal Team re-signs) | pending owner run |
-| [M0-5](m0-5-exif-and-header-classification.md) | Is EXIF read correctly, and how many bytes does classification need? | classifier, metadata reader, video timeout | 2–3 h | 2 h | pending owner run |
-| [M0-6](m0-6-geocoder-quality.md) | Does `CLGeocoder` return the structured fields the place names need? | place names, language, rate limit | 1–2 h | 1 day (for the 24-hour key check) | pending owner run |
+| [M0-5](m0-5-exif-and-header-classification.md) | Is EXIF read correctly, and how many bytes does classification need? | classifier, metadata reader, video timeout | 2–3 h | 2 h | run 2026-11-09 (ARW fix) |
+| [M0-6](m0-6-geocoder-quality.md) | Does `CLGeocoder` return the structured fields the place names need? | place names, language, rate limit | 1–2 h | 1 day (for the 24-hour key check) | run 2026-11-09; 24-hour check to do |
 
 ## How the owner runs a spike
 

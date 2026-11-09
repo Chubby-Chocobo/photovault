@@ -1,6 +1,6 @@
 # 0012 Photos adapter defaults for unverified PhotoKit behaviour
 
-- **Status:** Pending M0 (M0-1b, M0-2, M0-5)
+- **Status:** Items 1, 2, 3, 8 and 10 accepted after M0-1b and M0-5 (2026-11-09); items 4–7 pending M0-2
 - **Spec refs:** FR-12, FR-19, FR-20, FR-30, FR-34, FR-46, §8.1, §8.3, [VERIFY] markers at FR-12, FR-20, FR-30, FR-34, FR-46
 - **Review trigger:** after the owner runs M0-1b, M0-2 and M0-5 ([spikes](../spikes/README.md))
 
@@ -25,6 +25,11 @@ Each default is what the code does now. The spike column says which run confirms
 | 9 | Cursor format is `offset|creationDate|localId` (split into at most three fields). | `PhotoKitSource.swift` (`fetchAllAssets`) | none (internal) |
 | 10 | Write errors while streaming a resource surface as `Failure.io(code:domain:)` and the partial file is deleted. | `StreamingFileWriter.swift` | M0-1b |
 | 11 | `CLGeocoder` is used without a MapKit replacement. The implementer's build on the macOS 26.5 SDK showed no deprecation warning. The source comment notes it is deprecated on newer SDKs. | `CLGeocoderReverseGeocoder.swift` | M0-6 |
+
+## Results
+
+- **M0-5:** item 1 holds, but only once ImageIO is told the resource's UTI. Without it a Sony ARW reads as an empty TIFF. Both readers now pass `kCGImageSourceTypeIdentifierHint`. Item 3 holds: local data arrives in 1 MiB chunks. Item 8: video metadata loads in under 0.01 s.
+- **M0-1b:** items 2 and 10 hold. Cancel throws `cancelled`, no partial file is left, and nothing more is delivered after the cancel. Exports are byte-exact. An iCloud-only 4.7 GB video sends progress from 4 s on, but its first data only after 131 s.
 
 ## Consequences
 
