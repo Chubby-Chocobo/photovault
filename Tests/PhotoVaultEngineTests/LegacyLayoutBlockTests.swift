@@ -62,6 +62,15 @@ import Testing
         try await h.restart()
         _ = try await h.coordinator.start()
         await #expect(throws: EngineError.legacyLayout) { try await h.coordinator.settingsChanged() }
+        // Root commands could create, untrash or adopt Drive folders: they stop too.
+        await #expect(throws: EngineError.legacyLayout) { try await h.coordinator.untrashAppItems(.googleDrive) }
+        await #expect(throws: EngineError.legacyLayout) {
+            try await h.coordinator.resolveRootProblem(.googleDrive, choice: .uploadToNewRoot(name: "PhotoVault"))
+        }
+        await #expect(throws: EngineError.legacyLayout) { try await h.coordinator.adoptExistingRoot(.googleDrive, rootId: "r") }
+        await #expect(throws: EngineError.legacyLayout) {
+            try await h.coordinator.changeDriveRoot(.googleDrive, rootId: "r", rootName: "PhotoVault", rootHasContent: false)
+        }
         #expect(try moveCount(h) == 0)
         #expect(await h.run() == .blocked(.legacyLayout))
         #expect(await h.coordinator.currentSnapshot().overall == .legacyLayout)
