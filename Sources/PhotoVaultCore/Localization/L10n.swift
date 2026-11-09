@@ -23,6 +23,18 @@ public enum L10n {
     public static func plural(_ count: Int, one: String, other: String) -> String {
         count == 1 ? one : other
     }
+
+    /// `48210` -> `"48.210"` in Vietnamese, `"48,210"` in English.
+    public static func integer(_ value: Int) -> String {
+        let separator: Character = language == .vi ? "." : ","
+        let digits = String(value.magnitude)
+        var grouped = ""
+        for (offset, character) in digits.reversed().enumerated() {
+            if offset > 0, offset % 3 == 0 { grouped.append(separator) }
+            grouped.append(character)
+        }
+        return (value < 0 ? "-" : "") + String(grouped.reversed())
+    }
 }
 
 /// Interface text in both languages; returns the one for `L10n.language`. The Vietnamese side is the

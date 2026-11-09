@@ -3,7 +3,7 @@ import PhotoVaultCore
 
 /// Filter chips of the activity window (FR-63).
 public enum ActivityFilter: String, CaseIterable, Identifiable, Sendable {
-    case all, rename, move, missing, status, restore
+    case all, rename, move, missing, status, restore, progress
 
     public var id: String { rawValue }
 
@@ -15,6 +15,7 @@ public enum ActivityFilter: String, CaseIterable, Identifiable, Sendable {
         case .missing: tr(vi: "File thiếu", en: "Missing file")
         case .status: tr(vi: "Trạng thái", en: "Status")
         case .restore: tr(vi: "Khôi phục", en: "Restore")
+        case .progress: tr(vi: "Tiến độ", en: "Progress")
         }
     }
 
@@ -26,6 +27,7 @@ public enum ActivityFilter: String, CaseIterable, Identifiable, Sendable {
         case .missing: kind == .missingFile
         case .status: kind == .statusChanged
         case .restore: kind == .recovered
+        case .progress: kind == .milestone
         }
     }
 }
@@ -54,6 +56,7 @@ public enum ActivityPresenter {
         case .statusChanged: tr(vi: "Trạng thái", en: "Status")
         case .recovered: tr(vi: "Khôi phục", en: "Restore")
         case .notice: tr(vi: "Thông báo", en: "Notice")
+        case .milestone: tr(vi: "Tiến độ", en: "Progress")
         }
     }
 

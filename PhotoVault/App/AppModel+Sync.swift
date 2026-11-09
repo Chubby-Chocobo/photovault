@@ -74,6 +74,9 @@ extension AppModel {
         }
     }
 
+    /// Where `RotatingFileLog` writes, for the log window.
+    var logDirectory: URL? { env?.layout.logs }
+
     func revealLog() {
         guard let env else { return }
         NSWorkspace.shared.open(env.layout.logs)

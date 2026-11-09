@@ -21,7 +21,6 @@ struct DestinationHealth: Sendable {
             let id = record.id
             let now = env.clock.now
             try await env.store.write { db in try DestinationRepository.setStatus(db, id: id, status: status, now: now) }
-            await ActivityLog(env: env).statusChanged(id, to: status)
             env.log.log(.notice, category: "destination", "destination \(id) status \(record.status) -> \(status)")
         }
     }

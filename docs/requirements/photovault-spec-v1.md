@@ -250,7 +250,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
  
 **FR-62** `SMAppService.mainApp`.
  
-**FR-63** Hoạt động gần đây: 500 sự kiện (đổi tên, di chuyển, file thiếu, đổi trạng thái, khôi phục).
+**FR-63** Hoạt động gần đây: 500 sự kiện (đổi tên, di chuyển, file thiếu, đổi trạng thái, khôi phục, tiến độ). Sự kiện thường lệ không đẩy mất sự kiện hiếm: đổi tên và di chuyển của một đích gộp vào một dòng trong mỗi giờ, số file upload gộp một dòng mỗi ngày, trạng thái đổi rồi quay lại trong 2 giờ thì bỏ dòng. Tiến độ: số file upload trong ngày, và một lần khi backfill của một đích xong. Dòng sự kiện có thể ghi tên thư mục, không bao giờ ghi tên file hay toạ độ.
  
 ### 4.9 Local/NAS
  
@@ -358,7 +358,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - **NFR-04** Backoff có jitter 1 giây → 30 phút; phân loại lỗi theo 8.14.
 - **NFR-05** `NWPathMonitor`; tôn trọng mạng expensive/constrained.
 - **NFR-06** Token chỉ ở Keychain, không log; chỉ gọi Google và geocoder của Apple.
-- **NFR-07** `os.Logger` + file log xoay vòng 5 × 5 MB; mỗi job có ID để trace.
+- **NFR-07** `os.Logger` + file log xoay vòng 5 × 5 MB (tối đa 25 MB, file cũ nhất tự xoá), timestamp UTC đến mili-giây; mỗi job có ID để trace. "Xem log" mở cửa sổ đọc log trong app (lọc mức, tìm, sao chép, mở thư mục).
 - **NFR-08** Scan hàng chục nghìn asset không treo UI.
 - **NFR-09** Mỗi resource export một lần cho mọi đích đang khả dụng.
 ## 6. Môi trường

@@ -30,6 +30,13 @@ struct PhotoVaultApp: App {
         .windowResizability(.contentMinSize)
         .defaultPosition(.center)
 
+        Window(tr(vi: "Nhật ký", en: "Log"), id: WindowID.log) {
+            LogView()
+                .environment(model)
+        }
+        .windowResizability(.contentMinSize)
+        .defaultPosition(.center)
+
         Settings {
             SettingsView()
                 .environment(model)
@@ -40,4 +47,5 @@ struct PhotoVaultApp: App {
 enum WindowID {
     static let onboarding = "onboarding"
     static let activity = "activity"
+    static let log = "log"
 }

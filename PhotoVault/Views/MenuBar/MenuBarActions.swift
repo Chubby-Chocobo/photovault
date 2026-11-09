@@ -41,7 +41,7 @@ struct MenuBarActions: View {
             }
             row("Settings…", "gearshape", shortcut: "⌘,") { model.open(.settings(model.settingsTab)) }
                 .keyboardShortcut(",")
-            row(tr(vi: "Xem log", en: "View log"), "doc.text.magnifyingglass") { model.revealLog() }
+            row(tr(vi: "Xem log", en: "View log"), "doc.text.magnifyingglass") { model.open(.log) }
             Divider().padding(.vertical, 2)
             row(tr(vi: "Thoát PhotoVault", en: "Quit PhotoVault"), "power", shortcut: "⌘Q") { model.quit() }
                 .keyboardShortcut("q")

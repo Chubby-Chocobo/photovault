@@ -170,6 +170,7 @@ extension SyncCoordinator {
             if uploadsAllowed {
                 let uploaded = try await uploader.runPass(gate: gate)
                 report.uploaded += uploaded.uploaded
+                report.uploadedByDestination.merge(uploaded.perDestination, uniquingKeysWith: +)
                 progress += uploaded.uploaded
             }
             for step in [CycleStep.fanOut, .sidecarsAndViews, .moves, .placeNamer] {
@@ -177,12 +178,17 @@ extension SyncCoordinator {
             }
             try await staging.releaseUnneeded()
             try await staging.expireIdle()
-            if progress == 0 || exported.photosUnavailable { break }
+            if exported.photosUnavailable { break }
+            if progress == 0 {
+                report.drained = true
+                break
+            }
         }
 
         // 10–11
         try await runStages(.cloudIds, trigger, &report)
         try await recordSuccess(report)
+        await SyncMilestones(env: env).record(report)
         await publish()
         return .completed(report)
     }

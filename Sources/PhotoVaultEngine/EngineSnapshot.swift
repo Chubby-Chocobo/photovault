@@ -62,6 +62,10 @@ public struct CycleReport: Sendable, Equatable {
     public var classified = 0
     public var exported = 0
     public var uploaded = 0
+    /// Files uploaded per destination in this cycle.
+    public var uploadedByDestination: [DestinationID: Int] = [:]
+    /// The cycle stopped because nothing was left to do (not the round limit, not lost Photos access).
+    public var drained = false
     public var stageWork = 0
     public var rounds = 0
     public var needsReconciliation: ReconciliationReason?

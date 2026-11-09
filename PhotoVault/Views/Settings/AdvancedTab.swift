@@ -65,7 +65,8 @@ struct AdvancedTab: View {
             if !model.hardeningAvailable {
                 SettingsNote(tr(vi: "Một số thao tác bảo trì chưa khả dụng trong bản build này.", en: "Some maintenance actions are not available in this build."))
             }
-            FormRow("Log") {
+            FormRow(tr(vi: "Nhật ký", en: "Log"), detail: tr(vi: "Nhật ký kỹ thuật, dùng khi cần báo lỗi.", en: "The technical log, for reporting a problem.")) {
+                Button(tr(vi: "Xem log", en: "View log")) { model.open(.log) }
                 Button(tr(vi: "Mở thư mục log", en: "Open log folder")) { model.revealLog() }
             }
         }
