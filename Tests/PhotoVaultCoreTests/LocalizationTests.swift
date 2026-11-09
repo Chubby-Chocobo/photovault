@@ -38,4 +38,21 @@ struct LocalizationTests {
         #expect(L10n.plural(0, one: "0 file", other: "0 files") == "0 files")
         #expect(L10n.plural(5, one: "5 file", other: "5 files") == "5 files")
     }
+
+    @Test func destinationFolderNamesIgnoreTheInterfaceLanguage() {
+        let layout = DynamicLayout()
+        let day = ArchiveDay(year: 2026, month: 11, day: 8)!
+        func names(_ language: AppLanguage) -> [String] {
+            L10n.$override.withValue(language) {
+                let placements = [AssetCategory.camera, .screenshot, .saved].map { Placement(category: $0, day: .day(day), nameStem: "x") }
+                    + [Placement(category: .camera, day: .unknown, nameStem: "x")]
+                let files = placements.flatMap { layout.folderChain(for: $0, dayPromoted: true, placeName: "Đà Lạt").map(\.displayName) }
+                let views = [ViewPath.byDevice(groupKey: "k", groupName: "Sony A7 IV", day: day), .favorites(day: day)]
+                    .flatMap { layout.viewFolderChain($0).map(\.displayName) }
+                return files + views
+            }
+        }
+        #expect(names(.vi) == names(.en))
+        #expect(names(.en).contains("Screenshots") && names(.en).contains("By device") && names(.en).contains("Unknown date"))
+    }
 }

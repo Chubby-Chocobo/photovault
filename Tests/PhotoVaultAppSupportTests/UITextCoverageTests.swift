@@ -11,8 +11,7 @@ struct UITextCoverageTests {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     }
 
-    /// Until every UI string is a pair, run it on demand with `PV_L10N_SCAN=1`.
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["PV_L10N_SCAN"] == "1"))
+    @Test
     func noVietnameseLiteralOutsideATranslationPair() throws {
         var offenders: [String] = []
         for folder in Self.scannedFolders {
