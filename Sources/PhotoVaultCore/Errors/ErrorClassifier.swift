@@ -55,6 +55,15 @@ public enum ErrorClassifier {
         }
     }
 
+    public static func classify(_ error: SourceError) -> ErrorClass {
+        switch error {
+        case .unavailable: .destinationLevel(nil)
+        case .fileMissing, .fileChanged: .permanent(.resourceMissing)
+        case .cancelled: .transient
+        case .readFailed: .itemLevel
+        }
+    }
+
     /// 403 reasons that are throttling, not a permission problem.
     private static let rateLimitReasons: Set<String> = [
         "dailyLimitExceeded", "sharingRateLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded",

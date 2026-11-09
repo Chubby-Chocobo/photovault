@@ -1,15 +1,14 @@
 import CryptoKit
 import Foundation
 import os
-import PhotoVaultCore
 
 /// Writes export chunks to disk and hashes them (MD5 + SHA-256) inline, in delivery order.
 ///
 /// PhotoKit calls its data handler serially; each chunk is written and hashed in that call, with no
 /// hop to another task, so order is preserved by construction. The lock only guards against a
 /// concurrent `finish`/`abort` from another thread.
-final class StreamingFileWriter: @unchecked Sendable {
-    enum Failure: Error, Equatable {
+public final class StreamingFileWriter: @unchecked Sendable {
+    public enum Failure: Error, Equatable {
         /// `ExportControl` asked to stop (disk guard or caller cancel).
         case stopped
         case io(code: Int, domain: String)
@@ -23,12 +22,12 @@ final class StreamingFileWriter: @unchecked Sendable {
         var failure: Failure?
     }
 
-    let url: URL
+    public let url: URL
     private let control: ExportControl?
     private let state: OSAllocatedUnfairLock<State>
 
     /// Creates (truncating) the file at `url`; the parent directory must exist.
-    init(url: URL, control: ExportControl?) throws {
+    public init(url: URL, control: ExportControl?) throws {
         self.url = url
         self.control = control
         let fm = FileManager.default
@@ -47,7 +46,7 @@ final class StreamingFileWriter: @unchecked Sendable {
 
     /// Appends one chunk. Returns `false` when the export must stop (I/O failure or control stop);
     /// `failure` then says why and the caller should cancel the PhotoKit request.
-    func append(_ data: Data) -> Bool {
+    public func append(_ data: Data) -> Bool {
         let wrote = state.withLock { s -> Bool in
             guard s.failure == nil, let handle = s.handle else { return false }
             do {
@@ -70,10 +69,10 @@ final class StreamingFileWriter: @unchecked Sendable {
         return true
     }
 
-    var failure: Failure? { state.withLock { $0.failure } }
+    public var failure: Failure? { state.withLock { $0.failure } }
 
     /// Closes the file and returns its hashes. Deletes the file and throws if any chunk failed.
-    func finish() throws -> ExportedFile {
+    public func finish() throws -> ExportedFile {
         let result = state.withLock { s -> (Failure?, Int64, String, String) in
             try? s.handle?.close()
             s.handle = nil
@@ -89,7 +88,7 @@ final class StreamingFileWriter: @unchecked Sendable {
     }
 
     /// Closes and deletes the partial file. Safe to call repeatedly or after `finish`.
-    func abort() {
+    public func abort() {
         state.withLock { s in
             try? s.handle?.close()
             s.handle = nil
@@ -104,18 +103,20 @@ final class StreamingFileWriter: @unchecked Sendable {
 }
 
 /// In-memory SHA-256 of a streamed resource (adjustment data).
-final class StreamingSHA256: @unchecked Sendable {
+public final class StreamingSHA256: @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(uncheckedState: SHA256())
     private let total = OSAllocatedUnfairLock(initialState: 0)
 
-    func append(_ data: Data) {
+    public init() {}
+
+    public func append(_ data: Data) {
         state.withLock { $0.update(data: data) }
         total.withLock { $0 += data.count }
     }
 
-    var byteCount: Int { total.withLock { $0 } }
+    public var byteCount: Int { total.withLock { $0 } }
 
-    func hexDigest() -> String {
+    public func hexDigest() -> String {
         state.withLock { $0.finalize() }.map { String(format: "%02x", $0) }.joined()
     }
 }

@@ -3,6 +3,8 @@ import Foundation
 /// Row of the `asset` table (spec 8.2).
 public struct AssetRecord: Hashable, Codable, Sendable {
     public var assetKey: AssetKey
+    /// Where the asset came from; `localId` is a PhotoKit id for `.photos` and an `ImportLocator` otherwise.
+    public var sourceId: SourceID
     public var localId: String
     public var cloudId: String?
     public var creationDate: Date?
@@ -46,9 +48,10 @@ public struct AssetRecord: Hashable, Codable, Sendable {
         pixelWidth: Int = 0, pixelHeight: Int = 0, duration: Double = 0, cameraMake: String? = nil,
         cameraModel: String? = nil, lensModel: String? = nil, hasAdjustments: Bool = false,
         adjustmentHash: String? = nil, editCheckPending: Bool = false, insertedAt: Date? = nil,
-        firstSeenAt: Date, lastSeenAt: Date, deletedAt: Date? = nil
+        firstSeenAt: Date, lastSeenAt: Date, deletedAt: Date? = nil, sourceId: SourceID = .photos
     ) {
         self.assetKey = assetKey
+        self.sourceId = sourceId
         self.localId = localId
         self.cloudId = cloudId
         self.creationDate = creationDate
