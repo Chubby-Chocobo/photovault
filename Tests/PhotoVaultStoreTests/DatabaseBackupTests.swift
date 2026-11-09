@@ -81,6 +81,20 @@ import Testing
         #expect(!names.contains { $0.contains(".corrupt-") })
     }
 
+    @Test func aBrokenNewestBackupFallsBackToAnOlderOneAndLeavesNoStagingFiles() throws {
+        let f = try fixture()
+        try f.store.write { db in _ = try DestinationRepository.add(db, makeDestination(), now: t0) }
+        try f.backup.backup(f.store, now: t0)
+        let newest = try f.backup.backup(f.store, now: t0.addingTimeInterval(3600))
+        try Data("broken".utf8).write(to: newest)
+        for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: f.db.path + suffix) }
+        try Data("garbage".utf8).write(to: f.db)
+        let restored = try #require(try f.backup.restoreNewest(to: f.db, now: t0.addingTimeInterval(7200)))
+        #expect(try restored.read { try DestinationRepository.fetchAll($0) }.allSatisfy(\.recoveryRequired))
+        let names = try FileManager.default.contentsOfDirectory(atPath: f.db.deletingLastPathComponent().path)
+        #expect(!names.contains { $0.contains(".restoring") })
+    }
+
     @Test func onlyDamagedFilesCountAsCorruption() throws {
         #expect(DatabaseBackup.isCorruption(DatabaseError(resultCode: .SQLITE_CORRUPT)))
         #expect(DatabaseBackup.isCorruption(DatabaseError(resultCode: .SQLITE_NOTADB)))

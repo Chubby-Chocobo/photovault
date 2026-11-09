@@ -45,31 +45,59 @@ public struct DatabaseBackup: Sendable {
     /// `integrity_check`, opens it (running migrations) and marks every destination
     /// `recovery_required` (FR-51/52).
     ///
-    /// The damaged files (database, `-wal`, `-shm`) are moved aside as `<name>.corrupt-<time>`, never
-    /// deleted: they may hold commits newer than any backup. When no backup is usable they are moved
-    /// back and nil is returned, leaving the disk as it was.
+    /// Each candidate is prepared beside the database (copied, verified, migrated and flagged) and
+    /// only then swapped in, so no failure leaves an unflagged backup or nothing at all in place. The
+    /// damaged files (database, `-wal`, `-shm`) are moved aside as `<name>.corrupt-<time>`, never
+    /// deleted: they may hold commits newer than any backup. When no backup is usable, nothing on
+    /// disk changes and nil is returned.
     public func restoreNewest(to databaseURL: URL, now: Date = Date()) throws -> Store? {
         let fm = FileManager.default
         let suffixes = ["", "-wal", "-shm"]
-        let tag = ".corrupt-" + String(Int64((now.timeIntervalSince1970 * 1000).rounded()))
-        var movedAside: [(from: String, to: String)] = []
-        for suffix in suffixes {
-            let path = databaseURL.path + suffix
-            guard fm.fileExists(atPath: path) else { continue }
-            let aside = databaseURL.path + tag + suffix
-            try fm.moveItem(atPath: path, toPath: aside)
-            movedAside.append((path, aside))
-        }
+        let staging = URL(fileURLWithPath: databaseURL.path + ".restoring")
+        func removeStaging() { for suffix in suffixes { try? fm.removeItem(atPath: staging.path + suffix) } }
         for candidate in try backupFiles() {
-            try fm.copyItem(at: candidate.url, to: databaseURL)
-            if let store = try? Self.openVerified(at: databaseURL) {
-                try store.write { try DestinationRepository.markAllRecoveryRequired($0) }
-                return store
+            removeStaging()
+            do {
+                try fm.copyItem(at: candidate.url, to: staging)
+                try Self.prepare(at: staging)
+            } catch {
+                removeStaging()
+                continue
             }
-            for suffix in suffixes { try? fm.removeItem(atPath: databaseURL.path + suffix) }
+            try swapIn(staging, for: databaseURL, tag: ".corrupt-" + String(Int64((now.timeIntervalSince1970 * 1000).rounded())))
+            removeStaging()  // the emptied -wal and -shm of the closed copy
+            return try Store.open(at: databaseURL)
         }
-        for move in movedAside { try fm.moveItem(atPath: move.to, toPath: move.from) }
         return nil
+    }
+
+    /// Verifies, migrates and flags a copied backup, then closes it so it can be renamed.
+    private static func prepare(at url: URL) throws {
+        let store = try openVerified(at: url)
+        try store.write { try DestinationRepository.markAllRecoveryRequired($0) }
+        // Everything must be in the main file: only that file is moved into place.
+        try store.writer.writeWithoutTransaction { db in try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)") }
+        try (store.writer as? DatabasePool)?.close()
+        try flushToDisk(url)
+    }
+
+    /// Moves the damaged files aside and the prepared copy into place; on failure puts them back.
+    private func swapIn(_ prepared: URL, for databaseURL: URL, tag: String) throws {
+        let fm = FileManager.default
+        var movedAside: [(from: String, to: String)] = []
+        do {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = databaseURL.path + suffix
+                guard fm.fileExists(atPath: path) else { continue }
+                let aside = databaseURL.path + tag + suffix
+                try fm.moveItem(atPath: path, toPath: aside)
+                movedAside.append((path, aside))
+            }
+            try fm.moveItem(at: prepared, to: databaseURL)
+        } catch {
+            for move in movedAside.reversed() { try? fm.moveItem(atPath: move.to, toPath: move.from) }
+            throw error
+        }
     }
 
     /// True for the errors that mean the file itself is damaged, as opposed to a full disk, a
