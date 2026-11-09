@@ -101,7 +101,7 @@ struct EnglishTextTests {
             #expect(RelativeTimeText.ago(now.addingTimeInterval(-86400), now: now, calendar: calendar) == "yesterday 08:00")
             #expect(RelativeTimeText.dayHeading(now, now: now, calendar: calendar) == "Today")
             #expect(RelativeTimeText.dayHeading(now.addingTimeInterval(-86400), now: now, calendar: calendar) == "Yesterday")
-            #expect(RelativeTimeText.dayHeading(now.addingTimeInterval(-3 * 86400), now: now, calendar: calendar) == "Tuesday, 12/01/2027")
+            #expect(RelativeTimeText.dayHeading(now.addingTimeInterval(-3 * 86400), now: now, calendar: calendar) == "Tuesday, 12 Jan 2027")
         }
     }
 

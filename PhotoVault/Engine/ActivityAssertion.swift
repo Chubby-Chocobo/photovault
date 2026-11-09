@@ -11,7 +11,7 @@ final class ActivityAssertion: @unchecked Sendable {
         lock.withLock {
             depth += 1
             if depth == 1 {
-                token = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: tr(vi: "PhotoVault đang đồng bộ", en: "PhotoVault is syncing"))
+                token = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "PhotoVault is syncing")
             }
         }
     }

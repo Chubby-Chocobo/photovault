@@ -114,7 +114,7 @@ struct TimeZoneStep: View {
                 }
             }
             .labelsHidden()
-            FormRow(tr(vi: "Ví dụ: ảnh chụp lúc 23:30 UTC ngày 08/11/2026", en: "Example: a photo taken at 23:30 UTC on 08/11/2026")) {
+            FormRow(tr(vi: "Ví dụ: ảnh chụp lúc 23:30 UTC ngày 08/11/2026", en: "Example: a photo taken at 23:30 UTC on 8 Nov 2026")) {
                 Text(ArchiveTimeZoneText.filenameExample(at: Self.example, in: model.timeZone)).monospaced().textSelection(.enabled)
             }
         }

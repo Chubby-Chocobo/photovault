@@ -3,7 +3,7 @@ import PhotoVaultCore
 import PhotoVaultEngine
 import SwiftUI
 
-/// tr(vi: "Nhóm thiết bị (By device)", en: "Device groups (By device)") (FR-104): rename (a clash suggests a merge) and merge.
+/// "Nhóm thiết bị (By device)" (FR-104): rename (a clash suggests a merge) and merge.
 struct DeviceGroupsSection: View {
     @Environment(AppModel.self) private var model
     @State private var groups: [AppQueries.DeviceGroupInfo] = []

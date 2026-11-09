@@ -10,7 +10,9 @@ struct OnboardingView: View {
     var body: some View {
         Group {
             if let model {
-                OnboardingContent(model: model).id(app.language)
+                OnboardingContent(model: model)
+                    .navigationTitle(tr(vi: "Chào mừng đến PhotoVault", en: "Welcome to PhotoVault"))
+                    .id(app.language)
             } else {
                 ProgressView().frame(width: 720, height: 560)
             }

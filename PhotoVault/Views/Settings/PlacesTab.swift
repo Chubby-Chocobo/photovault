@@ -28,8 +28,8 @@ struct PlacesTab: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            FormRow(tr(vi: "Ngôn ngữ tên địa danh", en: "Place-name language"), detail: tr(vi: "Đổi ngôn ngữ sẽ đổi tên các thư mục ngày trên đích.", en: "Changing the language renames the day folders on destinations.")) {
-                Picker(tr(vi: "Ngôn ngữ tên địa danh", en: "Place-name language"), selection: model.binding(\.placeNameLanguage)) {
+            FormRow(tr(vi: "Ngôn ngữ tên địa danh", en: "Place-name language")) {
+                Picker(tr(vi: "Ngôn ngữ", en: "Language"), selection: model.binding(\.placeNameLanguage)) {
                     Text("Tiếng Việt").tag("vi") // l10n: verbatim
                     Text("English").tag("en")
                 }

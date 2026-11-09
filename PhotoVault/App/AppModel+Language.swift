@@ -17,6 +17,7 @@ extension AppModel {
         interfaceLanguage = choice
         let resolved = choice.resolved(preferredLanguages: Locale.preferredLanguages)
         L10n.current = resolved
+        if language != resolved { notice = nil }
         language = resolved
         if save { UserDefaults.standard.set(choice.rawValue, forKey: Self.interfaceLanguageKey) }
     }

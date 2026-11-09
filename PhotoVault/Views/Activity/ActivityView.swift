@@ -9,7 +9,9 @@ struct ActivityView: View {
     @State private var query = ""
 
     var body: some View {
-        content.id(model.language)
+        content
+            .navigationTitle(tr(vi: "Hoạt động gần đây", en: "Recent activity"))
+            .id(model.language)
     }
 
     private var content: some View {

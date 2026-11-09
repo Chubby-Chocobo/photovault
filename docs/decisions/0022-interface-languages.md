@@ -32,3 +32,5 @@ Issue #11 asks for the interface in Vietnamese and English with a way to switch.
 - Activity events are written in the language active when they happen; older events keep theirs.
 - The Photos permission text in `Info.plist` holds both languages, because macOS shows it before the app picks one.
 - Adding a third language means touching every pair; revisit this decision then.
+- A switch rebuilds the open windows: an unapplied edit in Settings (a destination's draft rules, a group rename) is dropped, and a notice on screen is cleared. Window titles follow through `.navigationTitle`.
+- Text drawn by AppKit itself (standard panel buttons, text-field menus) follows the bundle's development region, Vietnamese, because the app ships no `.lproj` folders. Dates in English use `d MMM yyyy` so they cannot be read as month/day.

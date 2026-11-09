@@ -15,7 +15,7 @@ public enum RelativeTimeText {
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
             return tr(vi: "hôm qua ", en: "yesterday ") + time(date, calendar)
         }
-        return format("dd/MM/yyyy HH:mm", date, calendar)
+        return format(tr(vi: "dd/MM/yyyy HH:mm", en: "d MMM yyyy HH:mm"), date, calendar)
     }
 
     public static func time(_ date: Date, _ calendar: Calendar = .current) -> String { format("HH:mm", date, calendar) }
@@ -30,7 +30,7 @@ public enum RelativeTimeText {
         let englishDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         let english = englishDays[min(max(weekday, 1), 7) - 1]
         let name = weekday == 1 ? tr(vi: "Chủ nhật", en: english) : tr(vi: "Thứ \(weekday)", en: english)
-        return name + ", " + format("dd/MM/yyyy", date, calendar)
+        return name + ", " + format(tr(vi: "dd/MM/yyyy", en: "d MMM yyyy"), date, calendar)
     }
 
     private static func format(_ pattern: String, _ date: Date, _ calendar: Calendar) -> String {
