@@ -138,6 +138,20 @@ import Testing
         #expect(try h.jobs(.pending).count == 1)
     }
 
+    @Test func anOpenCloudImportWithoutAnAdapterAsksForSignInAndResumesOnceOneIsAdded() async throws {
+        let h = try await harness()
+        let source = FakeCloudSource(try tree(h))
+        let id = try await h.startCloudImport(source, settle: 0)
+        // The app found no token at launch, so nothing could be registered for this job.
+        await h.env.sources.remove(id)
+        await h.settle(rounds: 2)
+        #expect(try h.source(id)?.status == .offline && h.source(id)?.statusReason == "signInRequired")
+        await h.env.sources.add(source)
+        for _ in 0..<4 { h.clock.advance(by: 120); await h.settle(rounds: 3) }
+        #expect(try h.source(id)?.status == .completed)
+        #expect(try h.importCounts(id)[.imported] == 2)
+    }
+
     @Test func aFinishedCloudImportWithoutAnAdapterIsStillWaitedForNotLost() async throws {
         let h = try await harness()
         let source = FakeContentSource()

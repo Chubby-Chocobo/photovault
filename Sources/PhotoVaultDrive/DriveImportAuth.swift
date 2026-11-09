@@ -7,7 +7,7 @@ import PhotoVaultCore
 public actor DriveImportAuth: DriveAuthorizing {
     private static let expirySkew: TimeInterval = 60
 
-    public static func keychainAccount(for sourceId: SourceID) -> String { "import-\(sourceId.rawValue)" }
+    public static func keychainAccount(for sourceId: SourceID) -> String { CloudTokenAccount.importGrant(sourceId) }
 
     /// Keeps the grant of a finished pick for `sourceId`.
     public static func store(refreshToken: String, for sourceId: SourceID, in keychain: any KeychainStore) throws {

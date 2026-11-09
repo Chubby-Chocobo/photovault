@@ -46,9 +46,9 @@ public enum CloudImportText {
 
 /// Keychain items that belong to cloud imports and the Dropbox account.
 public enum CloudImportKeychain {
-    public static let dropboxAccount = "dropbox-account"
+    public static let dropboxAccount = CloudTokenAccount.dropbox
 
-    public static func importAccount(_ id: SourceID) -> String { "import-\(id.rawValue)" }
+    public static func importAccount(_ id: SourceID) -> String { CloudTokenAccount.importGrant(id) }
 
     /// Every item Factory Reset removes: one grant per cloud import and the Dropbox account token.
     public static func accountsToDelete(imports: [SourceRecord]) -> [String] {

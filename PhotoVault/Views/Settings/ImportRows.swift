@@ -30,6 +30,12 @@ struct ImportRunningRow: View {
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small)
             }
             Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
+            if item.kind == .googleDrive, CloudImportText.needsSignIn(item) {
+                // The new grant covers only what is picked again, so a different pick changes the import.
+                Text(tr(vi: "Khi Google Picker mở, hãy chọn lại đúng những ảnh và thư mục đã chọn lần trước.",
+                        en: "When Google Picker opens, pick the same photos and folders as last time."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Text(waitingReason ?? ImportProgressText.statusLabel(item)).font(.caption)
                 .foregroundStyle(item.status == .offline || waitingReason != nil ? .orange : .secondary)
             if item.status != .offline || item.found > 0 {

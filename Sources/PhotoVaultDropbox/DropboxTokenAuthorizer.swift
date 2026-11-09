@@ -12,11 +12,11 @@ public protocol DropboxAccessTokenProviding: Sendable {
 /// Keeps one refresh token in the Keychain and the short-lived access token in memory.
 public actor DropboxTokenAuthorizer: DropboxAccessTokenProviding {
     /// Token of the signed-in Dropbox account used by the folder browser.
-    public static let accountTokenKey = "dropbox-account"
+    public static let accountTokenKey = CloudTokenAccount.dropbox
     private static let expirySlack: TimeInterval = 60
 
     /// Keychain account of the token that belongs to one import.
-    public static func importTokenKey(_ sourceId: SourceID) -> String { "import-\(sourceId.rawValue)" }
+    public static func importTokenKey(_ sourceId: SourceID) -> String { CloudTokenAccount.importGrant(sourceId) }
 
     private let auth: DropboxAuth
     private let keychain: any KeychainStore

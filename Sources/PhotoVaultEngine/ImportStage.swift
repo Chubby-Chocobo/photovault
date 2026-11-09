@@ -46,7 +46,14 @@ struct ImportStage: CycleStage {
         var changed = false
         for source in open {
             try Task.checkCancellation()
-            guard let folder = await env.sources.folder(for: source.id) else { continue }
+            guard let folder = await env.sources.folder(for: source.id) else {
+                // A cloud import whose token is gone has no adapter; only signing in again brings it back.
+                if source.kind != .localFolder, source.status != .offline || source.statusReason != SourceStatusReason.signInRequired {
+                    try await holdForSignIn(source.id)
+                    changed = true
+                }
+                continue
+            }
             if try await advance(source, folder) { changed = true }
         }
         return changed

@@ -50,6 +50,15 @@ public enum SourceKind: String, Codable, Sendable, CaseIterable {
     public var isImport: Bool { self != .photos }
 }
 
+/// Keychain account names of cloud import grants, shared by the adapters and the app.
+public enum CloudTokenAccount {
+    /// The Dropbox account the owner browses with; each import keeps its own copy.
+    public static let dropbox = "dropbox-account"
+
+    /// The grant one cloud import reads with.
+    public static func importGrant(_ id: SourceID) -> String { "import-\(id.rawValue)" }
+}
+
 public enum SourceMode: String, Codable, Sendable, CaseIterable {
     case continuous
     case oneTime

@@ -134,6 +134,9 @@ extension AppModel {
             runCloudFlow { [self] in
                 let signIn = try await env.cloud.dropboxAuth().signIn()
                 try await env.cloud.dropboxAuthorizer(account: CloudImportKeychain.importAccount(id)).store(signIn)
+                // A job whose token was missing at launch has no adapter yet.
+                let root = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config.remoteItems?.first } ?? ""
+                await env.coordinator.registerSources([env.cloud.dropboxSource(id: id, rootPath: root)])
                 didReconnectCloudImport()
             }
         case .localFolder, .photos:
