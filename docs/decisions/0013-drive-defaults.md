@@ -17,7 +17,7 @@ The spec marks these Drive behaviours as unverified (`[VERIFY]`). The implemente
 | 3 | A `409` on `files.create` (reused ID) and on starting a resumable session is treated as "already exists", then the item is fetched to check it. | `DriveAPI.swift`, `GoogleDriveDestination.swift` (create-metadata path), `ResumableUploader.swift` | M0-3 |
 | 4 | A `308` with no `Range` header after zero bytes means "no bytes stored". A zero-byte file uses `Content-Range: bytes */0`. | `ResumableUploader.swift` | M0-3 |
 | 5 | Roots are found by `appProperties.pvRoot` (`findRoots`) so a reinstall with `drive.file` can see them. | `GoogleDriveDestination+Root.swift` | M0-3 |
-| 6 | The data-protection Keychain works only in a signed host. An unsigned build fails with `-34018`. | `KeychainStore.swift` | M0-4 |
+| 6 | The data-protection Keychain works only in a signed host with a Keychain access group: the `keychain-access-groups` entitlement (`$(AppIdentifierPrefix)com.annh.photovault`) and the provisioning profile that grants it. Without them, even a team-signed build fails with `-34018` (`errSecMissingEntitlement`), and sign-in fails after Google has returned the tokens. | `KeychainStore.swift` | M0-4 |
 | 7 | Resumable session URIs are accepted only over `https` on `*.googleapis.com`. | `DriveHTTP.swift` (host check) | M0-3 |
 | 8 | The daily cap is 700 × 10⁹ bytes (decimal). See [0016](0016-daily-upload-cap-700gb.md). | `DailyUploadCap.swift` | M0-3 |
 
