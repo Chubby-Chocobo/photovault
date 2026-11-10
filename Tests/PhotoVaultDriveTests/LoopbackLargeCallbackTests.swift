@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import PhotoVaultCore
+import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultDrive
 
@@ -55,7 +56,7 @@ import Testing
     }
 
     @Test func anOversizedPickWhoseStateComesAfterTheIdsStillEndsTheFlowAtOnce() async throws {
-        let server = try LoopbackRedirectServer(expectedState: "st", timeout: 30)
+        let server = try LoopbackRedirectServer(expectedState: "st")
         let port = try await server.start()
         let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
         let browser = Task { try? await fetch(port, "/oauth2/callback?picked_file_ids=\(huge)&code=c&state=st") }
@@ -64,24 +65,33 @@ import Testing
         #expect(reply?.1 == 400 && String(decoding: reply?.0 ?? Data(), as: UTF8.self).contains("Too many items"))
     }
 
-    @Test func anOversizedPickWhoseStateIsSplitAcrossReadsStillEndsTheFlowAtOnce() async throws {
+    /// Cuts in the request, counted from the start of `state=`: the key is bytes 0 to 5, the value 6 to 48, and the
+    /// space after it is byte 49. A cut at -1100 is below the size limit, so only a later piece makes the request oversized.
+    @Test(arguments: [[-1], [3], [6], [26], [48], [49], [10, 30], [-1100, 26]])
+    func anOversizedPickWhoseStateIsSplitAcrossReadsStillEndsTheFlowAtOnce(cuts: [Int]) async throws {
         let state = String(repeating: "s", count: 43)
-        let server = try LoopbackRedirectServer(expectedState: state, timeout: 30)
+        // The server's time limits are hang guards: on a loaded runner the next piece can go out many seconds later.
+        let server = try LoopbackRedirectServer(expectedState: state, connectionTimeout: LoopbackRedirectServer.defaultTimeout)
         let port = try await server.start()
         let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
-        let head = "GET /oauth2/callback?picked_file_ids=\(huge)&code=c&state=\(state.prefix(20))"
-        let tail = "\(state.dropFirst(20)) HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+        let request = Data("GET /oauth2/callback?picked_file_ids=\(huge)&code=c&state=\(state) HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".utf8)
+        let stateStart = try #require(request.range(of: Data("&state=".utf8))).lowerBound + 1
+        let bounds = cuts.map { stateStart + $0 }
+        let pieces = zip([0] + bounds, bounds + [request.count]).map { request[$0..<$1] }
         let socket = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
         socket.start(queue: .global())
         defer { socket.cancel() }
-        socket.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
-        try await Task.sleep(nanoseconds: 300_000_000)
-        socket.send(content: Data(tail.utf8), completion: .contentProcessed { _ in })
+        for piece in pieces {
+            socket.send(content: piece, completion: .contentProcessed { _ in })
+            guard piece.endIndex < request.count else { break }
+            // Waiting until the server has read the piece puts the next one in a later read, however the bytes travel.
+            #expect(await pollUntil { server.receivedByteCount == piece.endIndex })
+        }
         await #expect(throws: LoopbackError.requestTooLarge) { try await server.awaitCode() }
     }
 
     @Test func aStrayRequestMuchLargerThanTheLimitIsRefusedWithoutEndingTheFlow() async throws {
-        let server = try LoopbackRedirectServer(expectedState: "st", timeout: 30)
+        let server = try LoopbackRedirectServer(expectedState: "st")
         let port = try await server.start()
         let waiting = Task { try await server.awaitCode() }
         let huge = String(repeating: "A", count: 5 * LoopbackRequestParser.maxRequestBytes)
@@ -103,7 +113,7 @@ import Testing
         }
         let flow = GooglePickerFlow(
             config: OAuthConfig(clientID: "client-1", clientSecret: "s"), transport: StubTransport { _ in .json(500, [:]) },
-            clock: FixedClock(), openURL: opener, loopbackTimeout: 30)
+            clock: FixedClock(), openURL: opener, loopbackTimeout: LoopbackRedirectServer.defaultTimeout)
         await #expect(throws: PickerError.selectionTooLarge) { _ = try await flow.run() }
     }
 }

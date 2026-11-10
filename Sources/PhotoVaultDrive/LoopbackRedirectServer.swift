@@ -24,6 +24,7 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private var callbackConnection: NWConnection?
     private var acceptedCallback: LoopbackCallback?
     private var acceptedTotal = 0
+    private var receivedTotal = 0
     private var listenerStopped = false
 
     public init(expectedState: String, timeout: TimeInterval = LoopbackRedirectServer.defaultTimeout,
@@ -68,6 +69,9 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     var openConnectionCount: Int { lock.withLock { connections.count } }
     /// Connections accepted since the start, closed ones included.
     var acceptedConnectionCount: Int { lock.withLock { acceptedTotal } }
+    /// Request bytes read from all connections since the start; lets a test send the next piece only once the
+    /// server has read the last one, so the pieces arrive in separate reads.
+    var receivedByteCount: Int { lock.withLock { receivedTotal } }
     /// True once the listener has stopped and takes no new connection.
     var hasStoppedListening: Bool { lock.withLock { listenerStopped } }
 
@@ -156,7 +160,10 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
             guard let self else { connection.cancel(); return }
             let previousCount = buffer.count
             var buffer = buffer
-            if let data { buffer.append(data) }
+            if let data {
+                buffer.append(data)
+                self.lock.withLock { self.receivedTotal += data.count }
+            }
             // Only the bytes that just arrived are searched (plus a short overlap), so a long request costs one pass
             // over its bytes instead of one full decode per chunk.
             let fresh = buffer.index(buffer.startIndex, offsetBy: max(0, previousCount - Self.scanOverlap))..<buffer.endIndex
