@@ -23,14 +23,14 @@ import Testing
 
     func bind(
         _ folders: [RemoteFolderEntry], files: [RemoteFileEntry] = [], known: [DaySlot] = [], rows: [RemoteFolder] = [], drive: Bool = false
-    ) -> (inventory: RemoteInventory, conflicts: Int) {
+    ) -> (inventory: RemoteInventory, conflicts: Int, guessed: Set<ArchiveDay>) {
         var inventory = RemoteInventory()
         inventory.folders = folders
         inventory.files = files
         return DaySlotBinding.bind(inventory, known: known.isEmpty ? [:] : [day: known], rows: rows, isDrive: drive)
     }
 
-    func path(_ result: (inventory: RemoteInventory, conflicts: Int), _ id: String) -> String? {
+    func path(_ result: (inventory: RemoteInventory, conflicts: Int, guessed: Set<ArchiveDay>), _ id: String) -> String? {
         result.inventory.folders.first { $0.remoteId == id }?.logicalPath
     }
 
@@ -71,6 +71,13 @@ import Testing
         ], drive: true)
         #expect(path(result, "a") == "camera/2026-11-08")
         #expect(path(result, "b")?.contains("@r") == true)
+    }
+
+    @Test func localFallbackBindingsAreMarkedAsGuessesAndKnownOnesAreNot() {
+        let folders = [folder("2026-11-08 Hà Nội", id: "/A"), folder("2026-11-08 Ninh Bình", id: "/B")]
+        #expect(bind(folders).guessed == [day])
+        let known = [DaySlot(slot: nil, key: nil, name: "Hà Nội"), DaySlot(slot: "p0123456789ab", key: nil, name: "Ninh Bình")]
+        #expect(bind(folders, known: known).guessed.isEmpty)
     }
 
     @Test func aDriveFolderKeepsItsPvLogicalWhenNothingElseKnowsIt() {

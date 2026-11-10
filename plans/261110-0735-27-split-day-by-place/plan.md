@@ -206,8 +206,9 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - Review later: no
 
 ### A Drive backup added after a local recovery (lead addendum)
-- Chosen: Drive's `pvLogical` and folder ids are the truth, and the common case needs no rebinding because Drive recovers first. When a NAS was recovered alone first and a Drive backup root is added later, the Drive folders are bound by display name against the slots the NAS recovery created (`DaySlotBinding` rule 2). No `provisional` flag was added: the name match already puts each Drive folder on the slot of the same-named NAS folder, so no Drive file moves and the folder names agree. Test: `aDriveBackupAddedAfterTheNASWasRecoveredIsBoundByNameAndNothingMoves`.
-- Known limit: if the two destinations' folder names differ (a rename not yet applied at one of them), rule 3 binds a Drive folder by its `pvLogical`, which can disagree with a local guess. Then Drive files would follow the database's slot. Rebinding the local side to Drive's slots is not implemented; revisit if it shows up.
+- Chosen: Drive's `pvLogical` and folder ids are the truth. A local recovery that had to guess (fallback rule: first folder by name is the main one) marks the day provisional (`kv.slots_provisional:<day>`, `ProvisionalSlots`). When a Drive destination is recovered later (added later, or offline from the start), it skips binding by name for those days and binds by `pvLogical`; then the database is rebound to Drive's slots by display name: `remote_folder` rows and `upload_job.remote_logical_parent` of every destination, `asset.place_slot`, `day_stat` and `day_place` are rewritten in one transaction (two phases, so swaps work), and the flag is cleared. Drive files never move. The common case (Drive recovers first, local waits) needs no rebinding.
+- Tests: `aDriveBackupAddedAfterTheNASWasRecoveredRebindsTheNASToDrivesSlots`, `aDriveThatWasOfflineFromTheStartRebindsTheNASWhenItComesBack`; both assert zero `move_job`s, equal folder names on both destinations and the NAS rows on Drive's paths.
+- Known limit: a local folder whose name matches no Drive folder keeps its guessed path (or a fresh `r…` slot if a Drive folder claims it).
 - Review later: yes
 
 ### Engine review fixes (2026-11-10)

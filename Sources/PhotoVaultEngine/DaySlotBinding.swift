@@ -12,8 +12,9 @@ enum DaySlotBinding {
     /// - Returns: the inventory with every camera day folder and its files on a logical path, and the
     ///   number of folders skipped because their path was already bound to another folder.
     static func bind(
-        _ inventory: RemoteInventory, known: [ArchiveDay: [DaySlot]], rows: [RemoteFolder], isDrive: Bool
-    ) -> (inventory: RemoteInventory, conflicts: Int) {
+        _ inventory: RemoteInventory, known: [ArchiveDay: [DaySlot]], rows: [RemoteFolder], isDrive: Bool,
+        provisionalDays: Set<ArchiveDay> = []
+    ) -> (inventory: RemoteInventory, conflicts: Int, guessed: Set<ArchiveDay>) {
         let listed = Set(inventory.folders.map(\.remoteId))
         let rowByRemoteId = Dictionary(grouping: rows.filter { $0.remoteId != nil }, by: { $0.remoteId! })
             .mapValues { $0.map(\.logicalPath).sorted().first! }
@@ -24,6 +25,7 @@ enum DaySlotBinding {
         var dropped = Set<String>()
         var bound: [String: String] = [:]
         var conflicts = 0
+        var guessed = Set<ArchiveDay>()
 
         /// A row holds `path` for a different folder that is still listed.
         func held(_ path: String, by folder: RemoteFolderEntry) -> Bool {
@@ -43,7 +45,7 @@ enum DaySlotBinding {
             if let rowPath = rowByRemoteId[folder.remoteId], let parsed = DynamicLayout.parseCameraDay(rowPath), parsed.day == day,
                bound[rowPath] == nil {
                 path = rowPath
-            } else if let match = slots.first(where: { names(of: $0, day: day).contains(ck(folder.displayName)) }) {
+            } else if !(isDrive && provisionalDays.contains(day)), let match = slots.first(where: { names(of: $0, day: day).contains(ck(folder.displayName)) }) {
                 let candidate = match.slot.map { DynamicLayout.slotLogicalPath(day: day, slot: $0) } ?? "camera/\(day)"
                 if bound[candidate] != nil {
                     conflicts += 1
@@ -53,6 +55,8 @@ enum DaySlotBinding {
                 if !held(candidate, by: folder) { path = candidate }
             }
             if path == nil {
+                // A local listing cannot say which folder is the main one: this binding is a guess.
+                if !isDrive { guessed.insert(day) }
                 let preferred = isDrive ? folder.logicalPath : "camera/\(day)"
                 if free(preferred, for: folder) {
                     path = preferred
@@ -89,7 +93,7 @@ enum DaySlotBinding {
             moved.parentLogical = path
             return moved
         }
-        return (result, conflicts)
+        return (result, conflicts, guessed)
     }
 
     private static func ck(_ name: String) -> String { NameSanitizer.collisionKey(name) }

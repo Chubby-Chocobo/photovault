@@ -143,8 +143,15 @@ actor RecoveryService {
         }
         let zone = try await restoreTimezone(inventory.archiveTimezone)
         let (known, rows) = try await knownSlots(for: inventory, destinationId: record.id)
-        let bound = DaySlotBinding.bind(inventory, known: known, rows: rows, isDrive: destination.capabilities.supportsAppProperties)
+        let isDrive = destination.capabilities.supportsAppProperties
+        let provisional = try await env.store.read { db in try ProvisionalSlots.days(db) }
+        let bound = DaySlotBinding.bind(inventory, known: known, rows: rows, isDrive: isDrive, provisionalDays: provisional)
         inventory = bound.inventory
+        if isDrive, !provisional.isEmpty {
+            // Drive's slots are the truth: what a local recovery guessed is rebound to them, and nothing moves at Drive.
+            let truth = inventory.folders
+            try await env.store.write { db in try ProvisionalSlots.resolve(db, truth: truth, days: provisional) }
+        }
         var stats = RecoveryStats()
         stats.found = try await walkedFileCount(record: record, destination: destination)
         let matches = try await RecoveryMatcher(env: env, record: record, timeZone: zone).match(inventory)
@@ -163,6 +170,10 @@ actor RecoveryService {
         stats.folders = folders.written
         stats.folderConflicts = bound.conflicts + folders.conflicts
         if stats.folderConflicts > 0 { try await reportFolderConflicts(record.id, count: stats.folderConflicts) }
+        if !bound.guessed.isEmpty {
+            let guessed = bound.guessed
+            try await env.store.write { db in try ProvisionalSlots.mark(db, guessed) }
+        }
         let written = try await writer.writeFiles(matches.files, daysWithRows: daysWithRows)
         stats.suspect = written.suspect
         stats.shortcuts = try await writer.writeShortcuts(matches.shortcuts)

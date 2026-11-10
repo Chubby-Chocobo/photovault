@@ -132,26 +132,58 @@ import Testing
 
     // MARK: Intact database, owner-requested
 
-    @Test func aDriveBackupAddedAfterTheNASWasRecoveredIsBoundByNameAndNothingMoves() async throws {
+    /// Drive's `pvLogical` slots are the truth: the local bindings guessed by name order are rebound to them.
+    private func expectLocalFollowsDrive(_ w: World, before: [String]) async throws {
+        try await expectNothingMoved(w, listing: before, places: ["Hà Nội"])
+        let h = w.h
+        let main = "camera/\(day)"
+        for id in [DestinationID.googleDrive, h.nasId] {
+            let row = try #require(try h.read { db in try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: main) })
+            #expect(row.displayName == daLatFolder, "\(id): the main folder is Đà Lạt")
+        }
+        let slot = try #require(try h.asset(.local("h0"))?.placeSlot)
+        for id in [DestinationID.googleDrive, h.nasId] {
+            let row = try #require(try h.read { db in try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: "camera/\(day)@\(slot)") })
+            #expect(row.displayName == hanoiFolder, "\(id): the extra folder is Hà Nội")
+        }
+        #expect(try h.asset(.local("d0"))?.placeSlot == nil)
+        #expect(try h.dayStat(day)?.placeName == "Đà Lạt")
+        let drive = await w.h.drive.folders
+        var driveNames: [String] = []
+        for folder in drive where (await w.h.drive.path(of: folder.id)).hasPrefix("Camera Uploads/") { driveNames.append(folder.name) }
+        let local = folderListing(w.root!).filter { $0.hasPrefix("Camera Uploads/") }.map { String($0.dropFirst("Camera Uploads/".count)) }
+        #expect(driveNames.sorted() == local.sorted(), "both destinations carry the same folder names")
+    }
+
+    @Test func aDriveBackupAddedAfterTheNASWasRecoveredRebindsTheNASToDrivesSlots() async throws {
         let w = try await world(drive: true, local: true)
         let before = await listing(w)
         try await w.h.loseDatabase(localContent: w.reader)
         try w.h.addNAS(scope: .full)
         try await w.h.coordinator.beginBaseline(destinations: [w.h.nasId])
         await w.h.settle(rounds: 10)
-        // The NAS alone guessed its main folder (the first by name); Drive's slots are the truth.
+        // The NAS alone guessed its main folder (the first by name, Hà Nội); Drive's slots are the truth.
         try w.h.addDrive(scope: .full)
         try await w.h.coordinator.beginBaseline(destinations: [.googleDrive])
         await w.h.settle(rounds: 10)
-        try await expectNothingMoved(w, listing: before, places: ["Đà Lạt"])
-        var drive: [String] = []
-        for folder in await w.h.drive.folders {
-            let path = await w.h.drive.path(of: folder.id)
-            if path.hasPrefix("Camera Uploads/") { drive.append(folder.name) }
-        }
-        drive.sort()
-        let local = folderListing(w.root!).filter { $0.hasPrefix("Camera Uploads/") }.map { String($0.dropFirst("Camera Uploads/".count)) }.sorted()
-        #expect(drive == local, "both destinations carry the same folder names")
+        try await expectLocalFollowsDrive(w, before: before)
+    }
+
+    @Test func aDriveThatWasOfflineFromTheStartRebindsTheNASWhenItComesBack() async throws {
+        let w = try await world(drive: true, local: true)
+        let before = await listing(w)
+        try await w.h.loseDatabase(localContent: w.reader)
+        try w.h.addNAS(scope: .full)
+        w.h.clock.advance(by: 1)
+        try w.h.addDrive(scope: .full)
+        await w.h.drive.setStatus(.unavailable(.offline))
+        try await w.h.coordinator.beginBaseline(destinations: [w.h.nasId, .googleDrive])
+        await w.h.settle(rounds: 8)
+        #expect(try w.h.destinationRecord(w.h.nasId).recoveryRequired == false, "the NAS recovered alone")
+        await w.h.drive.setStatus(.active)
+        await w.h.settle(rounds: 10)
+        #expect(try w.h.destinationRecord(.googleDrive).recoveryRequired == false)
+        try await expectLocalFollowsDrive(w, before: before)
     }
 
     @Test func r5OwnerRequestedRecoveryWithAnIntactDatabaseChangesNothing() async throws {
