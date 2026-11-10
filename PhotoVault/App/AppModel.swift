@@ -65,6 +65,8 @@ final class AppModel {
     var queuedImports: [ImportSnapshot] = []
     /// Imports signed in again whose resume waits for the engine's turn.
     var resumingImports: Set<SourceID> = []
+    /// Running imports whose Cancel waits for the engine.
+    var cancellingImports: Set<SourceID> = []
     @ObservationIgnored var queuedStarts: [SourceID: Task<Void, Never>] = [:]
     /// Which provider's desktop app is on this Mac, read when Settings opens or the app is activated, not on every redraw.
     var syncedFolders: [SyncedCloudProvider: SyncedCloudFolders.Detection] = [:]

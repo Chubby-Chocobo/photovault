@@ -137,3 +137,50 @@ import Testing
         #expect(ImportQueue.merged(queued: [queued], running: [real]) == [real])
     }
 }
+
+@Suite struct QueueWaitTextTests {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func queued() -> ImportSnapshot {
+        ImportQueue.snapshot(id: .folder(), kind: .localFolder, account: nil, displayName: "X", now: now)
+    }
+
+    @Test func positionCountsOnlyQueuedEntriesInOrder() {
+        let a = queued(), b = queued(), c = queued()
+        let real = ImportSnapshot(id: .folder(), displayName: "R", status: .scanning, createdAt: now)
+        #expect(ImportQueue.position(of: b.id, queued: [a, b, c]) == ImportQueue.Position(index: 2, total: 3))
+        #expect(ImportQueue.position(of: real.id, queued: [a, b, c]) == nil)
+    }
+
+    @Test func aLoneEntryHasNoOrdinal() {
+        L10n.$override.withValue(.vi) {
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 1, total: 1)) == "Chờ đến lượt")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 2, total: 3)) == "Chờ đến lượt · thứ 2")
+        }
+        L10n.$override.withValue(.en) {
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 1, total: 1)) == "Waiting for its turn")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 1, total: 2)) == "Waiting for its turn · 1st in line")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 2, total: 4)) == "Waiting for its turn · 2nd in line")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 3, total: 4)) == "Waiting for its turn · 3rd in line")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 4, total: 4)) == "Waiting for its turn · 4th in line")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 11, total: 12)) == "Waiting for its turn · 11th in line")
+            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 22, total: 22)) == "Waiting for its turn · 22nd in line")
+        }
+    }
+
+    @Test func theReasonNamesWhatTheEngineIsDoing() {
+        L10n.$override.withValue(.vi) {
+            #expect(ImportQueue.waitReason(uploading: true) == "đang chờ app upload xong file đang chạy")
+            #expect(ImportQueue.waitReason(uploading: false) == "đang chờ lượt đồng bộ hiện tại")
+        }
+        L10n.$override.withValue(.en) {
+            #expect(ImportQueue.waitReason(uploading: true) == "waiting for the upload in progress to finish")
+            #expect(ImportQueue.waitReason(uploading: false) == "waiting for the current sync turn")
+        }
+    }
+
+    @Test func aCancelThatWaitsIsSaid() {
+        L10n.$override.withValue(.en) { #expect(ImportQueue.cancellingText == "Cancelling · waiting for its turn") }
+        L10n.$override.withValue(.vi) { #expect(ImportQueue.cancellingText == "Đang huỷ · chờ đến lượt") }
+    }
+}

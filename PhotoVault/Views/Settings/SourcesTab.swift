@@ -151,13 +151,13 @@ struct SourcesTab: View {
                 Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
             }
             ForEach(running) { item in
-                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), signedInWaiting: model.resumingImports.contains(item.id), onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
+                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), signedInWaiting: model.resumingImports.contains(item.id), cancelling: model.cancellingImports.contains(item.id), queueWait: model.queueWait(for: item), waitReason: model.engineWaitReason, onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
             }
             let finished = model.finishedImports
             if !finished.isEmpty {
                 Divider()
                 Text(tr(vi: "Đã xong", en: "Finished")).font(.subheadline.weight(.semibold))
-                ForEach(finished) { item in ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), onSignInAgain: { model.reconnectImport(item) }) }
+                ForEach(finished) { item in ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), waitReason: model.engineWaitReason, onSignInAgain: { model.reconnectImport(item) }) }
             }
         }
     }

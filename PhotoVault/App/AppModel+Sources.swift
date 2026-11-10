@@ -116,6 +116,15 @@ extension AppModel {
         }
     }
 
+    /// What a queued entry says while it waits: its place in line and why. nil for an entry that is not queued.
+    func queueWait(for item: ImportSnapshot) -> (title: String, reason: String)? {
+        guard let position = ImportQueue.position(of: item.id, queued: queuedImports) else { return nil }
+        return (ImportQueue.waitTitle(position), ImportQueue.waitReason(uploading: !transfers.isEmpty))
+    }
+
+    /// Why a signed-in-again import or a cancel waits.
+    var engineWaitReason: String { ImportQueue.waitReason(uploading: !transfers.isEmpty) }
+
     func cancelImport(_ id: SourceID) {
         guard let env else { return }
         // Still waiting for its turn: stop the start; its task deletes the stored sign-in.
@@ -124,7 +133,10 @@ extension AppModel {
             queuedImports.removeAll { $0.id == id }
             return
         }
+        // The cancel is a command that waits for the engine's turn; the row says so meanwhile.
+        cancellingImports.insert(id)
         Task {
+            defer { cancellingImports.remove(id) }
             do {
                 try await env.coordinator.cancelImport(id)
                 env.log.log(.info, category: "import", "import cancelled")

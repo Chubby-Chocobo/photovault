@@ -216,6 +216,49 @@ public enum ImportQueue {
         }
     }
 
+    public struct Position: Equatable, Sendable {
+        /// 1-based place among the queued entries.
+        public var index: Int
+        public var total: Int
+        public init(index: Int, total: Int) { self.index = index; self.total = total }
+    }
+
+    /// Where `id` stands among the entries waiting for the engine; nil when it is not one of them.
+    public static func position(of id: SourceID, queued: [ImportSnapshot]) -> Position? {
+        let waiting = queued.filter(isQueued)
+        guard let index = waiting.firstIndex(where: { $0.id == id }) else { return nil }
+        return Position(index: index + 1, total: waiting.count)
+    }
+
+    /// "Chờ đến lượt", with the place when several wait: "Chờ đến lượt · thứ 2".
+    public static func waitTitle(_ position: Position) -> String {
+        let base = tr(vi: "Chờ đến lượt", en: "Waiting for its turn")
+        guard position.total > 1 else { return base }
+        return base + " · " + tr(vi: "thứ \(position.index)", en: "\(ordinal(position.index)) in line")
+    }
+
+    /// Why the start waits: a transfer is running (the engine yields between files), or the current sync pass.
+    public static func waitReason(uploading: Bool) -> String {
+        uploading
+            ? tr(vi: "đang chờ app upload xong file đang chạy", en: "waiting for the upload in progress to finish")
+            : tr(vi: "đang chờ lượt đồng bộ hiện tại", en: "waiting for the current sync turn")
+    }
+
+    /// A Cancel on a running import is also a command that waits for the engine.
+    public static var cancellingText: String { tr(vi: "Đang huỷ · chờ đến lượt", en: "Cancelling · waiting for its turn") }
+
+    private static func ordinal(_ n: Int) -> String {
+        let suffix: String
+        switch (n % 100, n % 10) {
+        case (11...13, _): suffix = "th"
+        case (_, 1): suffix = "st"
+        case (_, 2): suffix = "nd"
+        case (_, 3): suffix = "rd"
+        default: suffix = "th"
+        }
+        return "\(n)\(suffix)"
+    }
+
     public static func isQueued(_ item: ImportSnapshot) -> Bool { item.status == .scanning && item.statusReason == reason }
 
     /// Queued entries first, in the order they were added (they are the newest). An entry whose real import exists is dropped.
