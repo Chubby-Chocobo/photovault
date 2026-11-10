@@ -158,7 +158,7 @@ extension ImportStage {
                 }
             }
         }
-        // A read that finished after the cancel is not committed (it would be exported, and so downloaded again).
+        // A read that finished after the cancel is not committed: the cancel's bookkeeping after this pass would remove the rows at once.
         if interrupts.isCancelRequested(source.id) { return .stop }
         try env.reach(.afterImportInspectBeforeCommit)
         if givenUp, !failed.isEmpty { env.log.log(.notice, category: "import", "import group unreadable for a day; marked failed") }
