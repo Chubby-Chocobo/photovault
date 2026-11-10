@@ -67,4 +67,67 @@ import Testing
             #expect(items.map(\.title) == ["Google Drive on this Mac…", "Google Drive in the browser…"])
         }
     }
+
+    // MARK: Dropbox sign-in on its own item
+
+    @Test func signedInShowsTheAccountOnTheBrowserItemAndAddsSignOut() {
+        vi {
+            let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
+            #expect(items.map(\.action) == [.syncedFolder, .browser, .signOut])
+            #expect(items[1].title == "Dropbox qua trình duyệt… · ten@x.com")
+            #expect(items[2].title == "Đăng xuất Dropbox (ten@x.com)")
+            #expect(items[2].help == "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.")
+            #expect(items[0].title == "Dropbox trên máy này…")
+        }
+    }
+
+    @Test func signedOutSaysSoInTheHelpOfTheBrowserItem() {
+        vi {
+            let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: .signedOut)
+            #expect(items.map(\.action) == [.syncedFolder, .browser])
+            #expect(items[1].title == "Dropbox qua trình duyệt…")
+            #expect(items[1].help == "Chưa đăng nhập — sẽ mở trình duyệt để đăng nhập")
+        }
+    }
+
+    @Test func theSingleBrowserItemCarriesTheStateToo() {
+        vi {
+            let out = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedOut)
+            #expect(out.map(\.title) == ["Từ Dropbox…"] && out[0].help == "Chưa đăng nhập — sẽ mở trình duyệt để đăng nhập")
+            let signedIn = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
+            #expect(signedIn.map(\.title) == ["Từ Dropbox… · ten@x.com", "Đăng xuất Dropbox (ten@x.com)"])
+        }
+    }
+
+    @Test func aSignedInAccountWithoutAnEmailStillOffersSignOut() {
+        vi {
+            let items = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedIn(email: " "))
+            #expect(items.map(\.title) == ["Từ Dropbox…", "Đăng xuất Dropbox"])
+        }
+    }
+
+    @Test func theSyncedOnlyItemIsUnaffectedByTheSignIn() {
+        vi {
+            let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: false, dropbox: .signedOut)
+            #expect(items.map(\.action) == [.syncedFolder] && items[0].help == "")
+        }
+    }
+
+    @Test func googleNeverShowsSignInState() {
+        vi {
+            let items = ImportMenuChoices.items(.googleDrive, appPresent: true, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
+            #expect(items.map(\.action) == [.syncedFolder, .browser])
+            #expect(!items[1].title.contains("ten@x.com"))
+        }
+    }
+
+    @Test func englishTexts() {
+        en {
+            let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
+            #expect(items[1].title == "Dropbox in the browser… · ten@x.com")
+            #expect(items[2].title == "Sign out of Dropbox (ten@x.com)")
+            let out = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedOut)
+            #expect(out[0].help == "Not signed in — opens the browser to sign in")
+        }
+    }
 }

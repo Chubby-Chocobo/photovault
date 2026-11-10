@@ -111,7 +111,14 @@ public enum SyncedCloudText {
 /// What "Nhập ảnh…" offers for one provider: the synced folder on this Mac and the browser sign-in are separate,
 /// named items, so the owner chooses between them instead of finding the second inside a panel.
 public enum ImportMenuChoices {
-    public enum Action: Equatable, Sendable { case syncedFolder, browser }
+    public enum Action: Equatable, Sendable { case syncedFolder, browser, signOut }
+
+    /// The Dropbox account the browser way keeps between imports. Other providers pass `.notApplicable`.
+    public enum DropboxState: Equatable, Sendable {
+        case notApplicable, signedOut
+        /// Signed in; `email` is shown in the menu only, never logged.
+        case signedIn(email: String?)
+    }
 
     public struct Item: Equatable, Sendable {
         public var action: Action
@@ -122,33 +129,49 @@ public enum ImportMenuChoices {
 
     /// `appPresent`: the provider's desktop app was found. `browserConfigured`: the build has the Google client ID or
     /// the Dropbox app key. One way available gives one plain item; neither gives one disabled item that says why.
-    public static func items(_ provider: SyncedCloudProvider, appPresent: Bool, browserConfigured: Bool) -> [Item] {
+    /// For Dropbox the browser item carries the sign-in state, and a signed-in account adds a sign-out item.
+    public static func items(_ provider: SyncedCloudProvider, appPresent: Bool, browserConfigured: Bool, dropbox: DropboxState = .notApplicable) -> [Item] {
         let name = provider == .googleDrive ? "Google Drive" : "Dropbox"
         let plain = tr(vi: "Từ \(name)…", en: "From \(name)…")
+        let state = provider == .dropbox ? dropbox : .notApplicable
+        var email: String?
+        if case .signedIn(let address) = state, let trimmed = address?.trimmingCharacters(in: .whitespaces), !trimmed.isEmpty { email = trimmed }
+        func withAccount(_ title: String) -> String { email.map { "\(title) · \($0)" } ?? title }
+        let signedOutHelp = tr(vi: "Chưa đăng nhập — sẽ mở trình duyệt để đăng nhập", en: "Not signed in — opens the browser to sign in")
+        var items: [Item]
         switch (appPresent, browserConfigured) {
         case (true, true):
-            return [
+            var browserHelp = tr(vi: "Dùng được với tài khoản \(provider == .googleDrive ? "Google" : "Dropbox") chưa đồng bộ trên máy này",
+                                 en: "Works with a \(provider == .googleDrive ? "Google" : "Dropbox") account that is not synced on this Mac")
+            if state == .signedOut { browserHelp = signedOutHelp }
+            items = [
                 Item(action: .syncedFolder, title: tr(vi: "\(name) trên máy này…", en: "\(name) on this Mac…"),
                      help: provider == .googleDrive
                         ? tr(vi: "Không cần đăng nhập, không có cảnh báo của Google", en: "No sign-in, no Google warning")
                         : tr(vi: "Không cần đăng nhập", en: "No sign-in"),
                      isEnabled: true),
-                Item(action: .browser, title: tr(vi: "\(name) qua trình duyệt…", en: "\(name) in the browser…"),
-                     help: tr(vi: "Dùng được với tài khoản \(provider == .googleDrive ? "Google" : "Dropbox") chưa đồng bộ trên máy này",
-                              en: "Works with a \(provider == .googleDrive ? "Google" : "Dropbox") account that is not synced on this Mac"),
-                     isEnabled: true),
+                Item(action: .browser, title: withAccount(tr(vi: "\(name) qua trình duyệt…", en: "\(name) in the browser…")),
+                     help: browserHelp, isEnabled: true),
             ]
         case (true, false):
-            return [Item(action: .syncedFolder, title: plain, help: "", isEnabled: true)]
+            items = [Item(action: .syncedFolder, title: plain, help: "", isEnabled: true)]
         case (false, true):
-            return [Item(action: .browser, title: plain, help: "", isEnabled: true)]
+            items = [Item(action: .browser, title: withAccount(plain), help: state == .signedOut ? signedOutHelp : "", isEnabled: true)]
         case (false, false):
             let why = provider == .googleDrive
                 ? tr(vi: "Cài Google Drive cho máy tính, hoặc dùng bản build có Google client ID.",
                      en: "Install Google Drive for desktop, or use a build with a Google client ID.")
                 : tr(vi: "Cài ứng dụng Dropbox, hoặc dùng bản build có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
                      en: "Install the Dropbox app, or use a build with a Dropbox app key (DROPBOX_APP_KEY).")
-            return [Item(action: .browser, title: plain, help: why, isEnabled: false)]
+            items = [Item(action: .browser, title: plain, help: why, isEnabled: false)]
         }
+        if case .signedIn = state {
+            let base = tr(vi: "Đăng xuất Dropbox", en: "Sign out of Dropbox")
+            items.append(Item(
+                action: .signOut, title: email.map { "\(base) (\($0))" } ?? base,
+                help: tr(vi: "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.", en: "Existing imports keep their own read access."),
+                isEnabled: true))
+        }
+        return items
     }
 }
