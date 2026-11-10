@@ -137,6 +137,7 @@ PhotoVault/
 ├── Saved/2026-04-26/                 photos saved from chat apps or without camera EXIF
 ├── By device/Sony A7 IV/2026-04-26/
 ├── By place/Vietnam/Lâm Đồng/2026-04-26/
+├── By lens/FE 24-70mm F2.8 GM/2026-04-26/   off by default
 └── Favorites/2026-04-26/
 ```
 
@@ -163,6 +164,7 @@ Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/M
 | Place names | on; home country `VN` | Country in English; places in Vietnam in Vietnamese without the province prefix ("Hà Nội"); abroad English with the native name ("Kyoto (京都市)"). See [privacy](#privacy). |
 | Sidecars, JSON and XMP | on, on | Can also be set per destination. |
 | Views: By device, By place, Favorites | on | Google Drive only. |
+| View: By lens | off | Google Drive only. Groups camera photos by the lens in EXIF; phone names are shortened ("iPhone 15 Pro 6.86mm f1.78"); placeholder values such as "0.0 mm f/0.0" are ignored. |
 | Integrity check | every 7 days | |
 
 Sync modes:

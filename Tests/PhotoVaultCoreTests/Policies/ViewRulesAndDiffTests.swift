@@ -91,7 +91,9 @@ import Testing
     @Test func pathsReturnsEveryMatchingView() {
         let en = GeoPlace(isoCountryCode: "VN", country: "Vietnam", administrativeArea: "Lam Dong")
         let context = ViewContext(englishGeocodes: [GeoCell(daLat): en])
-        let views = ViewRules.paths(for: fixtureAsset(favorite: true, location: daLat), context: context).map(\.view)
+        var asset = fixtureAsset(favorite: true, location: daLat)
+        asset.lensModel = "FE 24-70mm F2.8 GM"
+        let views = ViewRules.paths(for: asset, context: context).map(\.view)
         #expect(Set(views) == Set(ViewKind.allCases))
     }
 }
