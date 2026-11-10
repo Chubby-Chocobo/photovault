@@ -58,7 +58,7 @@ actor UploadRunner {
     func isBackedOff(_ id: DestinationID) -> Bool { (backoffUntil[id] ?? .distantPast) > env.clock.now }
 
     func backOff(_ id: DestinationID) {
-        let delay = Backoff().delay(forAttempt: max(consecutiveFailures[id, default: 1] - 1, 0))
+        let delay = env.tuning.backoffDelay(max(consecutiveFailures[id, default: 1] - 1, 0))
         backoffUntil[id] = env.clock.now.addingTimeInterval(delay)
     }
 
