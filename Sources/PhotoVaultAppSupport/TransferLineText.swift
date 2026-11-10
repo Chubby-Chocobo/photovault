@@ -20,14 +20,22 @@ public enum TransferLineText {
             .map(\.element)
     }
 
+    /// `full` names the destination, account, bytes and elapsed time (the cards and the tooltip). `short` is the
+    /// file, its action and a percentage, for the header while a card already shows the full line.
+    public enum Style: Sendable { case full, short }
+
     /// The line for the transfer that has run longest, with a count of the others; nil when none is visible.
-    public static func make(_ transfers: [TransferProgress], now: Date) -> String? {
+    public static func make(_ transfers: [TransferProgress], now: Date, style: Style = .full) -> String? {
         let shown = visible(transfers, now: now)
         guard let main = shown.first else { return nil }
-        var parts = [action(for: main)]
-        if let progress = sizes(done: main.bytesDone, total: main.bytesTotal) { parts.append(progress) }
-        let elapsed = now.timeIntervalSince(main.startedAt)
-        if elapsed >= elapsedAfterSeconds { parts.append(clock(seconds: elapsed)) }
+        var parts = [action(for: main, style: style)]
+        if style == .short {
+            if let fraction = main.fraction, main.bytesDone > 0 { parts.append("\(Int(fraction * 100))%") }
+        } else {
+            if let progress = sizes(done: main.bytesDone, total: main.bytesTotal) { parts.append(progress) }
+            let elapsed = now.timeIntervalSince(main.startedAt)
+            if elapsed >= elapsedAfterSeconds { parts.append(clock(seconds: elapsed)) }
+        }
         let others = shown.count - 1
         if others > 0 {
             parts.append(tr(vi: "+\(others) file khác", en: L10n.plural(others, one: "+1 more file", other: "+\(others) more files")))
@@ -66,10 +74,11 @@ public enum TransferLineText {
         return String(characters.prefix(head)) + "…" + String(characters.suffix(tail))
     }
 
-    private static func action(for transfer: TransferProgress) -> String {
+    private static func action(for transfer: TransferProgress, style: Style) -> String {
         let name = middleTruncated(transfer.fileName, limit: nameLimit)
-        let destination = transfer.destinationName.map { middleTruncated($0, limit: destinationLimit) }
-        let account = transfer.accountEmail.map { " (\(middleTruncated($0, limit: accountLimit)))" } ?? ""
+        let full = style == .full
+        let destination = full ? transfer.destinationName.map { middleTruncated($0, limit: destinationLimit) } : nil
+        let account = full ? transfer.accountEmail.map { " (\(middleTruncated($0, limit: accountLimit)))" } ?? "" : ""
         switch transfer.kind {
         case .exportFromPhotos where transfer.bytesDone == 0:
             // Photos sends no bytes while it fetches an iCloud-only original; they arrive once it is on this Mac.

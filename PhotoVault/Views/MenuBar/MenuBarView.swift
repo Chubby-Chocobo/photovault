@@ -102,6 +102,7 @@ private struct OverallHeader: View {
 }
 
 private struct BackfillSection: View {
+    @Environment(AppModel.self) private var model
     var snapshot: EngineSnapshot
 
     var body: some View {
@@ -116,6 +117,11 @@ private struct BackfillSection: View {
                 }
                 ProgressBar(fraction: ProgressText.fraction(done: snapshot.backfillDoneAssets, total: snapshot.backfillTotalAssets))
                     .accessibilityLabel(tr(vi: "Tiến độ backfill", en: "Backfill progress"))
+                // `transferNow` ticks while files move, so the elapsed time and the one-second rule keep up.
+                let _ = model.transferNow
+                let activity = CardActivityText.backfill(
+                    snapshot: snapshot, transfers: model.transfers, now: Date(), disk: model.diskState, settings: model.persistedSettings)
+                CardActivityLine(text: activity.text, isBusy: activity.isBusy, isWaiting: !activity.isBusy)
                 HStack {
                     Text(tr(vi: "Đã upload \(VietnameseFormat.bytes(snapshot.bytesUploaded))", en: "Uploaded \(VietnameseFormat.bytes(snapshot.bytesUploaded))"))
                     Spacer()

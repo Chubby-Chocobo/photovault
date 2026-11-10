@@ -43,6 +43,22 @@ private extension Harness {
         #expect(recorder.last.isEmpty && h.env.transfers.current.isEmpty)
     }
 
+    @Test func transfersCarryTheSourceTheirFileBelongsTo() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        try await h.baseline(.googleDrive)
+        await h.add(h.snapshot("one"), recordChange: false)
+        let recorder = h.recordTransfers()
+        await h.run()
+        #expect(!recorder.seen.isEmpty && recorder.seen.allSatisfy { $0.sourceId == .photos })
+        let folder = try ImportFolder()
+        try folder.add("clip.jpg", metadata: ImportFolder.photo(at: h.clock.now.addingTimeInterval(-3 * 86_400)))
+        let id = try await h.startImport(folder)
+        let imported = recorder.seen.filter { $0.sourceId == id }
+        #expect(imported.contains { if case .download = $0.kind { true } else { false } })
+        #expect(imported.contains { $0.kind == .upload })
+    }
+
     @Test func aFailedExportClearsTheTransfer() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)

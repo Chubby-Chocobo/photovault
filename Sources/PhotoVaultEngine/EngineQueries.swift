@@ -224,6 +224,13 @@ enum EngineQueries {
         return (total - open, total)
     }
 
+    /// The earliest moment an open job that waits out a retry delay is tried again.
+    static func nextRetryAt(_ db: Database, after now: Date) throws -> Date? {
+        try Date.fetchOne(db, sql: """
+            SELECT MIN(next_attempt_at) FROM upload_job WHERE state IN ('pending', 'deferred') AND next_attempt_at > ?
+            """, arguments: [now])
+    }
+
     static func uploadedBytes(_ db: Database) throws -> Int64 {
         try SnapshotCounterRepository.uploadedBytes(db)
     }

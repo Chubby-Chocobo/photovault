@@ -56,6 +56,8 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var imports: [ImportSnapshot] = []
     /// How the last backfill ended; nil until one has. A record, not progress: the menu bar ignores it.
     public var backfillCompletion: BackfillCompletionSummary?
+    /// When the earliest job waiting out a retry delay is due again; nil when no job waits for a delay.
+    public var nextRetryAt: Date?
 }
 
 /// Progress of one folder import, for Settings and the menu bar.

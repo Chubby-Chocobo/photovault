@@ -145,6 +145,19 @@ import Testing
         #expect(await h.drive.files.count == 1)
     }
 
+    @Test func theSnapshotSaysWhenTheNextRetryIsDue() async throws {
+        let h = try await Harness()
+        try await oneJob(h)
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt == nil)
+        await h.drive.failNext(.upload, with: .itemRejected(reason: "bad"))
+        await h.run()
+        let due = try #require(try h.jobs().first?.nextAttemptAt)
+        let snapshot = await h.coordinator.currentSnapshot()
+        #expect(snapshot.nextRetryAt == due && due > h.clock.now)
+        h.clock.advance(by: 3600)
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt == nil, "a retry that is already due is not a wait")
+    }
+
     @Test func deferredForThirtyDaysBecomesSkipped() async throws {
         let h = try await Harness()
         try await oneJob(h)

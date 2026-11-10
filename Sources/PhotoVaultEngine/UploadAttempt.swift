@@ -147,7 +147,7 @@ struct UploadAttempt: Sendable {
             env.transfers.begin(
                 kind: record.kind == .googleDrive ? .upload : .copy, fileName: $0.originalFilename,
                 destinationName: record.displayName, accountEmail: record.kind == .googleDrive ? record.accountEmail : nil,
-                bytesTotal: content.size)
+                sourceId: plan.asset.sourceId, bytesTotal: content.size)
         }
         defer { transfer?.end() }
         var tracked = request
