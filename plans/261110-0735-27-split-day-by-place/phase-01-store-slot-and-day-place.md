@@ -1,7 +1,7 @@
 ---
 phase: "01"
 title: "Store: slot column, day_place table, move index, newer-schema guard"
-status: pending
+status: completed
 priority: P2
 size: L
 human_effort: 1-2h

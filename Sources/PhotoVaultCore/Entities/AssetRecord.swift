@@ -17,6 +17,8 @@ public struct AssetRecord: Hashable, Codable, Sendable {
     /// Fixed once (spec 8.1); nil until placed.
     public var placement: Placement?
     public var placedAt: Date?
+    /// Extra day folder of a split camera day (`camera/<day>@<slot>`); nil means the main folder.
+    public var placeSlot: String?
     public var isHidden: Bool
     public var isFavorite: Bool
     public var burstIdentifier: String?
@@ -48,7 +50,8 @@ public struct AssetRecord: Hashable, Codable, Sendable {
         pixelWidth: Int = 0, pixelHeight: Int = 0, duration: Double = 0, cameraMake: String? = nil,
         cameraModel: String? = nil, lensModel: String? = nil, hasAdjustments: Bool = false,
         adjustmentHash: String? = nil, editCheckPending: Bool = false, insertedAt: Date? = nil,
-        firstSeenAt: Date, lastSeenAt: Date, deletedAt: Date? = nil, sourceId: SourceID = .photos
+        firstSeenAt: Date, lastSeenAt: Date, deletedAt: Date? = nil, sourceId: SourceID = .photos,
+        placeSlot: String? = nil
     ) {
         self.assetKey = assetKey
         self.sourceId = sourceId
@@ -63,6 +66,7 @@ public struct AssetRecord: Hashable, Codable, Sendable {
         self.categoryProvisional = categoryProvisional
         self.placement = placement
         self.placedAt = placedAt
+        self.placeSlot = placeSlot
         self.isHidden = isHidden
         self.isFavorite = isFavorite
         self.burstIdentifier = burstIdentifier
