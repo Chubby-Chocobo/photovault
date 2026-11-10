@@ -42,6 +42,23 @@ public enum SyncedCloudFolders {
         return path == legacy || path.hasPrefix(legacy + "/") ? .dropbox : nil
     }
 
+    /// The path as the import row shows it: the provider's name instead of the `~/Library/CloudStorage/<root>`
+    /// prefix (the account is in the row's label already). nil when `path` is not in a synced folder.
+    public static func displayPath(_ path: String, home: URL) -> String? {
+        guard let provider = provider(ofPath: path, home: home) else { return nil }
+        let storage = cloudStorage(home: home).path + "/"
+        let legacy = home.appendingPathComponent("Dropbox").path
+        let tail: Substring
+        if path.hasPrefix(storage) {
+            let parts = path.dropFirst(storage.count).split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true)
+            tail = parts.count > 1 ? parts[1] : ""
+        } else {
+            tail = path.dropFirst(legacy.count).drop(while: { $0 == "/" })
+        }
+        let name = provider == .googleDrive ? "Google Drive" : "Dropbox"
+        return tail.isEmpty ? name : "\(name)/\(tail)"
+    }
+
     /// The Google account in the `GoogleDrive-<email>` folder on the way to `path`; nil for Dropbox.
     public static func account(ofPath path: String) -> String? {
         for part in path.split(separator: "/") where part.hasPrefix("GoogleDrive-") {

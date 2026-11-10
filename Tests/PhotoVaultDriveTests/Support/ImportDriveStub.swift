@@ -14,6 +14,9 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         var props: [String: String] = [:]
         /// Picked folders may hide their children from the app.
         var hidesChildren = false
+        /// The "My Drive" folder, also answered for the `root` alias.
+        var isRoot = false
+        var driveId: String?
     }
 
     private let lock = NSLock()
@@ -67,6 +70,7 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         return lock.withLock {
             if url.path == "/drive/v3/files" { return list(query) }
             let id = String(url.path.dropFirst("/drive/v3/files/".count))
+            if id == "root", let root = nodes.values.first(where: \.isRoot) { return .json(200, render(root)) }
             if let failure = failures[id] { return failure }
             if let once = oneShots.removeValue(forKey: id) { return once }
             guard let node = nodes[id] else { return .json(404, ["error": ["errors": [["reason": "notFound"]]]]) }
@@ -93,6 +97,8 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         var json: [String: Any] = ["id": node.id, "name": node.name, "mimeType": node.mime, "trashed": node.trashed,
                                    "createdTime": "2024-05-01T10:00:00.000Z", "modifiedTime": "2024-05-02T10:00:00Z"]
         if node.mime != DriveMime.folder { json["size"] = String(node.content.count) }
+        if let parent = node.parent { json["parents"] = [parent] }
+        if let driveId = node.driveId { json["driveId"] = driveId }
         if !node.props.isEmpty { json["appProperties"] = node.props }
         return json
     }

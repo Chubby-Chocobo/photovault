@@ -47,7 +47,8 @@ struct SnapshotBuilder: Sendable {
                 displayName: source.displayName, status: source.status, createdAt: source.createdAt,
                 finishedAt: source.finishedAt, found: found, processed: found - pending, imported: counts[.imported] ?? 0,
                 duplicates: counts[.duplicate] ?? 0, unsupported: counts[.unsupported] ?? 0, failed: counts[.failed] ?? 0,
-                filesUploaded: progress.done, filesTotal: progress.total)
+                filesUploaded: progress.done, filesTotal: progress.total,
+                location: ImportLocation.make(kind: source.kind, config: source.config))
         }
     }
 }

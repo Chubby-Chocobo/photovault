@@ -22,10 +22,13 @@ extension SyncCoordinator {
         return source.id
     }
 
-    /// A Mac folder import; the app keeps its security-scoped bookmark with the job.
+    /// A Mac folder import; the app keeps its security-scoped bookmark with the job, and `locationPath` (home as `~`)
+    /// for the owner to read in the history.
     @discardableResult
-    public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?) async throws -> SourceID {
-        try await startImport(source: source, kind: .localFolder, displayName: displayName, config: SourceConfig(bookmark: bookmark))
+    public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?, locationPath: String? = nil) async throws -> SourceID {
+        try await startImport(
+            source: source, kind: .localFolder, displayName: displayName,
+            config: SourceConfig(bookmark: bookmark, locationPaths: locationPath.map { [$0] }))
     }
 
     /// Adopts the adapters of jobs that were open when the app last ran.

@@ -61,7 +61,7 @@ extension LocalFileOps {
                     }
                 }
                 if part == nil {
-                    part = try writer.stage(.file(request.content.file), expectedSHA256: expected, in: tmp)
+                    part = try writer.stage(.file(request.content.file), expectedSHA256: expected, progress: request.progress, in: tmp)
                     afterStaging?()
                 }
                 do {
@@ -94,7 +94,7 @@ extension LocalFileOps {
                 throw DestinationError.foreignModified
             }
             let tmp = try tmpDirectory(root, create: true)
-            let part = try writer.stage(.file(request.content.file), expectedSHA256: expected, in: tmp)
+            let part = try writer.stage(.file(request.content.file), expectedSHA256: expected, progress: request.progress, in: tmp)
             defer { writer.discard(part, in: tmp) }
             afterStaging?()
             // Staging can take minutes: look at the file again right before it is replaced (caller holds the write lock).

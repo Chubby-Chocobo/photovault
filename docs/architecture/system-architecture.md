@@ -101,6 +101,8 @@ Photos is the only continuous source (decision [0029](../decisions/0029-photos-o
 | 10. FR-53 and checks | `CloudIdBackfillStage`, `RecoveryVerifyStage`, `IntegrityStage`, step `.cloudIds` | Cloud-ID backfill in batches of at most 500. Integrity check every `integrityCheckIntervalDays` days (Settings, default 7). |
 | 11. UI | `recordSuccess()`, then `publish()`: `SnapshotBuilder` builds an `EngineSnapshot`, delivered by `snapshots()` as an `AsyncStream` | `last_successful_sync_at` is set when the cycle uploaded something, or when no job was pending or uploading at an active destination. A cycle that could not upload what was waiting does not count. The app observes snapshots and, while the overall state is `syncing`, also re-reads the snapshot every 10 seconds. |
 
+The files being transferred are not part of the snapshot. `TransferTracker` (in `EngineEnvironment.transfers`) holds them in memory: exports and import reads report through `ExportControl.setProgress`, uploads and copies through `UploadRequest.progress` (Drive reports each acknowledged chunk, a local or NAS write each buffer). It publishes at most every `EngineTuning.transferPublishInterval` (0.5 s) through `SyncCoordinator.transferUpdates()` and clears a transfer when it ends or fails. Nothing is written to the database, and `TransferProgress` redacts file and destination names when printed. The app turns the list into the popover subtitle and the icon tooltip with `TransferLineText`.
+
 Staging is released after each round (`releaseUnneeded`, `expireIdle`), so uploads free space for more exports within the same cycle.
 
 ## Job state machine

@@ -35,6 +35,17 @@ struct CloudImportServices: Sendable {
         ((try? keychain.read(account: CloudTokenAccount.dropbox)) ?? nil) != nil
     }
 
+    /// The e-mail stored with the browsing account's token; nil for a token an older version stored.
+    func storedDropboxEmail() -> String? {
+        guard let data = (try? keychain.read(account: CloudTokenAccount.dropboxEmail)) ?? nil else { return nil }
+        let email = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespaces)
+        return email?.isEmpty == false ? email : nil
+    }
+
+    func storeDropboxEmail(_ email: String) throws {
+        try keychain.write(Data(email.utf8), account: CloudTokenAccount.dropboxEmail)
+    }
+
     func copyDropboxAccountToken(to id: SourceID) throws {
         guard let token = try keychain.read(account: CloudTokenAccount.dropbox) else { throw DestinationError.reauthRequired }
         try keychain.write(token, account: CloudTokenAccount.importGrant(id))
@@ -47,7 +58,10 @@ struct CloudImportServices: Sendable {
 
     /// Deletes every named item; returns how many could not be deleted.
     func deleteTokens(accounts: [String]) -> Int {
-        accounts.reduce(0) { failures, account in
+        // The e-mail belongs to the browsing account's token and goes with it.
+        let named = accounts.contains(CloudTokenAccount.dropbox) && !accounts.contains(CloudTokenAccount.dropboxEmail)
+            ? accounts + [CloudTokenAccount.dropboxEmail] : accounts
+        return named.reduce(0) { failures, account in
             do { try keychain.delete(account: account); return failures } catch { return failures + 1 }
         }
     }

@@ -131,10 +131,12 @@ public enum CloudImportKeychain {
     }
 
     /// `import-<id>` items with no import row. A start that was still waiting for its turn when the app quit leaves one;
-    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account item is not one.
+    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account token and its e-mail are not.
     public static func orphanGrants(stored: [String], knownImports: Set<SourceID>) -> [String] {
         let known = Set(knownImports.map(CloudTokenAccount.importGrant))
-        return stored.filter { $0 != CloudTokenAccount.dropbox && CloudTokenAccount.isCloudItem($0) && !known.contains($0) }
+        return stored.filter {
+            $0 != CloudTokenAccount.dropbox && $0 != CloudTokenAccount.dropboxEmail && CloudTokenAccount.isCloudItem($0) && !known.contains($0)
+        }
     }
 
     /// Open cloud imports that have no stored sign-in. Finished imports let their sign-in go on purpose.
@@ -198,8 +200,20 @@ public struct CloudFlowTracker: Sendable {
 public enum ImportQueue {
     static let reason = "queued"
 
-    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date) -> ImportSnapshot {
-        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now)
+    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date,
+                                location: ImportLocation? = nil) -> ImportSnapshot {
+        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now,
+                       location: location)
+    }
+
+    /// The queue with `location` set on the entry `id` (a Drive walk finishing after the import was queued).
+    public static func setting(_ location: ImportLocation?, for id: SourceID, in items: [ImportSnapshot]) -> [ImportSnapshot] {
+        items.map { item in
+            guard item.id == id else { return item }
+            var copy = item
+            copy.location = location
+            return copy
+        }
     }
 
     public static func isQueued(_ item: ImportSnapshot) -> Bool { item.status == .scanning && item.statusReason == reason }

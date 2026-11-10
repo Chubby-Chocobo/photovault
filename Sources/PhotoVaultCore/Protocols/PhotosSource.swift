@@ -92,6 +92,7 @@ public final class ExportControl: @unchecked Sendable {
     private var nextCheckpoint: Int64
     private let checkpointBytes: Int64
     private let checkpoint: @Sendable (Int64) -> Bool
+    private var progress: TransferSink?
 
     /// - Parameter checkpoint: called synchronously every `checkpointBytes` with the bytes received
     ///   so far; return `false` to cancel. Must not block.
@@ -120,11 +121,19 @@ public final class ExportControl: @unchecked Sendable {
         return received
     }
 
+    /// Reports the bytes received so far to `sink` with every chunk (the status line).
+    public func setProgress(_ sink: TransferSink?) {
+        lock.lock()
+        progress = sink
+        lock.unlock()
+    }
+
     /// Records a chunk. Returns `false` when the export must stop.
     public func record(bytes: Int) -> Bool {
         lock.lock()
         received += Int64(bytes)
         let total = received
+        let sink = progress
         var runCheckpoint = false
         if total >= nextCheckpoint {
             nextCheckpoint = total + checkpointBytes
@@ -132,6 +141,7 @@ public final class ExportControl: @unchecked Sendable {
         }
         let stop = cancelled
         lock.unlock()
+        sink?.report(total)
         if stop { return false }
         if runCheckpoint, !checkpoint(total) {
             cancel()

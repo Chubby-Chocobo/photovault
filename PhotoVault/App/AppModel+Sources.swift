@@ -83,7 +83,9 @@ extension AppModel {
         let source = AppEnvironment.makeFolderSource(id: .folder(), bookmark: pick.bookmark, store: env.store, log: env.log)
         let name = pick.url.lastPathComponent
         let synced = SyncedCloudFolders.provider(ofPath: pick.url.path, home: Self.realHome)
-        let config = SourceConfig(bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path), syncedProvider: synced)
+        let shown = SyncedCloudFolders.displayPath(pick.url.path, home: Self.realHome) ?? ImportLocationPath.mac(pick.url.path)
+        let config = SourceConfig(
+            bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path), locationPaths: [shown], syncedProvider: synced)
         Task {
             do {
                 try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)

@@ -68,6 +68,15 @@ import Testing
         #expect(SyncedCloudFolders.provider(ofPath: "/Users/me/Documents/Dropbox/x", home: home) == nil)
     }
 
+    @Test func displayPathHidesTheCloudStoragePrefixAndAccount() {
+        #expect(SyncedCloudFolders.displayPath(storage + "/GoogleDrive-a@b.c/My Drive/Trip", home: home) == "Google Drive/My Drive/Trip")
+        #expect(SyncedCloudFolders.displayPath(storage + "/GoogleDrive-a@b.c", home: home) == "Google Drive")
+        #expect(SyncedCloudFolders.displayPath(storage + "/Dropbox/Photos", home: home) == "Dropbox/Photos")
+        #expect(SyncedCloudFolders.displayPath(storage + "/Dropbox-Personal", home: home) == "Dropbox")
+        #expect(SyncedCloudFolders.displayPath("/Users/me/Dropbox/Photos", home: home) == "Dropbox/Photos")
+        #expect(SyncedCloudFolders.displayPath("/Users/me/Pictures", home: home) == nil)
+    }
+
     // MARK: Text
 
     @Test func providerLabel() {

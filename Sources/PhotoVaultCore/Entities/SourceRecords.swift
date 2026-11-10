@@ -11,6 +11,12 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     /// Name written to sidecars. Cloud imports set it to a name that does not depend on the app language
     /// (the picked folder's name, or the provider's); nil means the display name.
     public var sidecarName: String?
+    /// Where the import came from, as shown to the owner, written once when the import starts: a Mac folder's path
+    /// (home as `~`), or a Drive pick's path from "My Drive" (one entry per resolved pick). UI only; never logged.
+    public var locationPaths: [String]?
+    /// Drive: link to the first pick's folder.
+    public var locationURL: String?
+
     /// A Mac-folder import that reads a cloud provider's synced folder (`"googleDrive"` or `"dropbox"`), so the
     /// history says where the photos came from. Kept as text so a value this version does not know still decodes.
     public var syncedProvider: String?
@@ -22,18 +28,26 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     }
 
     public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil,
-                syncedProvider: SyncedCloudProvider? = nil) {
+                locationPaths: [String]? = nil, locationURL: String? = nil, syncedProvider: SyncedCloudProvider? = nil) {
         self.bookmark = bookmark
         self.account = account
         self.remoteItems = remoteItems
         self.sidecarName = sidecarName
         self.syncedProvider = syncedProvider?.rawValue
+        self.locationPaths = locationPaths
+        self.locationURL = locationURL
     }
 }
 
 /// Cloud providers whose desktop app keeps a synced folder on this Mac.
 public enum SyncedCloudProvider: String, Sendable, CaseIterable {
     case googleDrive, dropbox
+}
+
+/// The config holds a bookmark, an e-mail address and paths; none of it may reach a log through string interpolation.
+extension SourceConfig: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String { "SourceConfig(redacted)" }
+    public var debugDescription: String { description }
 }
 
 /// Row of `source`: a one-time import job (or, later, a continuous source).
