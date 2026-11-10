@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0] - 2026-11-10
+
+### Setup
+
+- Google Drive imports need the **Google Picker API** enabled in the existing Cloud project.
+- Dropbox imports need a Dropbox app and its App key as `DROPBOX_APP_KEY` in `Config/Secrets.xcconfig`. Without the key, the Dropbox item stays disabled.
+- See "Dropbox setup" and "Import from a folder › From Google Drive or Dropbox" in the README, and decision 0026.
+
+### Features
+
+- one-time import from a Google Drive or Dropbox folder (#25) (3898e9e)
+
+### Bug fixes
+
+- **views:** keep the place shortcut of a photo deleted from Photos (#26) (945efad)
+
 ## [0.2.0] - 2026-11-09
 
 ### Breaking changes
