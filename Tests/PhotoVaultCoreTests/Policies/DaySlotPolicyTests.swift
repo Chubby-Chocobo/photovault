@@ -69,6 +69,14 @@ import Testing
         #expect(p.slotOfGroup == ["pa0000000000", nil])
     }
 
+    @Test func anAlreadySplitDayKeepsItsFoldersWhenATieNowOrdersTheOtherWay() {
+        // Tokyo and Hà Nội are equal; Tokyo now comes first, but Hà Nội owns the main folder and keeps it.
+        let slots = [main("VN|Hanoi", "Hà Nội"), extra("pa0000000000", "JP|Tokyo", "Tokyo, Japan")]
+        let p = plan(slots, [group("JP|Tokyo", "Tokyo, Japan", ["1", "2"]), group("VN|Hanoi", "Hà Nội", ["3", "4"])])
+        #expect(p.slotOfGroup == ["pa0000000000", nil])
+        #expect(p.deferredGroups.isEmpty)
+    }
+
     @Test func namesMatchAndFillKeys() {
         let p = plan([main(nil, "Hà Nội"), extra("rabcdef012345", nil, "Ninh Bình")], [group("HN", "Hà Nội"), group("NB", "Ninh Bình")])
         #expect(p.slotOfGroup == [nil, "rabcdef012345"])

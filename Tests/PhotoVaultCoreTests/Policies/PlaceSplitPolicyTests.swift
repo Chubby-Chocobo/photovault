@@ -140,6 +140,19 @@ import Testing
         #expect(got[0].members == ["a1", "a2"])
     }
 
+    @Test func equalGroupsGiveTheMainFolderToTheOneWithTheEarliestPhotoWhateverTheCountry() {
+        // Tokyo sorts before Hanoi by key, yet Hanoi holds the day's first photo.
+        let hanoiFirst = [asset("h1", hanoi, at: 1), asset("h2", hanoi, at: 2), asset("t1", tokyo, at: 3), asset("t2", tokyo, at: 4)]
+        #expect(groups(PlaceSplitPolicy.evaluate(input(hanoiFirst))).map(\.key) == ["VN|Hanoi", "JP|Tokyo"])
+        let tokyoFirst = [asset("h1", hanoi, at: 3), asset("h2", hanoi, at: 4), asset("t1", tokyo, at: 1), asset("t2", tokyo, at: 2)]
+        #expect(groups(PlaceSplitPolicy.evaluate(input(tokyoFirst))).map(\.key) == ["JP|Tokyo", "VN|Hanoi"])
+    }
+
+    @Test func aLargerGroupStillWinsOverAnEarlierSmallerOne() {
+        let assets = [asset("t1", tokyo, at: 1), asset("h1", hanoi, at: 2), asset("h2", hanoi, at: 3)]
+        #expect(groups(PlaceSplitPolicy.evaluate(input(assets))).map(\.key) == ["VN|Hanoi", "JP|Tokyo"])
+    }
+
     @Test func assetWithoutGpsJoinsTheNearestInTimeAndTiesGoToTheEarlier() {
         let assets = [asset("a", hanoi, at: 9), asset("b", ninhBinh, at: 15), asset("x", nil, at: 11), asset("y", nil, at: 12)]
         let got = groups(PlaceSplitPolicy.evaluate(input(assets)))
