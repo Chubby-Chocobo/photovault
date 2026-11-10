@@ -1,0 +1,23 @@
+# Import history shows where each import came from
+
+Status: In Progress. Owner request: two imports of folders both named "2024" look the same; show the full location.
+
+## Phases
+
+| Phase | Name | Status |
+|---|---|---|
+| 1 | Core: `SourceConfig.locationPaths/locationURL`, `ImportLocationPath`, `ImportLocation` (red-first tests) | In Progress |
+| 2 | Drive: parent-chain resolver (`pickedLocations`), never fails the import | Pending |
+| 3 | Engine/AppSupport: snapshot field, texts | Pending |
+| 4 | App: record at creation, row line, Finder/web links, popover tooltip | Pending |
+| 5 | Docs: spec FR, README, mockup | Pending |
+
+## Decisions
+
+- One field `locationPaths: [String]?` for every kind (Mac and Drive store it; one element for a Mac folder), instead of a separate `locationPath`. Config is JSON and the fields are optional, so old rows decode and no migration is needed (tested).
+- Dropbox stores nothing new: `remoteItems[0]` is already the `path_display` the folder browser returned ("" = whole account, shown as "/"). New and old rows use the same derivation.
+- Drive also stores `locationURL` (folder link of the first pick; for a file, its parent folder) because the link needs an id the display string lacks.
+- Drive walks at most 5 picks, 20 levels, 100 requests; any error returns nil and the import keeps its name only. Names "My Drive", "Shared with me", "Shared drive" are fixed English (they are written once at creation, not re-localised).
+- Mac home is shown as "~" using the real home from `getpwuid`, not `NSHomeDirectory()` (that is the sandbox container).
+- Older Mac rows: path derived from the bookmark when the row appears (off the main thread); nothing written back.
+- Privacy: `SourceConfig` and `ImportLocation` have redacted `description`s, so default string dumps never include paths, bookmark or account.

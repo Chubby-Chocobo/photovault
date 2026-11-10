@@ -11,13 +11,27 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     /// Name written to sidecars. Cloud imports set it to a name that does not depend on the app language
     /// (the picked folder's name, or the provider's); nil means the display name.
     public var sidecarName: String?
+    /// Where the import came from, as shown to the owner, written once when the import starts: a Mac folder's path
+    /// (home as `~`), or a Drive pick's path from "My Drive" (one entry per resolved pick). UI only; never logged.
+    public var locationPaths: [String]?
+    /// Drive: link to the first pick's folder.
+    public var locationURL: String?
 
-    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil) {
+    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil,
+                locationPaths: [String]? = nil, locationURL: String? = nil) {
         self.bookmark = bookmark
         self.account = account
         self.remoteItems = remoteItems
         self.sidecarName = sidecarName
+        self.locationPaths = locationPaths
+        self.locationURL = locationURL
     }
+}
+
+/// The config holds a bookmark, an e-mail address and paths; none of it may reach a log through string interpolation.
+extension SourceConfig: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String { "SourceConfig(redacted)" }
+    public var debugDescription: String { description }
 }
 
 /// Row of `source`: a one-time import job (or, later, a continuous source).
