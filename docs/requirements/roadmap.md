@@ -12,9 +12,9 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 | 0.1.0 | 2026-11-09 | Ứng dụng menu bar sao lưu Photos sang Google Drive và thư mục local/NAS |
 | 0.2.0 | 2026-11-09 | Nhiều nguồn; nhập một lần từ thư mục trên Mac (#22); một thư mục cho mỗi ngày; khởi động lại từ onboarding (factory reset); giao diện tiếng Việt và tiếng Anh |
 | 0.3.0 | 2026-11-10 | Nhập một lần từ thư mục Google Drive (Picker, `drive.file`) và từ thư mục Dropbox (#25) |
-| 0.4.0 | đang phát triển | Xem bảng dưới |
+| 0.4.0 | 2026-11-10 | Xem bảng dưới |
 
-### 0.4.0 (đang phát triển)
+### 0.4.0 (phát hành 2026-11-10)
 
 | Việc | Trạng thái |
 |---|---|
