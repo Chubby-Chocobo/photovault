@@ -34,6 +34,25 @@ import PhotoVaultCore
         #expect(result.count <= 46)
     }
 
+    @Test func aLongVolumeNameIsShortenedBeforeTheLastFolder() {
+        let result = short("/Volumes/A-very-long-NAS-volume-name/Photos/2024", 22)
+        #expect(result.count <= 22)
+        #expect(result.hasPrefix("/Vol"))
+        #expect(result.hasSuffix("/…/2024"))
+        let long = short("/Volumes/A-very-long-NAS-volume-name/Photos/Chuyến đi Đà Lạt cùng gia đình", 40)
+        #expect(long.count <= 40)
+        let lastPart = long.split(separator: "/").last.map(String.init) ?? ""
+        #expect(lastPart.count >= 12)
+    }
+
+    @Test func noDoubleSlashWhenThereAreNoParents() {
+        let name = String(repeating: "x", count: 300)
+        #expect(!short("My Drive/\(name)", 30).contains("//"))
+        #expect(!short("~/\(name)", 30).contains("//"))
+        #expect(!short("/\(name)", 30).contains("//"))
+        #expect(short("~/\(name)", 30).count <= 30)
+    }
+
     @Test func aSingleComponentIsTruncatedInTheMiddleToo() {
         let result = short(String(repeating: "a", count: 30) + String(repeating: "z", count: 30), 20)
         #expect(result.count <= 20)

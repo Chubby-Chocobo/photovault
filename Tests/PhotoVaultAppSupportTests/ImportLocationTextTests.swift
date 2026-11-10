@@ -22,7 +22,7 @@ import Testing
 
     @Test func tooltipListsEveryPathAndTheCount() {
         en {
-            #expect(ImportLocationText.tooltip(drive) == "My Drive/Trips/2024\nMy Drive/Other\n+3 more")
+            #expect(ImportLocationText.tooltip(drive) == "My Drive/Trips/2024\nMy Drive/Other\n+2 more")
             #expect(ImportLocationText.tooltip(ImportLocation(paths: ["~/x"])) == "~/x")
         }
         #expect(ImportLocationText.tooltip(nil) == nil)
@@ -62,5 +62,22 @@ import Testing
         let item = ImportQueue.snapshot(id: .folder(), kind: .googleDrive, account: "a@b.c", displayName: "Trips", now: Date(), location: location)
         #expect(item.location == location)
         #expect(ImportQueue.snapshot(id: .folder(), kind: .dropbox, account: nil, displayName: "x", now: Date()).location == nil)
+    }
+
+    @Test func theTooltipCountsOnlyThePicksWithoutAPath() {
+        let location = ImportLocation(paths: (1...5).map { "My Drive/\($0)" }, othersCount: 9)
+        en { #expect(ImportLocationText.tooltip(location)?.hasSuffix("My Drive/5\n+5 more") == true) }
+        #expect(ImportLocationText.othersLabel(location) == "+9 more" || ImportLocationText.othersLabel(location) == "+9 mục khác")
+        let all = ImportLocation(paths: ["a", "b"], othersCount: 1)
+        #expect(ImportLocationText.tooltip(all) == "a\nb")
+    }
+
+    @Test func aQueuedImportGetsItsLocationWhenTheWalkFinishes() {
+        let a = ImportQueue.snapshot(id: .folder(), kind: .googleDrive, account: nil, displayName: "A", now: Date())
+        let b = ImportQueue.snapshot(id: .folder(), kind: .googleDrive, account: nil, displayName: "B", now: Date())
+        let location = ImportLocation(paths: ["My Drive/A"])
+        let updated = ImportQueue.setting(location, for: a.id, in: [a, b])
+        #expect(updated.map(\.location) == [location, nil])
+        #expect(ImportQueue.setting(location, for: .folder(), in: [a, b]) == [a, b])
     }
 }

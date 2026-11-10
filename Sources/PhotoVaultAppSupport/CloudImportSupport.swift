@@ -205,6 +205,16 @@ public enum ImportQueue {
                        location: location)
     }
 
+    /// The queue with `location` set on the entry `id` (a Drive walk finishing after the import was queued).
+    public static func setting(_ location: ImportLocation?, for id: SourceID, in items: [ImportSnapshot]) -> [ImportSnapshot] {
+        items.map { item in
+            guard item.id == id else { return item }
+            var copy = item
+            copy.location = location
+            return copy
+        }
+    }
+
     public static func isQueued(_ item: ImportSnapshot) -> Bool { item.status == .scanning && item.statusReason == reason }
 
     /// Queued entries first, in the order they were added (they are the newest). An entry whose real import exists is dropped.

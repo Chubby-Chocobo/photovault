@@ -16,7 +16,10 @@ public enum ImportLocationText {
     /// Every stored path, one per line, then the count of items that have no path of their own.
     public static func tooltip(_ location: ImportLocation?) -> String? {
         guard let location, !location.paths.isEmpty else { return nil }
-        let lines = location.paths + [othersLabel(location)].compactMap { $0 }
+        // The paths listed here are already counted in `othersCount`; only the picks without a path remain.
+        let unlisted = location.othersCount - (location.paths.count - 1)
+        var lines = location.paths
+        if unlisted > 0 { lines.append(othersLabel(ImportLocation(paths: location.paths, othersCount: unlisted)) ?? "") }
         return lines.joined(separator: "\n")
     }
 

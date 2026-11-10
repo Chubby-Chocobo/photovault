@@ -30,19 +30,22 @@ extension AppModel {
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
             let folderName = await source.singlePickedFolderName()
             let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
-            let locations = await source.pickedLocations()
-            let config = SourceConfig(
+            var config = SourceConfig(
                 account: email, remoteItems: picked.pickedIds,
-                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count),
-                locationPaths: locations?.paths, locationURL: locations?.webURL)
+                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
             if Task.isCancelled {
                 _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw CancellationError()
             }
             enqueueImport(
-                id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive",
-                location: ImportLocation.make(kind: .googleDrive, config: config)) {
-                try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
+                id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") { [self] in
+                // The walk runs here, after the sign-in row has left its browser step; it never fails the import.
+                let locations = await source.pickedLocations()
+                try Task.checkCancellation()
+                config.locationPaths = locations?.paths
+                config.locationURL = locations?.webURL
+                queuedImports = ImportQueue.setting(ImportLocation.make(kind: .googleDrive, config: config), for: id, in: queuedImports)
+                return try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
             }
         }
     }

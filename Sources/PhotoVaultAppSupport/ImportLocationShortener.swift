@@ -31,11 +31,14 @@ public enum ImportLocationShortener {
             let candidate = join(pieces + kept + [last], rootSeparator: separator)
             if candidate.count <= budget { return candidate }
         }
-        // Not even root, "…" and the last name fit: cut the name itself.
-        let head = droppedAlready || parents.isEmpty ? [root] : [root, ellipsis]
-        let prefix = join(head, rootSeparator: separator) + (separator.isEmpty && head.count == 1 ? "" : "/")
-        let room = max(budget - prefix.count, 3)
-        return prefix + middleTruncate(last, to: room)
+        // Not even root, "…" and the last name fit. The root gives way first (a long volume name), so the last
+        // folder, which tells imports apart, keeps at least 12 characters.
+        let tail = droppedAlready || parents.isEmpty ? "" : ellipsis + "/"
+        let overhead = separator.count + tail.count
+        let rootRoom = max(budget - overhead - min(last.count, 12), 3)
+        let shownRoot = root.count <= rootRoom ? root : middleTruncate(root, to: rootRoom)
+        let lastRoom = max(budget - shownRoot.count - overhead, 3)
+        return shownRoot + separator + tail + middleTruncate(last, to: lastRoom)
     }
 
     /// The path at each budget, longest first, without repeats: the candidates a view tries in turn.
