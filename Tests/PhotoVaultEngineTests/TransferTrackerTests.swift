@@ -11,14 +11,44 @@ private final class Published: @unchecked Sendable {
     var all: [[TransferProgress]] { lock.withLock { lists } }
 }
 
+/// A sleep the test releases by hand, so no assertion depends on wall-clock time.
+private final class SleepGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var open = false
+    private var started = 0
+
+    /// How many deferred flushes were scheduled.
+    var sleeps: Int { lock.withLock { started } }
+
+    func sleep(_ seconds: TimeInterval) async {
+        await withCheckedContinuation { continuation in
+            let resumeNow = lock.withLock { () -> Bool in
+                started += 1
+                if !open { waiting.append(continuation) }
+                return open
+            }
+            if resumeNow { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let pending = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            open = true
+            defer { waiting = [] }
+            return waiting
+        }
+        pending.forEach { $0.resume() }
+    }
+}
+
 @Suite struct TransferTrackerTests {
-    /// The deferred flush never fires unless a test asks for the real one.
-    private func make(interval: TimeInterval = 0.5, realFlush: Bool = false) -> (TransferTracker, TestClock, Published) {
+    /// The deferred flush waits on `gate`, which the test releases itself.
+    private func make(interval: TimeInterval = 0.5, gate: SleepGate = SleepGate()) -> (TransferTracker, TestClock, Published) {
         let clock = TestClock()
         let published = Published()
-        let real: @Sendable (TimeInterval) async -> Void = { seconds in try? await Task.sleep(for: .seconds(seconds)) }
-        let never: @Sendable (TimeInterval) async -> Void = { _ in try? await Task.sleep(for: .seconds(3600)) }
-        let tracker = TransferTracker(clock: clock, minInterval: interval, onPublish: { published.add($0) }, sleep: realFlush ? real : never)
+        let tracker = TransferTracker(
+            clock: clock, minInterval: interval, onPublish: { published.add($0) }, sleep: { await gate.sleep($0) })
         return (tracker, clock, published)
     }
 
@@ -100,26 +130,36 @@ private final class Published: @unchecked Sendable {
         second.end()
     }
 
-    @Test func aThrottledChangeIsFlushedAtTheEndOfTheWindowWithoutFurtherReports() async throws {
-        let (tracker, clock, published) = make(interval: 0.05, realFlush: true)
+    /// Polls for a condition that must come true soon after the gate opens; the limit is generous for a loaded runner.
+    private func eventually(_ condition: () -> Bool) async throws {
+        for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    @Test func aThrottledChangeIsFlushedWhenTheWindowEndsWithoutFurtherReports() async throws {
+        let gate = SleepGate()
+        defer { gate.release() }
+        let (tracker, clock, published) = make(gate: gate)
         let long = tracker.begin(kind: .upload, fileName: "long", bytesTotal: 100)
         clock.advance(by: 0.001)
         let other = tracker.begin(kind: .upload, fileName: "other", bytesTotal: 100)
         clock.advance(by: 0.001)
         long.end()
-        // The ended file is gone from the current list at once, but the publish waits for the window.
+        // The ended file is gone from the current list at once; the publish waits for the end of the window.
         #expect(tracker.current.map(\.fileName) == ["other"])
         #expect(published.all.last?.map(\.fileName) == ["long"])
-        for _ in 0..<100 where published.all.last?.map(\.fileName) != ["other"] { try await Task.sleep(for: .milliseconds(20)) }
+        try await eventually { gate.sleeps >= 1 }  // the flush task starts asynchronously
+        #expect(gate.sleeps == 1)
+        gate.release()
+        try await eventually { published.all.last?.map(\.fileName) == ["other"] }
         #expect(published.all.last?.map(\.fileName) == ["other"])
-        let count = published.all.count
-        try await Task.sleep(for: .milliseconds(150))
-        #expect(published.all.count == count, "nothing pending, nothing published")
+        #expect(gate.sleeps == 1, "one flush, not one per change")
         other.end()
     }
 
     @Test func manyChangesInOneWindowScheduleOneFlush() async throws {
-        let (tracker, clock, published) = make(interval: 0.05, realFlush: true)
+        let gate = SleepGate()
+        defer { gate.release() }
+        let (tracker, clock, published) = make(gate: gate)
         let first = tracker.begin(kind: .upload, fileName: "first", bytesTotal: 100)
         var handles: [TransferTracker.Handle] = []
         for index in 0..<50 {
@@ -127,9 +167,29 @@ private final class Published: @unchecked Sendable {
             handles.append(tracker.begin(kind: .copy, fileName: "f\(index)", bytesTotal: 1))
         }
         for handle in handles { handle.end() }
-        try await Task.sleep(for: .milliseconds(300))
-        // The first begin, then one flush that shows the settled list.
+        #expect(published.all.count == 1)
+        try await eventually { gate.sleeps >= 1 }
+        #expect(gate.sleeps == 1)
+        gate.release()
+        try await eventually { published.all.count >= 2 }
         #expect(published.all.count == 2 && published.all.last?.map(\.fileName) == ["first"], "\(published.all.count)")
+        first.end()
+    }
+
+    @Test func aFlushWithNothingPendingPublishesNothing() async throws {
+        let gate = SleepGate()
+        defer { gate.release() }
+        let (tracker, clock, published) = make(gate: gate)
+        let first = tracker.begin(kind: .upload, fileName: "first", bytesTotal: 100)
+        clock.advance(by: 0.001)
+        first.sink.report(5)  // held back, flush scheduled
+        clock.advance(by: 1)
+        first.sink.report(6)  // outside the window: published at once, which settles the pending change
+        let count = published.all.count
+        gate.release()
+        // Let the released flush run; it finds nothing pending.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(published.all.count == count)
         first.end()
     }
 
