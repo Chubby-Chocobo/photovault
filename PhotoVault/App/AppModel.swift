@@ -56,6 +56,8 @@ final class AppModel {
     var settingsTab: SettingsTab = .general
     /// A Dropbox account token is stored (the folder browser needs no new sign-in).
     var dropboxSignedIn = false
+    /// E-mail of that Dropbox account, shown in Settings only; nil when unknown.
+    var dropboxEmail: String?
     /// A Google or Dropbox sign-in is waiting for the browser; further starts are ignored meanwhile.
     var cloudFlow = CloudFlowTracker()
     @ObservationIgnored var cloudFlowID = 0
