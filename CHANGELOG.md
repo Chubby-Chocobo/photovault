@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1] - 2026-11-10
+
+No user-facing changes.
+
+### Maintenance
+
+- Tests no longer depend on machine speed or on the random retry wait, so CI passes reliably on GitHub's macOS runners (#71, #74).
+- Every fast-path check of an import cancel now has a test (#68).
+
 ## [0.5.0] - 2026-11-10
 
 ### Upgrade notes
