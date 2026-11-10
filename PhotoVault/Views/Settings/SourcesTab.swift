@@ -42,6 +42,10 @@ struct SourcesTab: View {
         }
     }
 
+    private func openDropboxBrowser() {
+        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
+    }
+
     // MARK: Ongoing
 
     private var ongoingSection: some View {
@@ -95,12 +99,22 @@ struct SourcesTab: View {
             HStack {
                 Menu {
                     Button(tr(vi: "Từ thư mục trên Mac…", en: "From a folder on this Mac…")) { model.importFolder() }
-                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) { showGoogleExplainer = true }
-                        .disabled(!model.googleImportAvailable || model.cloudFlowBusy)
-                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
-                        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
+                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) {
+                        if model.syncedFolderDetection(.googleDrive).isAvailable {
+                            if model.importFromSyncedFolder(.googleDrive) == .useBrowser { showGoogleExplainer = true }
+                        } else {
+                            showGoogleExplainer = true
+                        }
                     }
-                    .disabled(!model.dropboxImportAvailable || model.cloudFlowBusy)
+                    .disabled(!(model.googleImportAvailable || model.syncedFolderDetection(.googleDrive).isAvailable) || model.cloudFlowBusy)
+                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
+                        if model.syncedFolderDetection(.dropbox).isAvailable {
+                            if model.importFromSyncedFolder(.dropbox) == .useBrowser { openDropboxBrowser() }
+                        } else {
+                            openDropboxBrowser()
+                        }
+                    }
+                    .disabled(!(model.dropboxImportAvailable || model.syncedFolderDetection(.dropbox).isAvailable) || model.cloudFlowBusy)
                     .help(model.dropboxImportAvailable ? "" : tr(
                         vi: "Bản này chưa có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
                         en: "This build has no Dropbox app key (DROPBOX_APP_KEY)."))

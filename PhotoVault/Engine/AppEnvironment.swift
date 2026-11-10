@@ -227,7 +227,11 @@ struct AppEnvironment: Sendable {
         let root = SecurityScopedBookmarkRoot(bookmark: bookmark, readOnly: true) { fresh in
             Task {
                 do {
-                    try await store.write { db in try SourceRepository.setConfig(db, id: id, SourceConfig(bookmark: fresh)) }
+                    try await store.write { db in
+                        var config = try SourceRepository.fetch(db, id: id)?.config ?? SourceConfig()
+                        config.bookmark = fresh
+                        try SourceRepository.setConfig(db, id: id, config)
+                    }
                 } catch {
                     log.log(.error, category: "source", "could not persist refreshed bookmark for \(id)")
                 }

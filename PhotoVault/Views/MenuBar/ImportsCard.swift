@@ -22,7 +22,7 @@ struct ImportsCard: View {
                         .help(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                         .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                 }
-                Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
+                Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
                 if ImportQueue.isQueued(item) {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)

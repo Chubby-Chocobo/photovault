@@ -1,7 +1,8 @@
+import PhotoVaultAppSupport
 import PhotoVaultCore
 import SwiftUI
 
-/// Shown before the browser opens: what Google's Picker will ask for and that it can read the chosen folders to their depth.
+/// Shown each time before the browser opens, with the warning about Google's "not verified" screen: what Google's Picker will ask for and that it can read the chosen folders to their depth.
 struct GoogleDriveExplainerSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -20,10 +21,20 @@ struct GoogleDriveExplainerSheet: View {
                 Image(systemName: "lightbulb")
             }
             .font(.callout)
+            Label {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(SyncedCloudText.googleUnverifiedWarning)
+                    Text(SyncedCloudText.avoidWarningHint)
+                    Link(tr(vi: "Tải Google Drive cho máy tính", en: "Get Google Drive for desktop"), destination: SyncedCloudText.googleDriveDesktopURL)
+                }
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .font(.callout)
             HStack {
                 Spacer()
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .cancel) { dismiss() }
-                Button(tr(vi: "Mở trình duyệt", en: "Open browser")) {
+                Button(tr(vi: "Tiếp tục", en: "Continue")) {
                     dismiss()
                     model.importFromGoogleDrive()
                 }
