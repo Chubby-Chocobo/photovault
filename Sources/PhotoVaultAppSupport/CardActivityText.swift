@@ -25,10 +25,17 @@ public enum CardActivity: Equatable, Sendable {
 }
 
 public enum CardActivityText {
-    /// The backfill card: the longest-running file of a backfill job (whatever source it comes from), else why it
-    /// waits, else "preparing".
+    /// The transfers the backfill card describes: the files of backfill jobs (whatever source they come from) when
+    /// any moves, otherwise whatever else moves, so the card is never silent while a file goes.
+    static func backfillCandidates(_ transfers: [TransferProgress], now: Date) -> [TransferProgress] {
+        let mine = transfers.filter(\.isBackfill)
+        return TransferLineText.visible(mine, now: now).isEmpty ? transfers : mine
+    }
+
+    /// The backfill card: the longest-running file of a backfill job, else any file that moves, else why it
+    /// waits, else "preparing". A wait or "preparing" is said only when nothing moves.
     public static func backfill(snapshot: EngineSnapshot, transfers: [TransferProgress], now: Date, disk: MacDiskState, settings: GlobalSettings) -> CardActivity {
-        if let line = TransferLineText.make(transfers.filter(\.isBackfill), now: now) { return .transfer(line) }
+        if let line = TransferLineText.make(backfillCandidates(transfers, now: now), now: now) { return .transfer(line) }
         return waiting(snapshot: snapshot, now: now, disk: disk, settings: settings)
             ?? .preparing(tr(vi: "Đang chuẩn bị file tiếp theo…", en: "Preparing the next file…"))
     }
@@ -43,7 +50,7 @@ public enum CardActivityText {
     /// import's card. The header keeps its short form only for these.
     public static func shownOnCards(snapshot: EngineSnapshot, transfers: [TransferProgress], now: Date) -> Set<UUID> {
         var ids = Set<UUID>()
-        if PopoverJobVisibility.shows(backfill: snapshot), let main = TransferLineText.visible(transfers.filter(\.isBackfill), now: now).first {
+        if PopoverJobVisibility.shows(backfill: snapshot), let main = TransferLineText.visible(backfillCandidates(transfers, now: now), now: now).first {
             ids.insert(main.id)
         }
         if let newest = ImportProgressText.running(snapshot.imports).first,

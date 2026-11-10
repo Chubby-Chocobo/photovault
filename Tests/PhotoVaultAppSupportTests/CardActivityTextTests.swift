@@ -54,8 +54,19 @@ struct CardActivityTextTests {
     @Test func theBackfillCardFollowsTheJobOriginNotTheSource() {
         let imported = transfer(source: .folder(), backfill: true)
         if case .transfer = vi({ backfill(snapshot(), [imported]) }) {} else { Issue.record("an imported file uploading as backfill belongs on the card") }
-        let fresh = transfer(backfill: false)
-        #expect(vi { backfill(snapshot(), [fresh]) } == .preparing("Đang chuẩn bị file tiếp theo…"))
+        // A backfill file wins over another file that moves at the same time, even a longer-running one.
+        let incremental = transfer(.copy, to: "NAS", account: nil, ago: 60, backfill: false)
+        let mine = transfer(ago: 5, backfill: true)
+        #expect(vi { backfill(snapshot(), [incremental, mine]) }.text.hasPrefix("Đang upload IMG_1234.MOV lên Google Drive"))
+    }
+
+    @Test func theBackfillCardNeverSaysPreparingWhileAnyFileMoves() {
+        let incremental = transfer(backfill: false)
+        #expect(vi { backfill(snapshot(), [incremental]) } == .transfer("Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)"))
+        let other = transfer(source: .folder(), backfill: false)
+        if case .transfer = vi({ backfill(snapshot(nextRetryAt: t0.addingTimeInterval(60)), [other]) }) {} else { Issue.record("a moving file beats a wait") }
+        // Only when nothing moves at all does the card explain a wait.
+        #expect(vi { backfill(snapshot(), [transfer(ago: 0.2, backfill: false)]) } == .preparing("Đang chuẩn bị file tiếp theo…"))
     }
 
     @Test func aTransferThatHasNotRunASecondYetDoesNotCountAndTheCardSaysItIsPreparing() {
@@ -107,11 +118,13 @@ struct CardActivityTextTests {
     // MARK: Header
 
     @Test func theHeaderStaysFullWhenNoCardShowsTheSameFile() {
-        // A fresh photo uploads while a backfill is unfinished: the Backfill card does not show it.
+        // No backfill is unfinished: the Backfill card is gone, so the header keeps the full line.
         let incremental = transfer(backfill: false)
-        let backfilling = snapshot(done: 10, total: 100)
-        let header = vi { OverallStatusText.make(snapshot: backfilling, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [incremental]) }
-        #expect(header.subtitle == "Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)")
+        let none = vi { OverallStatusText.make(snapshot: snapshot(done: 0, total: 0), disk: .ok, settings: GlobalSettings(), now: t0, transfers: [incremental]) }
+        #expect(none.subtitle == "Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)")
+        // An unfinished backfill: its card shows the moving file, so the header is short.
+        let backfilling = vi { OverallStatusText.make(snapshot: snapshot(done: 10, total: 100), disk: .ok, settings: GlobalSettings(), now: t0, transfers: [incremental]) }
+        #expect(backfilling.subtitle == "Đang upload IMG_1234.MOV · 50%")
         // A finished import has no card.
         var finished = snapshot(done: 0, total: 0)
         let id = SourceID.folder()
