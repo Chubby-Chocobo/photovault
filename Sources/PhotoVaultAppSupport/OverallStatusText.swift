@@ -24,7 +24,8 @@ public struct OverallPresentation: Equatable, Sendable {
 /// The header of the menu bar popover (FR-60).
 public enum OverallStatusText {
     public static func make(
-        snapshot: EngineSnapshot, disk: MacDiskState, settings: GlobalSettings, now: Date, calendar: Calendar = .current
+        snapshot: EngineSnapshot, disk: MacDiskState, settings: GlobalSettings, now: Date, calendar: Calendar = .current,
+        transfers: [TransferProgress] = []
     ) -> OverallPresentation {
         func result(_ title: String, _ subtitle: String, _ tone: OverallTone, working: Bool = false) -> OverallPresentation {
             OverallPresentation(title: title, subtitle: subtitle, tone: tone, isWorking: working)
@@ -77,7 +78,8 @@ public enum OverallStatusText {
         }
         let last = destinations.compactMap(\.lastSuccessAt).max()
         let count = destinations.count
-        let tail = tr(
+        // A file that is moving replaces the summary, so a long transfer does not look like a hang.
+        let tail = TransferLineText.make(transfers, now: now) ?? tr(
             vi: "\(count) đích · sync lần cuối ",
             en: L10n.plural(count, one: "1 destination · last sync ", other: "\(count) destinations · last sync ")) + RelativeTimeText.ago(last, now: now, calendar: calendar)
         let backfilling = snapshot.backfillTotalAssets > snapshot.backfillDoneAssets
