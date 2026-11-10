@@ -200,8 +200,21 @@ actor MoveWorker {
         }
         if case .folderMissing(let path)? = failure { try await ensurer.invalidate(logicalPath: path) }
         let message = failure.map(\.description) ?? "unexpected error"
-        env.log.log(.notice, category: "move", "move failed op=\(move.operation.rawValue) error=\(message)")
-        try await env.store.write { db in _ = try MoveJobRepository.fail(db, id: id, message: message) }
+        env.log.log(.notice, category: "move", "move failed op=\(move.operation.rawValue) error=\(failure.map { String($0.description.prefix { $0 != "(" }) } ?? "unexpected error")")
+        let now = env.clock.now
+        let outcome = try await env.store.write { db -> MoveJobPlanner.FailedRenameOutcome in
+            guard try MoveJobRepository.fail(db, id: id, message: message) == .failed, move.operation == .renameFolder else { return .none }
+            return try MoveJobPlanner.requeueAfterFailedRename(db, failed: move, now: now)
+        }
+        if case .kept = outcome {
+            // The destination refuses a name that another folder already carries.
+            let taken = failure == .foreignFile || { if case .alreadyExists? = failure { return true } else { return false } }()
+            await ActivityLog(env: env).record(.notice, destination: move.destinationId, taken
+                ? tr(vi: "Không đổi được tên một thư mục ngày vì đích đã có thư mục trùng tên; thư mục giữ tên hiện tại",
+                     en: "Couldn't rename a day folder because the destination already has a folder with that name; it keeps its current name")
+                : tr(vi: "Không đổi được tên một thư mục ngày; thư mục giữ tên hiện tại",
+                     en: "Couldn't rename a day folder; it keeps its current name"))
+        }
         return .retry
     }
 
