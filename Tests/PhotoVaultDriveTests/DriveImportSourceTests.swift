@@ -312,13 +312,16 @@ func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(fo
         #expect(await rig.source(["Y"]).pickedLocations() == nil)
     }
 
-    @Test func aSlowDriveDoesNotHoldTheImportBack() async throws {
+    /// The Drive call is held until the test says so, so no bound on the clock decides the result: the lookup
+    /// gives up (nil) while the call is still unanswered, and a hang would be stopped by the time limit.
+    @Test(.timeLimit(.minutes(1))) func aSlowDriveDoesNotHoldTheImportBack() async throws {
         let rig = try ImportRig()
         rig.stub.add(.init(id: "R", name: "My Drive", mime: DriveMime.folder, isRoot: true))
         rig.stub.add(.init(id: "Y", name: "2024", mime: DriveMime.folder, parent: "R"))
-        rig.stub.latency = .seconds(30)
-        let started = ContinuousClock.now
-        #expect(await rig.source(["Y"]).pickedLocations(timeout: .milliseconds(100)) == nil)
-        #expect(ContinuousClock.now - started < .seconds(5))
+        rig.stub.holdAnswers()
+        defer { rig.stub.releaseAnswers() }
+        #expect(await rig.source(["Y"]).pickedLocations(timeout: .milliseconds(50)) == nil)
+        #expect(rig.stub.requests.count >= 1, "the lookup did ask Drive")
+        #expect(rig.stub.answered == 0, "and gave up while Drive had not answered")
     }
 }

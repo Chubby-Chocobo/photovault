@@ -198,6 +198,22 @@ import Testing
         #expect(await h.coordinator.currentSnapshot().nextRetryAt != nil)
     }
 
+    @Test func aDestinationPausedByTheOwnerDoesNotCountForTheRetry() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.drive.failNext(.upload, with: .itemRejected(reason: "bad"))
+        await h.run()
+        let job = try #require(try h.jobs().first)
+        try setRetry(h, job: job, at: h.clock.now.addingTimeInterval(300))
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt != nil)
+        try h.updateDestination(.googleDrive) { $0.status = .paused(.userPaused) }
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt == nil, "its work waits for the owner, not for a timer")
+        try h.updateDestination(.googleDrive) { $0.status = .active }
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt != nil)
+    }
+
     @Test func deferredForThirtyDaysBecomesSkipped() async throws {
         let h = try await Harness()
         try await oneJob(h)
