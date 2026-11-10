@@ -20,6 +20,12 @@ public enum ImportLocationText {
         return lines.joined(separator: "\n")
     }
 
+    /// The headline cut to `budget` characters by whole components, and the "+N" label that is never cut.
+    public static func display(_ location: ImportLocation, budget: Int) -> (path: String, others: String?) {
+        (ImportLocationShortener.shorten(headline(location), budget: budget), othersLabel(location))
+    }
+
+    public static var copyTitle: String { tr(vi: "Sao chép đường dẫn", en: "Copy path") }
     public static var revealTitle: String { tr(vi: "Hiện trong Finder", en: "Show in Finder") }
     public static var openOnWebTitle: String { tr(vi: "Mở trên web", en: "Open on the web") }
 

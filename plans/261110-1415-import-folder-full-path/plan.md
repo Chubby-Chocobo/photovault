@@ -23,3 +23,4 @@ Status: Completed. Owner request: two imports of folders both named "2024" look 
 - Privacy: `SourceConfig` and `ImportLocation` have redacted `description`s, so default string dumps never include paths, bookmark or account.
 - Spec: new FR-126 (FR-125 was taken). No import-row mockup exists in `docs/design/mockups`, so none changed.
 - Drive walk also has a 10 s overall timeout so a slow network cannot hold the import back.
+- Long paths: `ImportLocationShortener` keeps root and last folder, drops the middle as one "…", then middle-truncates the last name; the row tries budgets 200/60/45/32/22 characters with `ViewThatFits`. Full text: tooltip, copy button, click-for-popover. The popover card keeps the full path as a native tooltip (it wraps), not a shortened one.
