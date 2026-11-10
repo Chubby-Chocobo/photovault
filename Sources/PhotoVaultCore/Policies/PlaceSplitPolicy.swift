@@ -45,6 +45,10 @@ public enum PlaceSplitPolicy {
         if known.count <= 1 {
             let result = PlaceNamingPolicy.evaluate(input)
             if result.state == .waitingGeocode { return .waitingGeocode(result.cellsToGeocode) }
+            // A box over 300 km reads as unnamed before any geocode is looked at; with answers missing it
+            // may still turn out to be several provinces, so wait instead of renaming the day twice.
+            let unanswered = cells.filter { input.englishGeocodes[$0] == nil }
+            if result.state == .unnamed, !unanswered.isEmpty { return .waitingGeocode(unanswered.sorted()) }
             let group = PlaceGroup(key: result.placeKey, name: result.placeName, state: result.state, members: live.map(\.id).sorted())
             return .groups([group], unassigned: [])
         }

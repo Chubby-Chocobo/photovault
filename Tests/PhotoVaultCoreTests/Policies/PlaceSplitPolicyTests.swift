@@ -85,9 +85,9 @@ import Testing
     }
 
     @Test func oneProvinceMatchesNamingPolicyForTransientStates() {
-        let assets = [asset("a", daLat), asset("b", hanoi)]
+        let assets = [asset("a", daLat), asset("b", GeoPoint(latitude: 11.95, longitude: 108.44))]
         for (en, local) in [([:], [:]), ([daLat: enPlace("Lam Dong")], [:]),
-                            ([daLat: enPlace("Lam Dong"), hanoi: enPlace("Lam Dong")], [:])] as [([GeoPoint: GeoPlace], [GeoPoint: GeoPlace])] {
+                            ([daLat: enPlace("Lam Dong"), GeoPoint(latitude: 11.95, longitude: 108.44): enPlace("Lam Dong")], [:])] as [([GeoPoint: GeoPlace], [GeoPoint: GeoPlace])] {
             let i = input(assets, en: en, local: local)
             let expected = PlaceNamingPolicy.evaluate(i)
             let got = PlaceSplitPolicy.evaluate(i)
@@ -115,6 +115,13 @@ import Testing
         #expect(got.count == 1)
         #expect(got[0].state == .unnamed)
         #expect(got[0].name == nil && got[0].key == nil)
+    }
+
+    @Test func farApartCellsWithoutAnswersWaitInsteadOfTurningUnnamed() {
+        let assets = [asset("a", hanoi), asset("b", daLat)]
+        #expect(PlaceSplitPolicy.evaluate(input(assets, en: [:], local: [:])) == .waitingGeocode([GeoCell(daLat), GeoCell(hanoi)].sorted()))
+        let oneKnown = PlaceSplitPolicy.evaluate(input(assets, en: [hanoi: enPlace("Hanoi")], local: [:]))
+        #expect(oneKnown == .waitingGeocode([GeoCell(daLat)]))
     }
 
     @Test func twoProvincesGiveTwoNamedGroupsLargestFirst() {
