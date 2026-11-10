@@ -1,12 +1,12 @@
 # Backfill leaves the popover when it is done
 
-Status: In Progress. Owner request: backfill is a one-time job; the menu-bar popover only shows live information, so a finished backfill must not stay there. Treat it like a one-time import.
+Status: Completed. Owner request: backfill is a one-time job; the menu-bar popover only shows live information, so a finished backfill must not stay there. Treat it like a one-time import.
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | Engine: completion detection, kv marker, activity row, snapshot field | In Progress |
-| 2 | AppSupport texts, notification, Settings line | Pending |
-| 3 | Views, docs, mockup | Pending |
+| 1 | Engine: completion detection, kv marker, activity row, snapshot field | Completed |
+| 2 | AppSupport texts, notification, Settings line | Completed |
+| 3 | Views, docs, mockup | Completed |
 
 ## Decisions
 
