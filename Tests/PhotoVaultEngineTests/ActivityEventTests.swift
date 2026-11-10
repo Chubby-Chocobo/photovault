@@ -31,10 +31,14 @@ import Testing
         for index in 0..<3 { await h.add(h.snapshot("p\(index)", daysAgo: 3, location: daLat), recordChange: false) }
         try await h.baseline(.googleDrive)
         await h.settle()
-        await h.add(h.snapshot("far", daysAgo: 3, location: hanoi))
+        for index in 0..<3 {
+            var moved = try #require(try await h.fakePhotos.assets(localIds: ["p\(index)"]).first)
+            moved.location = hanoi
+            await h.fakePhotos.update(moved)
+        }
         await h.settle()
         let renames = try events(h, .renamed)
-        #expect(renames.contains { $0.message.contains("“\(organizationDay) Đà Lạt” → “\(organizationDay)”") })
+        #expect(renames.contains { $0.message.contains("“\(organizationDay) Đà Lạt” → “\(organizationDay) Hà Nội”") })
         #expect(renames.allSatisfy { $0.destinationId == .googleDrive })
     }
 

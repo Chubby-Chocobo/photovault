@@ -56,7 +56,7 @@ Camera Uploads/
 | 02 | [Core: PlaceSplitPolicy (grouping)](phase-02-core-place-split-policy.md) | Completed | M | — |
 | 03 | [Core: DaySlotPolicy and slot-aware layout](phase-03-core-day-slot-policy-and-layout.md) | Completed | M | 02 |
 | 04 | [Engine: slot-aware LayoutResolver plumbing](phase-04-engine-layout-plumbing.md) | Completed | M | 01, 03 |
-| 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Pending | L | 04 |
+| 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Completed | L | 04 |
 | 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Pending | M | 05 |
 | 07 | [Engine: recovery of split days](phase-07-engine-recovery.md) | Pending | L | 05 |
 | 08 | [App text and docs](phase-08-app-text-and-docs.md) | Pending | S | 06, 07 |
@@ -181,6 +181,11 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - Alternatives: give the group a new folder with the contested name (two logical folders, one directory); drop the group.
 - Why: invariants (a) and (b) cannot both hold for such a group. Sharing a folder until the rename ran moves the least. Phase 05 must treat `deferredGroups` as "keep the current slot, re-evaluate after the renames".
 - Review later: yes
+
+### Deferred groups keep their slot and the day stays dirty
+- Chosen: a group in `DaySlotPlan.deferredGroups` keeps its members' current slots for this run; `PlaceNamer` marks the day dirty again so the next evaluation (after the renames ran) places it. Tested: it converges with no file moving back and forth.
+- Why: lead decision, 2026-11-10. `LegacyRootProbe` is in the Engine module, so its slot-path check lives in `SplitDayLayoutResolverTests`, not in the Core layout tests.
+- Review later: no
 
 ### Decision record number
 - Chosen: `docs/decisions/0028-split-day-by-place.md`.

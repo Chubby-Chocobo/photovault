@@ -1,7 +1,7 @@
 ---
 phase: "05"
 title: "Engine: split evaluation and move planning"
-status: pending
+status: completed
 priority: P1
 size: L
 human_effort: 2.5-4.5h

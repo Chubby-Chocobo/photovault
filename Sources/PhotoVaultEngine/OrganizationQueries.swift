@@ -55,19 +55,16 @@ extension JobIdentity {
 
 /// Creates `move_job`s without stacking duplicates.
 enum MoveJobPlanner {
-    private static func open(_ db: Database, _ destinationId: DestinationID) throws -> [MoveJob] {
-        try MoveJobRepository.fetch(db, destinationId: destinationId, state: .pending)
-            + MoveJobRepository.fetch(db, destinationId: destinationId, state: .inProgress)
-    }
-
     /// File `identity` is in `from` but belongs in `to`.
     @discardableResult
     static func enqueueMove(_ db: Database, identity: JobIdentity, from: String, to: String, now: Date) throws -> Bool {
         guard from != to else { return false }
         let subject = MoveJob.subject(for: identity)
-        if try open(db, identity.destinationId).contains(where: { $0.subject == subject && $0.operation == .moveFile && $0.toValue == to }) {
-            return false
-        }
+        let queued = try Bool.fetchOne(db, sql: """
+            SELECT EXISTS (SELECT 1 FROM move_job WHERE destination_id = ? AND subject = ? AND op = 'moveFile'
+                           AND to_value = ? AND state IN ('pending', 'inProgress'))
+            """, arguments: [identity.destinationId.rawValue, subject, to]) ?? false
+        if queued { return false }
         try MoveJobRepository.insert(db, MoveJob(
             destinationId: identity.destinationId, operation: .moveFile, subject: subject, fromValue: from, toValue: to, createdAt: now))
         return true
@@ -78,8 +75,11 @@ enum MoveJobPlanner {
     @discardableResult
     static func enqueueRename(_ db: Database, destinationId: DestinationID, logicalPath: String, to name: String, now: Date) throws -> Bool {
         guard let folder = try RemoteFolderRepository.fetch(db, destinationId: destinationId, logicalPath: logicalPath) else { return false }
-        let queued = try open(db, destinationId).filter { $0.operation == .renameFolder && $0.subject == logicalPath }
-        let effective = queued.last?.toValue ?? folder.displayName
+        let lastQueued = try String.fetchOne(db, sql: """
+            SELECT to_value FROM move_job WHERE destination_id = ? AND subject = ? AND op = 'renameFolder'
+                AND state IN ('pending', 'inProgress') ORDER BY id DESC LIMIT 1
+            """, arguments: [destinationId.rawValue, logicalPath])
+        let effective = lastQueued ?? folder.displayName
         guard effective != name else { return false }
         try MoveJobRepository.insert(db, MoveJob(
             destinationId: destinationId, operation: .renameFolder, subject: logicalPath, fromValue: effective, toValue: name, createdAt: now))
