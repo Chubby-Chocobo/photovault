@@ -43,7 +43,7 @@ struct SnapshotBuilder: Sendable {
             let found = counts.values.reduce(0, +)
             let progress = source.status.isOpen ? try EngineQueries.importUploadProgress(db, sourceId: source.id) : (done: 0, total: 0)
             return ImportSnapshot(
-                id: source.id, kind: source.kind, account: source.config.account, statusReason: source.statusReason,
+                id: source.id, kind: source.kind, account: source.config.account, syncedProvider: source.config.syncedCloudProvider, statusReason: source.statusReason,
                 displayName: source.displayName, status: source.status, createdAt: source.createdAt,
                 finishedAt: source.finishedAt, found: found, processed: found - pending, imported: counts[.imported] ?? 0,
                 duplicates: counts[.duplicate] ?? 0, unsupported: counts[.unsupported] ?? 0, failed: counts[.failed] ?? 0,

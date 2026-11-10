@@ -87,10 +87,12 @@ extension ImportStage {
         var failed: [String: String] = [:]
         var givenUp = false
         let groupKey = group.first?.groupKey ?? ""
+        let synced = source.config.syncedProvider != nil
         for item in group {
             let mediaType: MediaType = UTType(item.uti)?.conforms(to: .movie) == true ? .video : .image
-            // A cloud file is downloaded to scratch space first; do not start when it would eat the reserve.
-            if source.kind != .localFolder, !hasRoomToDownload(item.sizeBytes, settings: settings) {
+            // A cloud file is downloaded to scratch space first; do not start when it would eat the reserve. An
+            // online-only file in a synced folder is downloaded by the first read, so it counts the same.
+            if source.kind != .localFolder || synced, !hasRoomToDownload(item.sizeBytes, settings: settings) {
                 holds.blockForDisk(source.id, group: groupKey, now: env.clock.now)
                 env.log.log(.info, category: "import", "import file waits for disk room")
                 return .waitingForDisk
@@ -133,7 +135,14 @@ extension ImportStage {
                     return .stop
                 case .cancelled: return .stop
                 case .fileMissing, .fileChanged: failed[item.relativePath] = "missing"
-                case .readFailed: failed[item.relativePath] = "read"
+                case .readFailed(let code):
+                    // A synced folder's online-only file fails like a cloud read while the download cannot finish
+                    // (offline, desktop app paused or signing in): it waits and is tried again.
+                    if synced, ImportReadErrors.isTransient(code: code), !givenUp {
+                        if let outcome = retryLater(source, group: groupKey) { return outcome }
+                        givenUp = true
+                    }
+                    failed[item.relativePath] = "read"
                 }
             }
         }
@@ -180,5 +189,15 @@ extension ImportStage {
     private func hasRoomToDownload(_ bytes: Int64, settings: SettingsSnapshot) -> Bool {
         guard let free = try? env.disk.capacity(of: env.stagingDirectory).available else { return true }
         return free - bytes >= settings.settings.criticalWatermarkBytes
+    }
+}
+
+/// Which `errno` values of a read mean "not now" rather than "this file is unreadable".
+enum ImportReadErrors {
+    static func isTransient(code: Int) -> Bool {
+        switch Int32(truncatingIfNeeded: code) {
+        case EIO, ETIMEDOUT, ECANCELED, EDEADLK, EAGAIN, EINTR, ENETDOWN, ENETUNREACH, ENOTCONN, EHOSTDOWN, EHOSTUNREACH, ESTALE, ENXIO, ENODEV, EBUSY: true
+        default: false
+        }
     }
 }

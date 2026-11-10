@@ -17,15 +17,31 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     /// Drive: link to the first pick's folder.
     public var locationURL: String?
 
+    /// A Mac-folder import that reads a cloud provider's synced folder (`"googleDrive"` or `"dropbox"`), so the
+    /// history says where the photos came from. Kept as text so a value this version does not know still decodes.
+    public var syncedProvider: String?
+
+    /// `syncedProvider` as a known provider; nil when absent or not known to this version.
+    public var syncedCloudProvider: SyncedCloudProvider? {
+        get { syncedProvider.flatMap(SyncedCloudProvider.init(rawValue:)) }
+        set { syncedProvider = newValue?.rawValue }
+    }
+
     public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil,
-                locationPaths: [String]? = nil, locationURL: String? = nil) {
+                locationPaths: [String]? = nil, locationURL: String? = nil, syncedProvider: SyncedCloudProvider? = nil) {
         self.bookmark = bookmark
         self.account = account
         self.remoteItems = remoteItems
         self.sidecarName = sidecarName
+        self.syncedProvider = syncedProvider?.rawValue
         self.locationPaths = locationPaths
         self.locationURL = locationURL
     }
+}
+
+/// Cloud providers whose desktop app keeps a synced folder on this Mac.
+public enum SyncedCloudProvider: String, Sendable, CaseIterable {
+    case googleDrive, dropbox
 }
 
 /// The config holds a bookmark, an e-mail address and paths; none of it may reach a log through string interpolation.

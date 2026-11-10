@@ -31,7 +31,7 @@ struct ImportRunningRow: View {
                 }
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small)
             }
-            Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
+            Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
             ImportLocationLine(item: item)
             if CloudImportText.needsSignIn(item), item.account != nil, !signedInWaiting {
                 Text(CloudImportText.wrongAccountNotice(expected: item.account))
@@ -82,7 +82,7 @@ struct ImportFinishedRow: View {
                 Text(ImportProgressText.statusLabel(item.status) + (item.finishedAt.map { " · " + RelativeTimeText.ago($0, now: Date()) } ?? ""))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
+            Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
             ImportLocationLine(item: item)
             Text(ImportProgressText.summaryLine(item)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             if signedInWaiting {

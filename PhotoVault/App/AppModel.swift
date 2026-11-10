@@ -66,6 +66,10 @@ final class AppModel {
     /// Imports signed in again whose resume waits for the engine's turn.
     var resumingImports: Set<SourceID> = []
     @ObservationIgnored var queuedStarts: [SourceID: Task<Void, Never>] = [:]
+    /// Which provider's desktop app is on this Mac, read when Settings opens or the app is activated, not on every redraw.
+    var syncedFolders: [SyncedCloudProvider: SyncedCloudFolders.Detection] = [:]
+    /// The sandbox refused to list a folder; it is not tried again this launch.
+    @ObservationIgnored var folderListingRefused = false
     var cloudFlowBusy: Bool { cloudFlow.stage != .idle }
     var cloudFlowStage: CloudFlowStage { cloudFlow.stage }
     /// Cancels the browser sign-in that is running; nil when none is.

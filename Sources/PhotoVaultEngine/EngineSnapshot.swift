@@ -64,6 +64,8 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     public var kind: SourceKind
     /// Cloud account (email) the import reads from. Shown in the app only; never logged.
     public var account: String?
+    /// Set when a Mac-folder import reads a Google Drive or Dropbox folder synced to this Mac.
+    public var syncedProvider: SyncedCloudProvider?
     /// Why an offline import waits (`signInRequired` when the provider rejected the grant).
     public var statusReason: String?
     /// The folder's name. Shown in the app only; never written to logs or the activity list.
@@ -88,7 +90,7 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     public var isFinished: Bool { !status.isOpen }
 
     public init(
-        id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, statusReason: String? = nil,
+        id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, syncedProvider: SyncedCloudProvider? = nil, statusReason: String? = nil,
         displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
         processed: Int = 0, imported: Int = 0, duplicates: Int = 0, unsupported: Int = 0, failed: Int = 0,
         filesUploaded: Int = 0, filesTotal: Int = 0, location: ImportLocation? = nil
@@ -97,6 +99,7 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
         self.id = id
         self.kind = kind
         self.account = account
+        self.syncedProvider = syncedProvider
         self.statusReason = statusReason
         self.displayName = displayName
         self.status = status

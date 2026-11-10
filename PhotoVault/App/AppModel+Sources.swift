@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 import PhotoVaultAppSupport
@@ -16,18 +17,79 @@ extension AppModel {
 
     /// Asks for a folder, records the job and starts a cycle.
     func importFolder() {
-        guard let env, canStartImport else { return }
-        let pick: FolderPicker.Pick
+        guard canStartImport else { return }
         do {
             guard let chosen = try FolderPicker.chooseImportFolder() else { return }
-            pick = chosen
+            beginFolderImport(chosen)
         } catch {
-            env.log.log(.error, category: "import", "bookmark for the chosen folder failed")
-            showNotice(tr(
-                vi: "Không mở được thư mục này để đọc. Hãy chọn thư mục khác hoặc cấp quyền truy cập thư mục trong System Settings.",
-                en: "This folder couldn’t be opened for reading. Choose another folder, or allow access to it in System Settings."), isError: true)
-            return
+            reportBookmarkFailure()
         }
+    }
+
+    /// For views: true when the provider's desktop app was found at the last refresh. Reads only, so it is safe in `body`.
+    func syncedAvailable(_ provider: SyncedCloudProvider) -> Bool { syncedFolders[provider]?.isAvailable == true }
+
+    /// The provider's desktop app is installed (or its folder was seen), as of the last `refreshSyncedFolders()`.
+    func syncedFolderDetection(_ provider: SyncedCloudProvider) -> SyncedCloudFolders.Detection {
+        if let known = syncedFolders[provider] { return known }
+        refreshSyncedFolders()
+        return syncedFolders[provider] ?? SyncedCloudFolders.detect(provider, home: Self.realHome, appInstalled: { _ in false }, list: { _ in nil })
+    }
+
+    /// Asks Launch Services for the desktop apps. The sandbox cannot list `~/Library/CloudStorage`: that is tried
+    /// until it is refused once, then never again in this launch, so there is no violation per redraw.
+    func refreshSyncedFolders() {
+        let home = Self.realHome
+        for provider in SyncedCloudProvider.allCases {
+            syncedFolders[provider] = SyncedCloudFolders.detect(
+                provider, home: home,
+                appInstalled: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil },
+                list: { [self] url in
+                    guard !folderListingRefused else { return nil }
+                    do { return try FileManager.default.contentsOfDirectory(atPath: url.path) } catch {
+                        folderListingRefused = true
+                        return nil
+                    }
+                })
+        }
+    }
+
+    enum SyncedImportOutcome { case started, cancelled, useBrowser }
+
+    /// Imports from the provider's folder synced to this Mac: a Mac-folder import, no sign-in with the provider.
+    /// `.useBrowser` when the owner asks for the web flow instead.
+    func importFromSyncedFolder(_ provider: SyncedCloudProvider) -> SyncedImportOutcome {
+        guard canStartImport else { return .cancelled }
+        do {
+            switch try FolderPicker.chooseSyncedFolder(
+                provider: provider, startAt: syncedFolderDetection(provider).startDirectory,
+                offerBrowser: provider == .googleDrive ? googleImportAvailable : dropboxImportAvailable) {
+            case .cancelled: return .cancelled
+            case .useBrowser: return .useBrowser
+            case .picked(let pick): beginFolderImport(pick); return .started
+            }
+        } catch {
+            reportBookmarkFailure()
+            return .cancelled
+        }
+    }
+
+    /// The real home folder: `NSHomeDirectory()` is the sandbox container.
+    private static var realHome: URL {
+        getpwuid(getuid()).map { URL(fileURLWithPath: String(cString: $0.pointee.pw_dir)) } ?? URL(fileURLWithPath: NSHomeDirectory())
+    }
+
+    private func reportBookmarkFailure() {
+        env?.log.log(.error, category: "import", "bookmark for the chosen folder failed")
+        showNotice(tr(
+            vi: "Không mở được thư mục này để đọc. Hãy chọn thư mục khác hoặc cấp quyền truy cập thư mục trong System Settings.",
+            en: "This folder couldn’t be opened for reading. Choose another folder, or allow access to it in System Settings."), isError: true)
+    }
+
+    /// Records the job for a chosen folder and starts a cycle. A folder inside Google Drive's or Dropbox's synced
+    /// folder is remembered as such, whichever menu entry it was chosen from.
+    private func beginFolderImport(_ pick: FolderPicker.Pick) {
+        guard let env else { return }
         let existing = destinations.compactMap { record in
             record.kind == .localFolder ? record.config.displayPath.map { (name: record.displayName, path: $0) } : nil
         }
@@ -41,11 +103,14 @@ extension AppModel {
         }
         let source = AppEnvironment.makeFolderSource(id: .folder(), bookmark: pick.bookmark, store: env.store, log: env.log)
         let name = pick.url.lastPathComponent
+        let synced = SyncedCloudFolders.provider(ofPath: pick.url.path, home: Self.realHome)
+        let shown = SyncedCloudFolders.displayPath(pick.url.path, home: Self.realHome) ?? ImportLocationPath.mac(pick.url.path)
+        let config = SourceConfig(
+            bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path, home: Self.realHome), locationPaths: [shown], syncedProvider: synced)
         Task {
             do {
-                try await env.coordinator.startFolderImport(
-                    source: source, displayName: name, bookmark: pick.bookmark, locationPath: ImportLocationPath.mac(pick.url.path))
-                env.log.log(.info, category: "import", "import started")
+                try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)
+                env.log.log(.info, category: "import", synced == nil ? "import started" : "synced cloud folder import started")
                 requestSync(.manual)
                 await refreshSnapshot()
             } catch {

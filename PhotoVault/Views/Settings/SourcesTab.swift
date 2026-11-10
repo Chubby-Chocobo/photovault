@@ -1,3 +1,4 @@
+import AppKit
 import PhotoVaultAppSupport
 import PhotoVaultCore
 import PhotoVaultEngine
@@ -22,6 +23,8 @@ struct SourcesTab: View {
                 vi: "Google Drive và Dropbox: PhotoVault chỉ đọc và tải ảnh về để sao lưu, không sửa hay xoá gì trên tài khoản của bạn.",
                 en: "Google Drive and Dropbox: PhotoVault only reads and downloads photos to back them up; it never changes or deletes anything in your account."))
         }
+        .onAppear { model.refreshSyncedFolders() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshSyncedFolders() }
         .sheet(isPresented: $showGoogleExplainer) { GoogleDriveExplainerSheet() }
         .sheet(isPresented: $showDropboxBrowser) { DropboxFolderSheet() }
         // Counted again with every snapshot, so the number follows the library while this tab is open.
@@ -41,6 +44,10 @@ struct SourcesTab: View {
                 vi: "File chưa upload sẽ không được upload nữa. File đã upload vẫn ở nguyên. Nhập lại thư mục này sau đó sẽ lấy lại phần còn thiếu.",
                 en: "Files not yet uploaded will no longer be uploaded. Files already uploaded stay where they are. Importing the same folder again later picks up what is missing."))
         }
+    }
+
+    private func openDropboxBrowser() {
+        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
     }
 
     // MARK: Ongoing
@@ -96,12 +103,22 @@ struct SourcesTab: View {
             HStack {
                 Menu {
                     Button(tr(vi: "Từ thư mục trên Mac…", en: "From a folder on this Mac…")) { model.importFolder() }
-                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) { showGoogleExplainer = true }
-                        .disabled(!model.googleImportAvailable || model.cloudFlowBusy)
-                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
-                        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
+                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) {
+                        if model.syncedAvailable(.googleDrive) {
+                            if model.importFromSyncedFolder(.googleDrive) == .useBrowser { showGoogleExplainer = true }
+                        } else {
+                            showGoogleExplainer = true
+                        }
                     }
-                    .disabled(!model.dropboxImportAvailable || model.cloudFlowBusy)
+                    .disabled(!(model.googleImportAvailable || model.syncedAvailable(.googleDrive)) || model.cloudFlowBusy)
+                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
+                        if model.syncedAvailable(.dropbox) {
+                            if model.importFromSyncedFolder(.dropbox) == .useBrowser { openDropboxBrowser() }
+                        } else {
+                            openDropboxBrowser()
+                        }
+                    }
+                    .disabled(!(model.dropboxImportAvailable || model.syncedAvailable(.dropbox)) || model.cloudFlowBusy)
                     .help(model.dropboxImportAvailable ? "" : tr(
                         vi: "Bản này chưa có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
                         en: "This build has no Dropbox app key (DROPBOX_APP_KEY)."))
