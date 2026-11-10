@@ -9,6 +9,7 @@ enum Schema {
         migrator.registerMigration("v3-snapshot-counters", migrate: createSnapshotCounters)
         migrator.registerMigration("v4-provisional-index", migrate: createProvisionalIndex)
         migrator.registerMigration("v5-sources", migrate: createSources)
+        migrator.registerMigration("v6-day-place", migrate: createDayPlace)
         return migrator
     }
 

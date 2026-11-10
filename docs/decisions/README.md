@@ -34,8 +34,12 @@ Spec references use the FR, NFR, §, and T codes of [photovault-spec-v1.md](../r
 | [0021](0021-edited-extension-casing.md) | Edited file extensions: upper-case UTI extension | Accepted | FR-41 |
 | [0022](0022-interface-languages.md) | Interface languages: Vietnamese and English text pairs, switched live | Accepted | issue #11 |
 | [0023](0023-day-folders-and-place-name-rule.md) | Day folders in every branch; fixed place-name languages | Accepted | FR-40, FR-82, FR-104–106, §8.7 |
-| [0024](0024-multiple-sources-and-folder-import.md) | Several sources, one layout: source model and one-time folder import | Accepted | §2, §3, §8.1, §8.2, §8.4, §8.8, §8.12, §15, FR-110–116 |
+| [0024](0024-multiple-sources-and-folder-import.md) | Several sources, one layout: source model and one-time folder import | Accepted (continuous sources superseded in part by 0029) | §2, §3, §8.1, §8.2, §8.4, §8.8, §8.12, §15, FR-110–116 |
 | [0025](0025-old-layout-block-and-reset.md) | Upgrading from 0.1.0: block the old layout, start over with a factory reset | Accepted | FR-117, FR-118, FR-08, FR-51, §8.7 |
-| [0026](0026-cloud-folder-imports.md) | One-time import from a Google Drive or Dropbox folder: Picker, folder browser, revoked grants | Accepted | §2, §9, §15, FR-119–123 |
+| [0026](0026-cloud-folder-imports.md) | One-time import from a Google Drive or Dropbox folder: Picker, folder browser, revoked grants | Accepted (Drive scope superseded by 0030) | §2, §9, §15, FR-119–123 |
+| [0027](0027-by-lens-view.md) | By lens view: opt-in, EXIF lens name shortened for Apple | Accepted | FR-107 |
+| [0028](0028-split-day-by-place.md) | Split a camera day into one folder per province | Accepted | FR-40, FR-81, FR-83, §8.2, §8.4, §8.7, §8.11, §8.15, T28 |
+| [0029](0029-photos-only-continuous-source.md) | Photos is the only continuous source; the extension mechanism is designed, not built | Accepted | §2, §8.1, §15, FR-110, FR-120 |
+| [0030](0030-drive-import-reads-folder-contents.md) | Google Drive import reads folder contents with drive.readonly; grant deleted when the import ends | Accepted | FR-119, FR-122, FR-123 |
 
 Adding a decision: copy the next free number, keep the same five sections, and link it from this table and from the affected spec or code notes. A `[VERIFY]` default that the code uses goes in a group file (0012–0014) or its own file, and its spike goes in [docs/spikes/](../spikes/README.md).

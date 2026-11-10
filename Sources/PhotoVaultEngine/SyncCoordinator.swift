@@ -46,6 +46,7 @@ public actor SyncCoordinator {
     private var lastPublished: EngineSnapshot?
     private var subscribers: [UUID: AsyncStream<EngineSnapshot>.Continuation] = [:]
     private var backfillObservation: (at: Date, done: Int)?
+    var earlierBackfillMarked = false
 
     public init(
         env: EngineEnvironment, stages: [any CycleStage] = [], reconciler: (any ReconciliationRunning)? = nil,
@@ -251,7 +252,8 @@ public actor SyncCoordinator {
             overall: overall, scanState: raw.scan, destinations: raw.destinations, backfillDoneAssets: raw.backfill.done,
             backfillTotalAssets: raw.backfill.total, bytesUploaded: raw.bytes, etaSeconds: eta,
             pending: raw.totals.pending + raw.totals.uploading, deferred: raw.totals.deferred, skipped: raw.totals.skipped,
-            missingRemote: raw.totals.missingRemote, updatedAt: now, imports: raw.imports)
+            missingRemote: raw.totals.missingRemote, updatedAt: now, imports: raw.imports,
+            backfillCompletion: raw.backfillCompletion)
     }
 }
 

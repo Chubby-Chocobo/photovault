@@ -40,7 +40,7 @@ struct PlacesTab: View {
                 .labelsHidden().frame(width: 160)
             }
             .disabled(!model.settings.placeNamesEnabled)
-            SettingsNote(tr(vi: "Chỉ đặt tên khi ngày đã kết thúc ít nhất 6 giờ và mọi ảnh có GPS cùng một tỉnh.", en: "Names are added only once the day ended at least 6 hours ago and all photos with GPS are in the same province."))
+            SettingsNote(tr(vi: "Chỉ đặt tên khi ngày đã kết thúc ít nhất 6 giờ. Ngày có ảnh ở nhiều tỉnh/thành được tách thành một thư mục cho mỗi nơi.", en: "Names are added once the day ended at least 6 hours ago. A day with photos in several provinces gets one folder per place."))
         }
         Banner(
             .info, title: tr(vi: "Quyền riêng tư", en: "Privacy"),

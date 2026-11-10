@@ -29,7 +29,8 @@ struct RecoveryWriter: Sendable {
                 """)
             for key in keys {
                 try db.execute(sql: """
-                    UPDATE asset SET placement_category = NULL, placement_day = NULL, name_stem = NULL, placed_at = NULL
+                    UPDATE asset SET placement_category = NULL, placement_day = NULL, name_stem = NULL, placed_at = NULL,
+                        place_slot = NULL
                     WHERE asset_key = ?
                     """, arguments: [key])
                 try db.execute(sql: "DELETE FROM name_alloc WHERE asset_key = ?", arguments: [key])
@@ -40,19 +41,48 @@ struct RecoveryWriter: Sendable {
     // MARK: Folders
 
     /// `remote_folder` rows, promoted days and the owner's device-group names (step 3).
+    struct FolderTotals: Sendable, Equatable {
+        var written = 0
+        var conflicts = 0
+    }
+
     @discardableResult
-    func writeFolders(_ folders: [RemoteFolderEntry]) async throws -> Int {
+    func writeFolders(_ folders: [RemoteFolderEntry], listedIds: Set<String> = []) async throws -> FolderTotals {
         let id = record.id
         var unique: [String: RemoteFolderEntry] = [:]
         for folder in folders.sorted(by: { $0.remoteId < $1.remoteId }) where unique[folder.logicalPath] == nil { unique[folder.logicalPath] = folder }
         let ordered = unique.values.sorted { $0.logicalPath < $1.logicalPath }
         let now = env.clock.now
-        try await env.store.write { db in
+        let log = env.log
+        return try await env.store.write { db in
+            var totals = FolderTotals()
             for folder in ordered {
+                // A row whose folder is still listed is never re-pointed; only a stale one (a restored backup) is.
+                if let held = try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: folder.logicalPath)?.remoteId,
+                   held != folder.remoteId, listedIds.contains(held) {
+                    totals.conflicts += 1
+                    log.log(.notice, category: "recovery", "destination=\(id) kept a folder row that points at another listed folder")
+                    continue
+                }
+                let sharing = try Int.fetchOne(db, sql: """
+                    SELECT COUNT(*) FROM remote_folder WHERE destination_id = ? AND remote_id = ? AND logical_path != ?
+                    """, arguments: [id.rawValue, folder.remoteId, folder.logicalPath]) ?? 0
+                if sharing > 0 {
+                    totals.conflicts += 1
+                    log.log(.notice, category: "recovery", "destination=\(id) refused a folder row that would share a remote id")
+                    continue
+                }
                 try RemoteFolderRepository.save(db, RemoteFolder(
                     destinationId: id, logicalPath: folder.logicalPath, remoteId: folder.remoteId,
                     displayName: folder.displayName, created: true))
-                if let day = folder.day { try Self.adoptDay(db, day: day, placeName: folder.placeName, now: now) }
+                totals.written += 1
+                if let day = folder.day {
+                    if let slot = folder.slot {
+                        try Self.adoptSlotFolder(db, day: day, slot: slot, placeName: folder.placeName, now: now)
+                    } else {
+                        try Self.adoptDay(db, day: day, placeName: folder.placeName, now: now)
+                    }
+                }
                 let parts = folder.logicalPath.split(separator: "/")
                 if parts.count == 3, parts[0] == "view", parts[1] == ViewKind.byDevice.rawValue {
                     try db.execute(
@@ -60,8 +90,17 @@ struct RecoveryWriter: Sendable {
                         arguments: [String(parts[2]), folder.displayName])
                 }
             }
+            return totals
         }
-        return ordered.count
+    }
+
+    /// An extra folder of a split day exists: the day is promoted and the folder is a known slot.
+    private static func adoptSlotFolder(_ db: Database, day: ArchiveDay, slot: String, placeName: String?, now: Date) throws {
+        try db.execute(sql: "INSERT INTO day_stat (day, count) VALUES (?, 0) ON CONFLICT(day) DO NOTHING", arguments: [day.description])
+        try DayStatRepository.promote(db, day: day, now: now)
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO day_place (day, slot, place_key, place_name) VALUES (?, ?, NULL, ?)
+            """, arguments: [day.description, slot, placeName])
     }
 
     /// A day folder exists: the day is promoted for good and keeps the folder's place name (FR-83).
@@ -80,8 +119,9 @@ struct RecoveryWriter: Sendable {
         var suspect = 0
     }
 
-    func writeFiles(_ files: [RecoveredFile]) async throws -> FileTotals {
+    func writeFiles(_ files: [RecoveredFile], daysWithRows: Set<ArchiveDay> = []) async throws -> FileTotals {
         var totals = FileTotals()
+        let located = try await foldersOfAssets(files)
         let settings = await env.settingsSnapshot()
         for start in stride(from: 0, to: files.count, by: Self.chunk) {
             try Task.checkCancellation()
@@ -93,7 +133,7 @@ struct RecoveryWriter: Sendable {
                 var days = Set<ArchiveDay>()
                 var part = FileTotals()
                 for file in batch {
-                    switch try Self.write(db, file, record: record, context: context, days: &days) {
+                    switch try Self.write(db, file, record: record, context: context, days: &days, located: located, daysWithRows: daysWithRows) {
                     case .skipped: break
                     case .applied: part.applied += 1
                     case .suspect:
@@ -112,8 +152,41 @@ struct RecoveryWriter: Sendable {
 
     private enum WriteResult { case skipped, applied, suspect }
 
+    /// The day folder each asset's files sit in at this destination: the folder of its primary file,
+    /// else the one holding most of its files (a tie goes to the main folder).
+    private func foldersOfAssets(_ files: [RecoveredFile]) async throws -> [AssetKey: LocatedAsset] {
+        let grouped = Dictionary(grouping: files, by: \.assetKey)
+        return try await env.store.read { db in
+            var result: [AssetKey: LocatedAsset] = [:]
+            for (key, group) in grouped {
+                let located = group.compactMap { file -> (type: ResourceType, place: LocatedAsset)? in
+                    guard let parent = file.entry.parentLogical, let parsed = DynamicLayout.parseCameraDay(parent) else { return nil }
+                    return (file.resType, LocatedAsset(day: parsed.day, slot: parsed.slot))
+                }
+                guard !located.isEmpty else { continue }
+                let primary = ResourcePlanner.primary(of: try ResourceRepository.fetchAll(db, key: key).map(\.descriptor))?.type
+                if let primary, let hit = located.first(where: { $0.type == primary }) {
+                    result[key] = hit.place
+                    continue
+                }
+                var counts: [LocatedAsset: Int] = [:]
+                for item in located { counts[item.place, default: 0] += 1 }
+                let best = counts.values.max() ?? 0
+                let top = counts.filter { $0.value == best }.keys
+                result[key] = top.first { $0.slot == nil } ?? top.sorted { ($0.slot ?? "") < ($1.slot ?? "") }.first
+            }
+            return result
+        }
+    }
+
+    struct LocatedAsset: Hashable, Sendable {
+        var day: ArchiveDay
+        var slot: String?
+    }
+
     private static func write(
-        _ db: Database, _ file: RecoveredFile, record: DestinationRecord, context: PipelineContext, days: inout Set<ArchiveDay>
+        _ db: Database, _ file: RecoveredFile, record: DestinationRecord, context: PipelineContext, days: inout Set<ArchiveDay>,
+        located: [AssetKey: LocatedAsset], daysWithRows: Set<ArchiveDay>
     ) throws -> WriteResult {
         guard let asset = try AssetRepository.fetch(db, key: file.assetKey) else { return .skipped }
         let identity = JobIdentity(destinationId: record.id, assetKey: file.assetKey, resType: file.resType)
@@ -128,6 +201,15 @@ struct RecoveryWriter: Sendable {
         if asset.placement == nil, let placement = try adoptPlacement(db, file, asset: asset, now: context.now) {
             placed.placement = placement
             if placement.category == .camera, let day = placement.day.archiveDay { days.insert(day) }
+        }
+        // The slot comes from the folder the files are in: when the placement was read from the files, or when
+        // the day was never split in this database (a restored older backup). Otherwise the database decides.
+        if let place = located[file.assetKey], let day = placed.placement?.day.archiveDay, day == place.day {
+            let adoptedNow = asset.placement == nil && placed.placement != nil
+            if (adoptedNow || (asset.placeSlot == nil && !daysWithRows.contains(day))) && placed.placeSlot != place.slot {
+                try AssetPlacementRepository.setPlaceSlot(db, key: file.assetKey, slot: place.slot)
+                placed.placeSlot = place.slot
+            }
         }
         let item = file.entry.item
         var job = existing ?? UploadJob(
@@ -167,8 +249,8 @@ struct RecoveryWriter: Sendable {
                 sql: "UPDATE resource SET size_bytes = ? WHERE asset_key = ? AND res_type = ? AND size_bytes IS NULL",
                 arguments: [size, file.assetKey.rawValue, file.resType.rawValue])
         }
-        if job.state == .done, let placement = placed.placement, let from = job.remoteLogicalParent {
-            let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: context.layout))
+        if job.state == .done, placed.placement != nil, let from = job.remoteLogicalParent {
+            let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, asset: placed, layout: context.layout))
             try MoveJobPlanner.enqueueMove(db, identity: identity, from: from, to: target, now: context.now)
         }
         return suspect ? .suspect : .applied

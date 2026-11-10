@@ -47,7 +47,7 @@ public enum DestinationKind: String, Codable, Sendable, CaseIterable {
 /// Reason attached to a non-active destination status (spec 8.9.2).
 public enum StatusReason: String, Codable, Sendable, CaseIterable {
     case userPaused, full, dailyCapReached, offline, bookmarkInvalid, reauthRequired, signedOut
-    case rootMissing, rootTrashed, folderTrashed, recovering
+    case rootMissing, rootTrashed, folderTrashed, recovering, waitingForDrive
 }
 
 /// Destination status (spec 8.9.2).

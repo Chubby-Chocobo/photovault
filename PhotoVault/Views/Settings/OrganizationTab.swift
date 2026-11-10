@@ -55,6 +55,12 @@ struct OrganizationTab: View {
             }
             .disabled(!model.settings.placeNamesEnabled)
             Toggle("Favorites", isOn: model.binding(\.viewFavoritesEnabled))
+            Toggle(isOn: model.binding(\.viewByLensEnabled)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("By lens")
+                    Text(tr(vi: "Nhóm ảnh theo ống kính trong EXIF. Mặc định tắt.", en: "Groups photos by the lens in their EXIF. Off by default.")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Divider()
             FormRow(tr(vi: "Ước tính số item trên My Drive", en: "Estimated items in My Drive")) {
                 Text(VietnameseFormat.integer(estimatedItems))
@@ -66,7 +72,7 @@ struct OrganizationTab: View {
                        message: tr(vi: "Google có thể giới hạn số item trong My Drive; cân nhắc tắt bớt view.", en: "Google may limit the number of items in My Drive; consider turning off some views."))
             }
             SettingsNote(tr(vi: "Tắt view thì cây hiện có được giữ nguyên. Shortcut không tốn dung lượng.", en: "Turning a view off leaves the existing tree as it is. Shortcuts use no storage."))
-            FormRow(tr(vi: "Đưa By device, By place và Favorites về đúng trạng thái, kể cả shortcut bạn đã xoá.", en: "Bring By device, By place and Favorites back to the right state, including shortcuts you deleted.")) {
+            FormRow(tr(vi: "Đưa By device, By place, Favorites và By lens về đúng trạng thái, kể cả shortcut bạn đã xoá.", en: "Bring By device, By place, Favorites and By lens back to the right state, including shortcuts you deleted.")) {
                 Button(tr(vi: "Dựng lại view…", en: "Rebuild views…")) { confirmRebuild = true }
             }
         }
@@ -88,6 +94,7 @@ struct OrganizationTab: View {
         if settings.viewByDeviceEnabled { total += counts.device }
         if settings.viewByPlaceEnabled && settings.placeNamesEnabled { total += counts.place }
         if settings.viewFavoritesEnabled { total += counts.favorites }
+        if settings.viewByLensEnabled { total += counts.lens }
         return total
     }
 

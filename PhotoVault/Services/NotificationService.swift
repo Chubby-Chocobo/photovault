@@ -49,6 +49,15 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         try await center.add(UNNotificationRequest(identifier: "pv.import.\(id.rawValue)", content: content, trigger: nil))
     }
 
+    /// The end of a backfill. One identifier, so a repeat after a crash replaces the banner instead of stacking.
+    func postBackfillFinished(title: String, body: String) async throws {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        try await center.add(UNNotificationRequest(identifier: "pv.backfill.finished", content: content, trigger: nil))
+    }
+
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void

@@ -54,13 +54,19 @@ actor MoveWorker {
     private func runDestination(_ id: DestinationID) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
-        let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending) }
+        if await uploader.isBackedOff(id) { return 0 }
+        let cap = env.tuning.maxMovesPerPass
+        let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending, limit: cap) }
         let ensurer = await uploader.ensurer(for: record, destination: destination)
         var finished = 0
         var activity = MovePassActivity()
         do {
+            // A rename that has to be retried holds back the later renames of the same folder: they were queued
+            // for the name the first one produces.
+            var blockedFolders = Set<String>()
             passLoop: for move in pending {
                 try Task.checkCancellation()
+                if move.operation == .renameFolder, blockedFolders.contains(move.subject) { continue }
                 var change = Change.none
                 switch try await execute(move, record: record, destination: destination, ensurer: ensurer, change: &change) {
                 case .done:
@@ -70,7 +76,9 @@ actor MoveWorker {
                     case .renamed(let from, let to): activity.renamed(from: from, to: to)
                     case .moved(let folder): activity.moved(into: folder)
                     }
-                case .retry: continue
+                case .retry:
+                    if move.operation == .renameFolder { blockedFolders.insert(move.subject) }
+                    continue
                 case .stop: break passLoop
                 }
             }
@@ -102,10 +110,12 @@ actor MoveWorker {
                          change: inout Change) async throws -> Outcome {
         guard let id = move.id, try await env.store.write({ db in try MoveJobRepository.start(db, id: id) }) else { return .retry }
         do {
+            try env.reach(.afterMoveStarted)
             switch move.operation {
             case .moveFile: change = try await moveFile(move, record: record, destination: destination, ensurer: ensurer)
             case .renameFolder: change = try await renameFolder(move, record: record, destination: destination)
             }
+            await uploader.noteSuccess(move.destinationId)
             return .done
         } catch {
             if error is EngineAbort || error is CancellationError { throw error }
@@ -121,8 +131,8 @@ actor MoveWorker {
         guard let identity = JobIdentity(subject: move.subject, destinationId: record.id) else { try await discard(move); return .none }
         let loaded: (job: UploadJob, chain: [FolderLevel])? = try await env.store.read { db in
             guard let job = try JobRepository.fetch(db, identity: identity), let asset = try AssetRepository.fetch(db, key: identity.assetKey),
-                  let placement = asset.placement else { return nil }
-            return (job, try LayoutResolver.chain(db, placement: placement, layout: layout))
+                  asset.placement != nil else { return nil }
+            return (job, try LayoutResolver.chain(db, asset: asset, layout: layout))
         }
         // A job that lost its file (re-upload, narrowing) has nothing to move.
         guard let loaded, let remoteId = loaded.job.remoteId, let name = loaded.job.remoteName,
@@ -136,6 +146,7 @@ actor MoveWorker {
             try FolderRefResolver.ref(db, destinationId: record.id, logicalPath: from, rootId: rootId)
         }
         let item = try await destination.move(remoteId: remoteId, name: name, from: fromRef, to: toRef)
+        try env.reach(.afterMoveBeforeCommit)
         try await env.store.write { db in try MoveCommit.file(db, move: move, identity: identity, parent: target, remoteId: item.remoteId) }
         env.log.log(.info, category: "move", "moved file job=\(identity.resType.rawValue) dest=\(record.id)")
         return loaded.chain.last.map { .moved(into: $0.displayName) } ?? .none
@@ -148,6 +159,13 @@ actor MoveWorker {
         let rootId = FolderRefResolver.rootId(record)
         guard let folder = try await env.store.read({ db in try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: path) })
         else { try await discard(move); return .none }
+        // A rename queued for a folder that has been relabelled since (its path now means another folder)
+        // must not rename that other folder.
+        guard NameSanitizer.collisionKey(folder.displayName) == NameSanitizer.collisionKey(move.fromValue) else {
+            env.log.log(.notice, category: "move", "stale folder rename discarded dest=\(id)")
+            try await discard(move)
+            return .none
+        }
         guard folder.created, folder.remoteId != nil else {
             // Not created yet: it will be created under its new name, so the owner sees no rename.
             try await env.store.write { db in try MoveCommit.rename(db, move: move, folder: folder, newRemoteId: nil) }
@@ -155,6 +173,7 @@ actor MoveWorker {
         }
         let ref = try await env.store.read { db in try FolderRefResolver.ref(db, destinationId: id, logicalPath: path, rootId: rootId) }
         let renamed = try await destination.renameFolder(ref, newName: move.toValue)
+        try env.reach(.afterMoveBeforeCommit)
         try await env.store.write { db in try MoveCommit.rename(db, move: move, folder: folder, newRemoteId: renamed.remoteId) }
         env.log.log(.info, category: "move", "renamed folder dest=\(id)")
         return .renamed(from: folder.displayName, to: move.toValue)
@@ -170,7 +189,7 @@ actor MoveWorker {
     private func fail(_ move: MoveJob, error: any Error, ensurer: FolderEnsurer) async throws -> Outcome {
         guard let id = move.id else { return .retry }
         let failure = error as? DestinationError
-        if let failure, case .destinationLevel(let status) = ErrorClassifier.classify(failure) {
+        if let failure, let status = try await destinationLevel(failure, destination: move.destinationId) {
             let destinationId = move.destinationId
             let now = env.clock.now
             try await env.store.write { db in
@@ -184,5 +203,21 @@ actor MoveWorker {
         env.log.log(.notice, category: "move", "move failed op=\(move.operation.rawValue) error=\(message)")
         try await env.store.write { db in _ = try MoveJobRepository.fail(db, id: id, message: message) }
         return .retry
+    }
+
+    /// Throttling, server errors and transient failures are the destination's, like for uploads: they
+    /// never count against a move. Returns the status change (nil inside: back off only), or nil when
+    /// the failure belongs to the move itself.
+    private func destinationLevel(_ failure: DestinationError, destination id: DestinationID) async throws -> DestinationStatus?? {
+        let consecutive = await uploader.consecutive(id)
+        let status: DestinationStatus?
+        switch ErrorClassifier.classify(failure, consecutiveFailures: consecutive) {
+        case .destinationLevel(let level): status = level
+        case .transient: status = nil
+        default: return nil
+        }
+        await uploader.noteFailure(id)
+        if status == nil { await uploader.backOff(id) }
+        return .some(status)
     }
 }

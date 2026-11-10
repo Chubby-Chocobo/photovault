@@ -29,11 +29,13 @@ PhotoVault keeps these at the paths its spec names (see [decision 0005](decision
 | File | Answers |
 |---|---|
 | [requirements/photovault-spec-v1.md](requirements/photovault-spec-v1.md) | What the app must do: the FR, NFR and T codes used everywhere else |
+| [requirements/roadmap.md](requirements/roadmap.md) | What each version shipped and what is planned next |
 | [sidecar-schema.md](sidecar-schema.md) | What the JSON and XMP sidecars contain, and how they are written |
 | [decisions/](decisions/README.md) | Why the code is built the way it is |
 | [spikes/](spikes/README.md) | The M0 measurements the owner runs before defaults are final |
 | [architecture/system-architecture.md](architecture/system-architecture.md) | How the app is built: modules, sync cycle, job state machine, crash safety, data, privacy |
 | [architecture/codebase-summary.md](architecture/codebase-summary.md) | Where each file group lives, test counts per target, how to build and test |
+| [architecture/continuous-source-extension.md](architecture/continuous-source-extension.md) | How a continuous source would be added (designed, not built) |
 | [test-report.md](test-report.md) | Which spec §11 test covers each T-ID, the [VERIFY] items, and what the owner must run by hand |
 | [design/](design/README.md) | The screens, as interactive mockups |
 

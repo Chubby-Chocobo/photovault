@@ -63,7 +63,7 @@ extension Harness {
     func importCounts(_ id: SourceID) throws -> [ImportItemState: Int] { try read { db in try ImportItemRepository.counts(db, sourceId: id) } }
 
     func importActivity() throws -> [ActivityEvent] {
-        try read { db in try ActivityRepository.recent(db).filter { $0.kind == .milestone && $0.message.contains("thư mục") } }
+        try read { db in try ActivityRepository.recent(db).filter { $0.kind == .milestone && $0.message.localizedCaseInsensitiveContains("nhập") } }
     }
 
     func assets(of id: SourceID) throws -> [AssetRecord] {

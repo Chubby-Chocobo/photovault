@@ -26,6 +26,7 @@ public enum DestinationStatusText {
         case .rootTrashed: tr(vi: "thư mục gốc trong Thùng rác", en: "root folder is in Trash")
         case .folderTrashed: tr(vi: "thư mục backup trong Thùng rác", en: "backup folder is in Trash")
         case .recovering: tr(vi: "đang khôi phục trạng thái", en: "recovering state")
+        case .waitingForDrive: tr(vi: "chờ khôi phục Google Drive", en: "waiting for Google Drive recovery")
         }
     }
 

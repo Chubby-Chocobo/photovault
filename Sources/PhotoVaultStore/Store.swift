@@ -4,6 +4,8 @@ import GRDB
 public enum StoreError: Error, Equatable, Sendable {
     case corruptRow(table: String, column: String)
     case notFound(String)
+    /// The database was written by a newer build; opening it here could corrupt data this build cannot see.
+    case newerSchema
 }
 
 /// Owns the SQLite database. Repositories are stateless functions that take a `Database`, so the
@@ -29,6 +31,7 @@ public final class Store: Sendable {
         // GRDB sets `synchronous = NORMAL` on the writer after `prepareDatabase`; undo that.
         try pool.writeWithoutTransaction(Self.makeDurable)
         let store = Store(writer: pool)
+        if try pool.read(migrator.hasBeenSuperseded) { throw StoreError.newerSchema }
         if let backups {
             let pending = try pool.read { db in
                 let completed = try migrator.completedMigrations(db)

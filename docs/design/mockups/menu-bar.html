@@ -12,7 +12,7 @@
 <!--
   FR-60 MenuBarExtra popover (~360 px wide, .window style, LSUIElement app).
   Reviewer controls on the left switch the four required states:
-  active backfill, paused(rootTrashed) with owner prompt, Mac disk critical, NAS offline.
+  active backfill, paused(rootTrashed) with owner prompt, Mac disk critical, NAS offline, backfill finished.
   Destination status strings follow the enum in spec 8.9.2.
 -->
 <body class="mac" x-data="menuBar()" x-init="init()">
@@ -125,8 +125,9 @@
       </div>
     </div>
 
-    <!-- Backfill progress: assets done/total, GB uploaded (no GB total), ETA by asset count -->
-    <div class="group px-3 py-2.5 mb-2">
+    <!-- Backfill progress: assets done/total, GB uploaded (no GB total), ETA by asset count.
+         Only while the backfill is unfinished (FR-60, FR-125): once done nothing about it stays here. -->
+    <div class="group px-3 py-2.5 mb-2" x-show="state !== 'synced'">
       <div class="flex items-baseline justify-between">
         <span class="title">Backfill <span class="anno">FR-11</span></span>
         <span class="small t-2 num"><span x-text="fmt(backfill.done)"></span> / <span x-text="fmt(backfill.total)"></span> asset</span>
@@ -243,6 +244,7 @@
         { id: 'rootTrashed', name: 'Drive: paused(rootTrashed)', desc: 'Thư mục gốc bị trash; hỏi owner (FR-47).' },
         { id: 'diskCritical', name: 'Ổ Mac nguy cấp', desc: 'Trống 3,2 GB < criticalWatermark 5 GB (8.5).' },
         { id: 'nasOffline', name: 'NAS offline', desc: 'NAS: unavailable(offline) (FR-75).' },
+        { id: 'synced', name: 'Backfill xong', desc: 'Backfill đã xong: thẻ biến mất, không còn dấu vết trong popover (FR-125).' },
       ],
       backfill: { done: 12480, total: 48210, gb: '312,4' },
       // menu-bar.html#rootTrashed (or #diskCritical, #nasOffline) opens that state directly.
@@ -290,6 +292,7 @@
           case 'rootTrashed': return { title: 'Cần bạn quyết định', sub: 'Google Drive đã tạm dừng · 2 đích khác vẫn chạy', tone: 'orange' };
           case 'diskCritical': return { title: 'Đã dừng export', sub: 'Ổ Mac gần đầy · chờ trống từ 20 GB', tone: 'red' };
           case 'nasOffline': return { title: 'NAS mất kết nối', sub: 'Google Drive và Samsung T7 vẫn chạy', tone: 'orange' };
+          case 'synced': return { title: 'Đã đồng bộ', sub: '3 đích · sync lần cuối 1 phút trước', tone: 'ok' };
           default: return { title: 'Đang backfill', sub: '3 đích · sync lần cuối 1 phút trước', tone: 'ok' };
         }
       },

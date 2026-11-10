@@ -58,6 +58,9 @@ struct SourcesTab: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    if let line = model.snapshot.flatMap({ BackfillText.settingsLine($0) }) {
+                        Text(line).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 0)
             }

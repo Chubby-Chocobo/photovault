@@ -18,6 +18,15 @@ public enum RelativeTimeText {
         return format(tr(vi: "dd/MM/yyyy HH:mm", en: "d MMM yyyy HH:mm"), date, calendar)
     }
 
+    /// "05/11/2026 08:00" ("5 Nov 2026 08:00" in English): a date that is kept, not a time that passes.
+    public static func dateTime(_ date: Date, calendar: Calendar = .current) -> String {
+        format(tr(vi: "dd/MM/yyyy HH:mm", en: "d MMM yyyy HH:mm"), date, calendar)
+    }
+
+    public static func date(_ date: Date, calendar: Calendar = .current) -> String {
+        format(tr(vi: "dd/MM/yyyy", en: "d MMM yyyy"), date, calendar)
+    }
+
     public static func time(_ date: Date, _ calendar: Calendar = .current) -> String { format("HH:mm", date, calendar) }
 
     /// Heading of an activity day: "Hôm nay", "Hôm qua", "Thứ 7, 07/11/2026".

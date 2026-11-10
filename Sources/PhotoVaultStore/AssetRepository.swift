@@ -128,6 +128,18 @@ public enum AssetRepository {
         try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM asset") ?? 0
     }
 
+    /// Live camera assets that By lens would place in a lens folder: the lens model is not blank and not a
+    /// placeholder (`LensNameResolver`'s rule).
+    public static func countCameraWithLens(_ db: Database) throws -> Int {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT lens_model, COUNT(*) AS n FROM asset
+            WHERE category = 'camera' AND lens_model IS NOT NULL AND deleted_at IS NULL GROUP BY lens_model
+            """)
+        return rows.reduce(0) { total, row in
+            LensNameResolver.name(for: row["lens_model"]) == nil ? total : total + (row["n"] as Int? ?? 0)
+        }
+    }
+
     // MARK: Aliases and albums
 
     public static func addAlias(_ db: Database, alias: String, to key: AssetKey) throws {
@@ -207,7 +219,8 @@ public enum AssetRepository {
             firstSeenAt: try row.require("first_seen_at", table: table),
             lastSeenAt: try row.require("last_seen_at", table: table),
             deletedAt: row["deleted_at"],
-            sourceId: try row.parse("source_id", table: table) { (raw: String) in SourceID(rawValue: raw) })
+            sourceId: try row.parse("source_id", table: table) { (raw: String) in SourceID(rawValue: raw) },
+            placeSlot: row["place_slot"])
     }
 
     /// A live asset that has a resource with this SHA-256 (an exported Photos asset, or an earlier import).

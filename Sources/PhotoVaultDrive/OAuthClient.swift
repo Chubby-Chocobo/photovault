@@ -21,6 +21,8 @@ public struct OAuthTokens: Sendable, CustomStringConvertible {
     public var refreshToken: String?
     public var expiresAt: Date
     public var idToken: String?
+    /// What Google says was granted (empty when it did not say).
+    public var scopes: [String] = []
     public var description: String { "OAuthTokens(<redacted>)" }
 }
 
@@ -116,6 +118,9 @@ public struct OAuthClient: Sendable {
 
     // MARK: Internals
 
+    /// The `itemRejected` reason of a token response that lacks the `drive.file` permission.
+    static let fileScopeMissing = "drive.file scope not granted"
+
     private struct TokenResponse: Decodable {
         var access_token: String
         var refresh_token: String?
@@ -133,10 +138,11 @@ public struct OAuthClient: Sendable {
             throw DestinationError.itemRejected(reason: "token response malformed")
         }
         if let scope = decoded.scope, !scope.split(separator: " ").contains("https://www.googleapis.com/auth/drive.file") {
-            throw DestinationError.itemRejected(reason: "drive.file scope not granted")
+            throw DestinationError.itemRejected(reason: Self.fileScopeMissing)
         }
         return OAuthTokens(accessToken: decoded.access_token, refreshToken: decoded.refresh_token,
-                           expiresAt: clock.now.addingTimeInterval(decoded.expires_in ?? 3600), idToken: decoded.id_token)
+                           expiresAt: clock.now.addingTimeInterval(decoded.expires_in ?? 3600), idToken: decoded.id_token,
+                           scopes: decoded.scope?.split(separator: " ").map(String.init) ?? [])
     }
 
     private func formRequest(_ url: URL) -> URLRequest {

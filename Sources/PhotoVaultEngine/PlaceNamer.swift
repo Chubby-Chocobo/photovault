@@ -16,6 +16,8 @@ struct PlaceNamer: Sendable {
         guard snapshot.settings.placeNamesEnabled else { return 0 }
         var changed = 0
         var seen = Set<String>()
+        let hiddenBasis = snapshot.settings.includeHidden ? "1" : "0"
+        try await env.store.write { db in try Self.markDaysForUpgrade(db, hiddenBasis: hiddenBasis) }
         while true {
             try Task.checkCancellation()
             let env = env
@@ -31,12 +33,17 @@ struct PlaceNamer: Sendable {
                 let todo = Array(Array(Set(dirty + waiting).subtracting(already)).sorted().prefix(100))
                 let context = try env.context(db, snapshot)
                 var count = 0
+                var retry: [String] = []
                 for text in todo {
                     guard let day = ArchiveDay(string: text) else { continue }
-                    if try Self.evaluate(db, day: day, context: context) { count += 1 }
+                    let outcome = try Self.evaluateDay(db, day: day, context: context)
+                    if outcome.changed { count += 1 }
+                    if outcome.needsRetry { retry.append(text) }
                 }
                 // A dirty day not evaluated now (already seen in this pass, or past the batch) keeps its mark.
                 try DirtyQueue.clear(db, .place, ids: dirty.filter(todo.contains))
+                // A group waiting for a folder name to be freed is placed by the next evaluation.
+                for text in retry { try DirtyQueue.mark(db, [.place], id: text) }
                 return (todo, count)
             }
             if days.isEmpty { return changed }
@@ -45,46 +52,69 @@ struct PlaceNamer: Sendable {
         }
     }
 
+    /// Days are split from this release on, and the grouping depends on the hidden-upload setting:
+    /// evaluate every promoted day once after the upgrade and once per change of that setting.
+    private static func markDaysForUpgrade(_ db: Database, hiddenBasis: String) throws {
+        let upgraded = try KeyValueRepository.int(db, "place_split_backfill") == 1
+        let basisChanged = try KeyValueRepository.string(db, "place_hidden_basis") != hiddenBasis
+        guard !upgraded || basisChanged else { return }
+        for day in try OrganizationQueries.promotedDays(db) { try DirtyQueue.mark(db, [.place], id: day.description) }
+        try KeyValueRepository.set(db, "place_split_backfill", 1)
+        try KeyValueRepository.set(db, "place_hidden_basis", hiddenBasis)
+    }
+
     /// Evaluates one promoted day inside the caller's transaction. Returns true when something changed.
     static func evaluate(_ db: Database, day: ArchiveDay, context: PipelineContext) throws -> Bool {
-        guard let stat = try DayStatRepository.fetch(db, day: day), stat.promoted else { return false }
+        try evaluateDay(db, day: day, context: context).changed
+    }
+
+    /// A day is split by province unless the geocoder is in its country-only fallback: then a split
+    /// day is left exactly as it is, and any other day is named by the single-place rule.
+    static func evaluateDay(_ db: Database, day: ArchiveDay, context: PipelineContext) throws -> DaySplitWriter.Outcome {
+        var outcome = DaySplitWriter.Outcome()
+        guard let stat = try DayStatRepository.fetch(db, day: day), stat.promoted else { return outcome }
+        let countryOnly = try KeyValueRepository.int(db, GeocodeScheduler.countryOnlyKey) == 1
+        if countryOnly, try DayPlaceRepository.exists(db, day: day) { return outcome }
+
         let settings = context.settings
         var assets: [PlaceAsset] = []
         var cells = Set<GeoCell>()
         for key in try OrganizationQueries.cameraAssetKeys(db, day: day) {
             guard let asset = try AssetRepository.fetch(db, key: key) else { continue }
-            assets.append(PlaceAsset(location: asset.location, isHidden: asset.isHidden, isDeleted: asset.deletedAt != nil))
+            assets.append(PlaceAsset(
+                location: asset.location, isHidden: asset.isHidden, isDeleted: asset.deletedAt != nil,
+                id: key.rawValue, creationDate: asset.creationDate))
             if let point = asset.location { cells.insert(GeoCell(point)) }
         }
         let geocodes = try OrganizationLookups.geocodes(db, cells: cells)
-        let result = PlaceNamingPolicy.evaluate(PlaceNamingInput(
+        let input = PlaceNamingInput(
             assets: assets, includeHidden: settings.includeHidden, englishGeocodes: geocodes.english,
-            localGeocodes: geocodes.local, homeCountryCode: settings.homeCountryCode, day: day, archiveTimeZone: context.timeZone, now: context.now))
-        switch result.state {
-        case .pending:
-            return false
-        case .waitingGeocode:
-            guard stat.placeState != .waitingGeocode else { return false }
-            try DayStatRepository.setPlace(db, day: day, state: .waitingGeocode, key: stat.placeKey, name: stat.placeName)
-            return true
-        case .named, .unnamed:
-            let name = result.state == .named ? result.placeName : nil
-            let renamed = name != stat.placeName
-            guard renamed || stat.placeState != result.state else { return false }
-            try DayStatRepository.setPlace(db, day: day, state: result.state, key: result.placeKey, name: name)
-            if renamed { try applyRename(db, day: day, name: name, context: context) }
-            return true
-        }
-    }
+            localGeocodes: geocodes.local, homeCountryCode: settings.homeCountryCode, day: day, archiveTimeZone: context.timeZone, now: context.now)
 
-    /// The folder name changed: rename it at every destination, refresh what mentions the place.
-    private static func applyRename(_ db: Database, day: ArchiveDay, name: String?, context: PipelineContext) throws {
-        let placement = Placement(category: .camera, day: .day(day), nameStem: "")
-        guard let level = context.layout.folderChain(for: placement, placeName: name).last else { return }
-        for destination in context.destinations {
-            try MoveJobPlanner.enqueueRename(
-                db, destinationId: destination.id, logicalPath: level.logicalPath, to: level.displayName, now: context.now)
+        let result: PlaceSplitResult
+        if countryOnly {
+            let single = PlaceNamingPolicy.evaluate(input)
+            switch single.state {
+            case .pending: result = .pending
+            case .waitingGeocode: result = .waitingGeocode(single.cellsToGeocode)
+            case .named, .unnamed:
+                let live = assets.filter { !$0.isDeleted }.map(\.id).sorted()
+                result = .groups([PlaceGroup(key: single.placeKey, name: single.state == .named ? single.placeName : nil, state: single.state, members: live)], unassigned: [])
+            }
+        } else {
+            result = PlaceSplitPolicy.evaluate(input)
         }
-        for key in try OrganizationQueries.cameraAssetKeys(db, day: day) { try DirtyQueue.mark(db, asset: key) }
+
+        switch result {
+        case .pending:
+            return outcome
+        case .waitingGeocode:
+            guard stat.placeState != .waitingGeocode else { return outcome }
+            try DayStatRepository.setPlace(db, day: day, state: .waitingGeocode, key: stat.placeKey, name: stat.placeName)
+            outcome.changed = true
+            return outcome
+        case .groups(let groups, let unassigned):
+            return try DaySplitWriter.apply(db, day: day, groups: groups, unassigned: unassigned, stat: stat, context: context)
+        }
     }
 }

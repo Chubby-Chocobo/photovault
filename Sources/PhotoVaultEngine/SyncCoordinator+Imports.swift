@@ -52,6 +52,36 @@ extension SyncCoordinator {
         await publish()
     }
 
+    /// Cloud imports that are closed with no upload of their files left to run (nothing pending, uploading,
+    /// deferred or missing at the destination, where a re-upload would read the source again), so their sign-in
+    /// is no longer needed. Safe to ask at any time and to act on twice.
+    ///
+    /// Such an import also stops asking for a sign-in: a "sign in again" notice outlives the destination or the
+    /// jobs that caused it, so it is cleared here whether or not a grant is stored.
+    /// - Parameter grantExists: imports without a stored sign-in are not returned.
+    public func closedImportsReadyToRelease(grantExists: @Sendable (SourceID) -> Bool = { _ in true }) async throws -> [SourceID] {
+        let idle = try await env.store.write { db in
+            let closed = try SourceRepository.fetchAll(db).filter { ($0.kind == .googleDrive || $0.kind == .dropbox) && !$0.status.isOpen }
+            let idle = try closed.filter { source in
+                try Bool.fetchOne(db, sql: """
+                    SELECT NOT EXISTS(SELECT 1 FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
+                                      WHERE a.source_id = ? AND a.deleted_at IS NULL
+                                        AND j.state IN ('pending', 'uploading', 'deferred', 'missingRemote'))
+                    """, arguments: [source.id.rawValue]) == true
+            }
+            for source in idle where source.statusReason == "signInRequired" {
+                try SourceRepository.setStatusReason(db, id: source.id, reason: nil)
+            }
+            return idle.map(\.id)
+        }
+        return idle.filter(grantExists)
+    }
+
+    /// Drops the adapter of an import whose sign-in was let go. Exports that need it later find none and ask for a new sign-in.
+    public func releaseImportSource(_ id: SourceID) async {
+        await env.sources.remove(id)
+    }
+
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled
     /// and what already reached a destination stays. Running the same import again brings them back.
     public func cancelImport(_ id: SourceID) async throws {

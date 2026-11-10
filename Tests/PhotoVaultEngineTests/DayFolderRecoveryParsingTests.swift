@@ -22,9 +22,20 @@ import Testing
     }
 
     @Test func aDriveDayFolderYieldsItsDayAndPlace() {
-        let (day, place) = RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08", name: "2026-11-08 Đà Lạt")
-        #expect(day == ArchiveDay(year: 2026, month: 11, day: 8) && place == "Đà Lạt")
-        #expect(RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08", name: "2026-11-08").1 == nil)
+        let (day, slot, place) = RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08", name: "2026-11-08 Đà Lạt")
+        #expect(day == ArchiveDay(year: 2026, month: 11, day: 8) && slot == nil && place == "Đà Lạt")
+        #expect(RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08", name: "2026-11-08").2 == nil)
         #expect(RemoteInventoryLoader.dayFolder(logical: "screenshot/2026-11-08", name: "2026-11-08").0 == nil)
+    }
+
+    @Test func aDriveSlotFolderYieldsItsDaySlotAndPlace() {
+        let (day, slot, place) = RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08@p0123456789ab", name: "2026-11-08 Ninh Bình")
+        #expect(day == ArchiveDay(year: 2026, month: 11, day: 8))
+        #expect(slot == "p0123456789ab" && place == "Ninh Bình")
+    }
+
+    @Test func aMalformedSlotIsNotADayFolder() {
+        #expect(RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08@bad", name: "2026-11-08 X").0 == nil)
+        #expect(RemoteInventoryLoader.dayFolder(logical: "camera/2026-11-08@p12", name: "2026-11-08 X").0 == nil)
     }
 }

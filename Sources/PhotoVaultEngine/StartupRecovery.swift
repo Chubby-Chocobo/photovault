@@ -111,8 +111,8 @@ struct StartupRecovery: Sendable {
         let remoteName = item.name
         try await env.store.write { db in
             var parent = ""
-            if let asset = try AssetRepository.fetch(db, key: identity.assetKey), let placement = asset.placement {
-                parent = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: layout))
+            if let asset = try AssetRepository.fetch(db, key: identity.assetKey), asset.placement != nil {
+                parent = LayoutResolver.parentLogical(try LayoutResolver.chain(db, asset: asset, layout: layout))
                 // Where the file actually is: the folder whose id is the item's parent.
                 if let actual = try RemoteFolderRepository.fetchAll(db, destinationId: identity.destinationId)
                     .first(where: { $0.remoteId != nil && item.parentIds.contains($0.remoteId!) }) {

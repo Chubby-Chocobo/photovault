@@ -1,6 +1,6 @@
 # Test report
 
-Date: 2026-11-09 (numbers refreshed on the release branch after the release review fixes). Spec: [photovault-spec-v1.md §11](./requirements/photovault-spec-v1.md) (T1–T43, with the lettered variants T4b, T27b, T27c, T30b: 47 rows).
+Date: 2026-11-10 (numbers refreshed on the release branch after the 0.4.0 docs sync). Spec: [photovault-spec-v1.md §11](./requirements/photovault-spec-v1.md) (T1–T43, with the lettered variants T4b, T27b, T27c, T30b: 47 rows).
 
 Status meanings:
 
@@ -13,15 +13,15 @@ Status meanings:
 
 ## Automated run
 
-Final run on the release branch after the release review fixes (2026-11-09):
+Run on the release branch at commit `4819d84` (2026-11-10):
 
 ```text
-swift test --scratch-path .build-relfix
-✔ Test run with 1014 tests in 176 suites passed after 21.331 seconds.
+swift test
+✔ Test run with 1369 tests in 218 suites passed after 43.455 seconds.
 ```
 
-- Tests: 1,014 in 176 suites, all passing (2026-11-09). The signed Release build (`xcodebuild … -configuration Release -allowProvisioningUpdates build`) was run after the last code change and reported `BUILD SUCCEEDED`.
-- The sections below the §11 table map the features added after the spec's first version (folder import, factory reset, log viewer, language switch, old-layout block) to their tests.
+- Tests: 1,369 in 218 suites, all passing (2026-11-10). The signed Release build (`xcodebuild … -configuration Release -allowProvisioningUpdates build`) was not run in this pass; its last recorded run is from 2026-11-09.
+- The sections below the §11 table map the features added after the spec's first version (folder import, factory reset, log viewer, language switch, old-layout block, By lens, split day, Drive import scope) to their tests.
 - **Real-file camera detection** is covered at two levels:
   - `RawHeaderFixtureTests` uses the opening bytes of 21 public-domain RAW files kept in git.
   - `MediaCorpusTests` uses 27 complete files (about 750 MB) that CI fetches by checksum and caches.
@@ -95,6 +95,7 @@ Test names are from `Tests/**`. These rows have no T-number in spec §11; the re
 | Feature (requirement) | Scenario | Status | Swift test(s) | Owner check or reason |
 |---|---|---|---|---|
 | Folder import (FR-110 to FR-116, [0024](./decisions/0024-multiple-sources-and-folder-import.md)) | Files reach the destination and the job completes with one activity row; same path and names as a Photos asset; RAW+JPEG and Live Photo pairs | Automated | `FolderImportTests.importedFilesReachTheDestinationAndTheJobCompletesWithOneActivityRow`; `FolderImportTests.anImportedFileGetsTheSamePathAsAPhotosAssetWithTheSameMetadata`; `FolderImportTests.rawPlusJpegIsOneAssetWithTwoUploads`; `FolderImportTests.aLivePairIsOneAssetOnlyWhenTheContentIdentifiersMatch`; `FolderItemGrouperTests` | — |
+| Backfill as a one-time job (FR-125) | The end is recorded once (marker, one activity row, notification flag); a relaunch repeats nothing; a backfill finished before the upgrade is marked silently; a destination added later ends a new backfill; texts and the Settings line in vi and en | Automated | `BackfillCompletionTests`; `BackfillTextTests` | The card leaving the popover is view code (`BackfillText.isRunning`), not exercised in a UI test |
 | | Categories, dates and sidecar `source` block | Automated | `FolderImportTests.screenshotsAndPhotosWithoutACameraGoToTheirOwnBranches`; `FolderImportTests.theSidecarCarriesTheSourceBlock`; `ImportDatePolicyTests`; `SourceRoutingTests.sidecarCarriesTheSourceBlockOnlyForImports` | — |
 | | Duplicates: same bytes, same folder again, Photos asset by hash or fingerprint; a distinct file is never dropped | Automated | `FolderImportDedupeTests` (six tests); `FolderImportDedupeRulesTests` (six tests) | Known limit: re-importing after a database loss uploads again ([0024](./decisions/0024-multiple-sources-and-folder-import.md)). |
 | | Cancel keeps uploaded files; a later import revives the rest; assets kept by a cancel reach a destination added later | Automated | `FolderImportTests.cancelStopsIngestAndCancelsUnuploadedJobsButKeepsUploadedFiles`; `FolderImportDedupeTests.aRemovedImportComesBackWhenTheSameFolderIsImportedAgain`; `FolderImportDedupeRulesTests.assetsKeptAfterACancelUploadToADestinationAddedLater` | — |
@@ -106,6 +107,9 @@ Test names are from `Tests/**`. These rows have no T-number in spec §11; the re
 | Language switch ([0022](./decisions/0022-interface-languages.md)) | Text follows the pinned language; Vietnamese default; plurals; destination folder names never change; no bare Vietnamese literal | Automated | `LocalizationTests` (six tests); `EnglishTextTests` (14 tests); `UITextCoverageTests` | The live switch of open windows. Owner: switch language in Settings › General. |
 | Old-layout block (FR-118, [0025](./decisions/0025-old-layout-block-and-reset.md)) | A 0.1.0-shaped database: nothing moves, uploads or is written; the block is stored once and survives a restart; startup recovery and job-writing commands stop; a fresh database syncs | Automated | `LegacyLayoutBlockTests.oldLayoutDatabaseDoesNothingAndReportsTheBlock`; `LegacyLayoutBlockTests.blockSurvivesARestartAndSkipsStartupRecoveryAndCommands`; `LegacyLayoutBlockTests.freshDatabaseAfterResetSyncs`; `LegacyLayoutBlockTests.detectsOnlyYearFoldersUnderBranches`; `StatusTextTests.oldLayoutBlocksEverythingElse` | The red menu bar card and the Settings shortcut are UI. Owner: open 0.2.0 on a copy of a 0.1.0 database. |
 | | A root with year folders is not offered for reuse and recovery refuses it | Automated | `LegacyRootProbeTests` (seven tests: probe, folder paths, Drive and NAS inventory, `recoveryRefusesAnOldLayoutRootAndQueuesNoMoves`) | Owner: pick a real 0.1.0 Drive root and NAS folder. |
+| By lens view (FR-107, [0027](./decisions/0027-by-lens-view.md)) | Off by default; shortcuts appear under `By lens/<lens>/<day>`; a lens folder keeps its first name; a photo deleted from Photos keeps its shortcut | Automated | `ViewByLensTests` (six tests); `LensViewRulesTests` (lens names, aperture rule, placeholders, keys, path) | Owner: turn it on with a real camera library and check the folders on Drive. |
+| Split day by province (FR-40, FR-81, FR-83, T28, [0028](./decisions/0028-split-day-by-place.md)) | Two provinces give one folder per province at every destination, the largest group keeps the day folder; a second pass changes nothing; a one-province day moves no file | Automated | `PlaceSplitPolicyTests`; `SplitDayTests`; `SplitDayScenarioTests`; recovery of split days (§8.15): `SplitDayRecoveryTests` (extension in `SplitDayRebindTests.swift`), `DaySlotBindingTests` | Owner: a real trip across two provinces, on Drive and on a local folder. |
+| Google Drive import reads folder contents (FR-119, FR-122, [0030](./decisions/0030-drive-import-reads-folder-contents.md)) | The sign-in asks for `drive.file` and `drive.readonly`; the backup destination keeps `drive.file` only; the import's sign-in is deleted once the import is closed and no upload of it is pending | Automated | `GooglePickerFlowTests` (both scope strings; destination sign-in is `drive.file` only); `CloudImportGrantReleaseTests` (release rules for Drive and Dropbox) | Owner: a nested-folder import on a real account. Listing under `drive.readonly` is not yet confirmed; the Picker sign-in was confirmed by the 0.3.0 live run. |
 
 ## [VERIFY] items for the owner
 

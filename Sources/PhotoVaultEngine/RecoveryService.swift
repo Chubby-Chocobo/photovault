@@ -12,6 +12,13 @@ actor RecoveryService {
     static let expectsKey = "recovery_expects:"
     static let enqueueKey = "recovery_enqueue:"
     private static let previousKey = "recovery_prev:"
+    private static let waitSinceKey = "recovery_wait_since:"
+    /// How long a local destination waits for Drive's recovery before it recovers alone.
+    static let driveWaitLimit: TimeInterval = 30 * 60
+    /// Drive states that end no time soon: a local destination does not wait for them.
+    private static let driveStalled: Set<StatusReason> = [
+        .signedOut, .reauthRequired, .rootMissing, .rootTrashed, .folderTrashed, .userPaused,
+    ]
     /// Share of the files found at the destination that must match before recovery goes on by itself.
     static let minimumMatchRatio = 0.5
 
@@ -57,7 +64,12 @@ actor RecoveryService {
                 return (record.id, record.recoveryRequired && !decision, enqueue)
             }
         }
-        for (id, needsRecovery, needsEnqueue) in ids {
+        // Destinations with app properties first: their folders carry the logical paths, so a local
+        // destination recovered after them is bound to the truth instead of guessing.
+        var withProperties = Set<DestinationID>()
+        for (id, _, _) in ids where await supportsAppProperties(id) { withProperties.insert(id) }
+        let ordered = ids.filter { withProperties.contains($0.0) } + ids.filter { !withProperties.contains($0.0) }
+        for (id, needsRecovery, needsEnqueue) in ordered {
             try Task.checkCancellation()
             do {
                 if needsRecovery {
@@ -76,14 +88,67 @@ actor RecoveryService {
         return outcomes
     }
 
+    // MARK: Order
+
+    private func supportsAppProperties(_ id: DestinationID) async -> Bool {
+        await env.destinations.destination(for: id)?.capabilities.supportsAppProperties == true
+    }
+
+    /// Whether a local destination should hold back for Drive's recovery (its `pvLogical` slots are the truth).
+    /// Only while that wait can end: Drive is reachable or briefly offline, signed in, its root is there and
+    /// no owner decision is open, and for at most `driveWaitLimit`. Otherwise the local destination recovers
+    /// with provisional slots, which `ProvisionalSlots` rebinds when Drive is recovered later.
+    private func mustWaitForDrive(_ record: DestinationRecord) async throws -> Bool {
+        let flagged = try await env.store.read { db in try DestinationRepository.fetchAll(db).filter(\.recoveryRequired) }
+        var blocking = false
+        for drive in flagged where await supportsAppProperties(drive.id) {
+            let decision = try await env.store.read { db in try KeyValueRepository.int(db, Self.decisionKey + drive.id.rawValue) == 1 }
+            if decision || drive.status.reason.map(Self.driveStalled.contains) == true { continue }
+            blocking = true
+        }
+        let id = record.id
+        let now = env.clock.now
+        guard blocking else {
+            try await endWait(record, now: now)
+            return false
+        }
+        let since = try await env.store.read { db in try KeyValueRepository.int(db, Self.waitSinceKey + id.rawValue) }
+        guard let since else {
+            let owner = record.status == .paused(.userPaused)
+            try await env.store.write { db in
+                if owner { try KeyValueRepository.set(db, Self.previousKey + id.rawValue, 1) }
+                try KeyValueRepository.set(db, Self.waitSinceKey + id.rawValue, Int(now.timeIntervalSince1970))
+                try DestinationRepository.setStatus(db, id: id, status: .paused(.waitingForDrive), now: now)
+            }
+            env.log.log(.notice, category: "recovery", "destination=\(id) waits for the Drive recovery")
+            return true
+        }
+        guard now.timeIntervalSince1970 - TimeInterval(since) >= Self.driveWaitLimit else { return true }
+        env.log.log(.notice, category: "recovery", "destination=\(id) stopped waiting for the Drive recovery")
+        try await endWait(record, now: now)
+        return false
+    }
+
+    /// The status of a destination that was waiting goes back to what the owner had, even if the recovery that
+    /// follows cannot start (the destination may be unreachable).
+    private func endWait(_ record: DestinationRecord, now: Date) async throws {
+        guard record.status == .paused(.waitingForDrive) else { return }
+        let id = record.id
+        try await env.store.write { db in
+            let owner = try KeyValueRepository.int(db, Self.previousKey + id.rawValue) == 1
+            try DestinationRepository.setStatus(db, id: id, status: owner ? .paused(.userPaused) : .active, now: now)
+        }
+    }
+
     // MARK: Recovery
 
     func recover(_ id: DestinationID) async throws -> RecoveryOutcome {
         guard !active.contains(id) else { return .notReady(.alreadyRunning) }
-        active.insert(id)
-        defer { active.remove(id) }
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }),
               let destination = await env.destinations.destination(for: id) else { return .notReady(.unknownDestination) }
+        if !destination.capabilities.supportsAppProperties, try await mustWaitForDrive(record) { return .notReady(.waitingForDrive) }
+        active.insert(id)
+        defer { active.remove(id) }
         guard try await env.store.read({ db in try KeyValueRepository.scanState(db) }) == .complete else { return .notReady(.scanIncomplete) }
         do {
             try await backfill.runAll(force: true)
@@ -117,14 +182,22 @@ actor RecoveryService {
     }
 
     private func run(record: DestinationRecord, destination: any Destination) async throws -> RecoveryOutcome {
-        let inventory = try await RemoteInventoryLoader(env: env, record: record, destination: destination).load()
+        var inventory = try await RemoteInventoryLoader(env: env, record: record, destination: destination).load()
         if inventory.legacyFolders > 0 {
             env.log.log(.notice, category: "recovery", "root holds the old folder layout; recovery refused")
             return .notReady(.legacyLayout)
         }
         let zone = try await restoreTimezone(inventory.archiveTimezone)
+        let (known, rows) = try await knownSlots(for: inventory, destinationId: record.id)
+        let isDrive = destination.capabilities.supportsAppProperties
+        let provisional = try await env.store.read { db in try ProvisionalSlots.days(db) }
+        let bound = DaySlotBinding.bind(
+            inventory, known: known, rows: rows, isDrive: isDrive, provisionalDays: provisional,
+            slotPathOfAsset: isDrive ? [:] : try await assetSlotPaths(days: Set(inventory.folders.compactMap(\.day))))
+        inventory = bound.inventory
         var stats = RecoveryStats()
         stats.found = try await walkedFileCount(record: record, destination: destination)
+        var resolvedDays: [ArchiveDay] = []
         let matches = try await RecoveryMatcher(env: env, record: record, timeZone: zone).match(inventory)
         stats.matched = matches.files.count
         stats.unmatched = matches.unmatched.count
@@ -134,11 +207,36 @@ actor RecoveryService {
             try await askOwner(record.id, stats: stats)
             return .needsOwnerDecision(stats)
         }
+        if isDrive, !provisional.isEmpty {
+            // Drive's slots are the truth: what a local recovery guessed is rebound to them, and nothing moves at Drive.
+            let truth = inventory.folders
+            let files = matches.files.compactMap { file in file.entry.parentLogical.map { (asset: file.assetKey, folder: $0) } }
+            let resolution = try await env.store.write { db in try ProvisionalSlots.resolve(db, truth: truth, days: provisional, files: files) }
+            resolvedDays = resolution.resolved
+            if resolution.skipped > 0 { env.log.log(.notice, category: "recovery", "destination=\(record.id) days left provisional=\(resolution.skipped)") }
+        }
         let writer = RecoveryWriter(env: env, record: record, timeZone: zone)
         try await writer.releaseUnconfirmedPlacements()
-        stats.folders = try await writer.writeFolders(inventory.folders)
-        let written = try await writer.writeFiles(matches.files)
+        let daysWithRows = try await env.store.read { db in try DayPlaceRepository.days(db) }
+        let folders = try await writer.writeFolders(inventory.folders, listedIds: Set(inventory.folders.map(\.remoteId)))
+        stats.folders = folders.written
+        let renamedDays = resolvedDays + bound.byContents.sorted()
+        if !renamedDays.isEmpty {
+            let id = record.id
+            let now = env.clock.now
+            let days = renamedDays
+            try await env.store.write { db in try ProvisionalSlots.renameDriftedFolders(db, destinationId: id, days: days, now: now) }
+        }
+        stats.folderConflicts = bound.conflicts + folders.conflicts
+        if stats.folderConflicts > 0 { try await reportFolderConflicts(record.id, count: stats.folderConflicts) }
+        if !bound.guessed.isEmpty, !(try await driveIsRecovered()) {
+            let guessed = bound.guessed
+            try await env.store.write { db in try ProvisionalSlots.mark(db, guessed) }
+        }
+        let written = try await writer.writeFiles(matches.files, daysWithRows: daysWithRows)
         stats.suspect = written.suspect
+        let recoveredId = record.id.rawValue
+        try await env.store.write { db in try BackfillCompletion.skipRecovered(db, destinationId: recoveredId) }
         stats.shortcuts = try await writer.writeShortcuts(matches.shortcuts)
         env.log.log(.info, category: "recovery", "destination=\(record.id) matched=\(stats.matched) unmatched=\(stats.unmatched) folders=\(stats.folders)")
         try await finish(record, stats: stats, verifyLocal: !destination.capabilities.supportsAppProperties)
@@ -146,6 +244,62 @@ actor RecoveryService {
     }
 
     // MARK: Pieces
+
+    /// Day state tied to the old archive timezone is worthless in the restored one.
+    static func clearDayState(env: EngineEnvironment) async throws {
+        try await env.store.write { db in
+            try db.execute(sql: "DELETE FROM day_stat")
+            try DayPlaceRepository.deleteAll(db)
+            try AssetPlacementRepository.clearPlaceSlots(db)
+            try ProvisionalSlots.clear(db)
+        }
+    }
+
+    /// Where the database places each camera asset of the given days (main folder or slot).
+    private func assetSlotPaths(days: Set<ArchiveDay>) async throws -> [String: String] {
+        let wanted = Set(days.map(\.description))
+        return try await env.store.read { db in
+            var result: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT asset_key, placement_day, place_slot FROM asset WHERE placement_category = 'camera' AND placement_day IS NOT NULL") {
+                guard let day: String = row["placement_day"], wanted.contains(day), let parsed = ArchiveDay(string: day) else { continue }
+                let slot: String? = row["place_slot"]
+                result[row["asset_key"]] = slot.map { DynamicLayout.slotLogicalPath(day: parsed, slot: $0) } ?? "camera/\(day)"
+            }
+            return result
+        }
+    }
+
+    /// A Drive destination that has been looked at and holds nothing to recover (or has been recovered):
+    /// its slots are settled, so a local guess needs no later correction.
+    private func driveIsRecovered() async throws -> Bool {
+        let candidates = try await env.store.read { db in
+            try DestinationRepository.fetchAll(db).filter { record in
+                try !record.recoveryRequired && KeyValueRepository.int(db, RecoveryTriggers.probeKey + record.id.rawValue) == 1
+            }.map(\.id)
+        }
+        for id in candidates where await supportsAppProperties(id) { return true }
+        return false
+    }
+
+    /// What the database knows about the camera days listed at a destination, for `DaySlotBinding`.
+    private func knownSlots(for inventory: RemoteInventory, destinationId id: DestinationID) async throws -> (known: [ArchiveDay: [DaySlot]], rows: [RemoteFolder]) {
+        let days = Set(inventory.folders.compactMap(\.day))
+        return try await env.store.read { db in
+            var known: [ArchiveDay: [DaySlot]] = [:]
+            for day in days {
+                var slots: [DaySlot] = []
+                if let stat = try DayStatRepository.fetch(db, day: day) {
+                    slots.append(DaySlot(slot: nil, key: stat.placeKey, name: stat.placeName, reservedNames: try DaySplitWriter.reserved(db, day: day, slot: nil)))
+                }
+                for row in try DayPlaceRepository.fetchAll(db, day: day) {
+                    slots.append(DaySlot(slot: row.slot, key: row.placeKey, name: row.placeName, reservedNames: try DaySplitWriter.reserved(db, day: day, slot: row.slot)))
+                }
+                known[day] = slots
+            }
+            return (known, try RemoteFolderRepository.fetchAll(db, destinationId: id))
+        }
+    }
+
 
     /// The archive timezone the destination remembers wins while nothing of the database is
     /// confirmed by a file: names are fingerprinted in that zone (8.15 step 4.3).
@@ -160,7 +314,7 @@ actor RecoveryService {
         guard !history else { return current }
         try await env.settings.setArchiveTimeZone(zone)
         // Day counts made with the other zone are worthless; they are recounted as assets are placed.
-        try await env.store.write { db in try db.execute(sql: "DELETE FROM day_stat") }
+        try await Self.clearDayState(env: env)
         return zone
     }
 
@@ -194,6 +348,20 @@ actor RecoveryService {
         }
     }
 
+    /// Two folders claimed one logical path, or a write would have made two paths share a folder:
+    /// the extra folders are left out of the database and their files are not adopted.
+    private func reportFolderConflicts(_ id: DestinationID, count: Int) async throws {
+        let now = env.clock.now
+        env.log.log(.notice, category: "recovery", "destination=\(id) folder conflicts=\(count)")
+        try await env.store.write { db in
+            try ActivityRepository.record(db, ActivityEvent(
+                at: now, kind: .notice, destinationId: id,
+                message: tr(
+                    vi: "Khôi phục: \(count) thư mục trùng đường dẫn nên không được ghép",
+                    en: "Recovery: \(L10n.integer(count)) \(L10n.plural(count, one: "folder claimed a path already in use and was", other: "folders claimed a path already in use and were")) left out")))
+        }
+    }
+
     private func askOwner(_ id: DestinationID, stats: RecoveryStats) async throws {
         let now = env.clock.now
         try await env.store.write { db in
@@ -218,7 +386,7 @@ actor RecoveryService {
             let owner = try KeyValueRepository.int(db, Self.previousKey + id.rawValue) == 1
             try DestinationRepository.setStatus(db, id: id, status: owner ? .paused(.userPaused) : .active, now: now)
             try DestinationRepository.setRecoveryRequired(db, id: id, false)
-            for prefix in [Self.previousKey, Self.decisionKey, Self.expectsKey] { try KeyValueRepository.set(db, prefix + id.rawValue, nil) }
+            for prefix in [Self.previousKey, Self.decisionKey, Self.expectsKey, Self.waitSinceKey] { try KeyValueRepository.set(db, prefix + id.rawValue, nil) }
             try KeyValueRepository.set(db, Self.enqueueKey + id.rawValue, 1)
             try KeyValueRepository.set(db, RecoveryTriggers.probeKey + id.rawValue, 1)
             if verify { try RecoveryVerifier.schedule(db, destinationId: id) }

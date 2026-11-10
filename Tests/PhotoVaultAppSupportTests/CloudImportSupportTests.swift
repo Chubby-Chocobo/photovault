@@ -43,12 +43,30 @@ import Testing
         vi { #expect(CloudImportText.dropboxDisplayName(path: "") == "Toàn bộ Dropbox") }
     }
 
-    @Test func emptyGoogleHintOnlyForFinishedEmptyDriveImport() {
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .googleDrive, status: .completed)) != nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .googleDrive, status: .completed, found: 3)) == nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .googleDrive, status: .importing)) == nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .dropbox, status: .completed)) == nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .localFolder, status: .completed)) == nil)
+    @Test func emptyImportNoticeForAnyFinishedImportThatFoundNothing() {
+        for kind in [SourceKind.googleDrive, .dropbox, .localFolder] {
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .completed)) != nil)
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .completed, found: 3)) == nil)
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .importing)) == nil)
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .cancelled)) == nil)
+        }
+    }
+
+    @Test func emptyImportNoticeTextAndGoogleHint() {
+        vi {
+            let box = CloudImportText.emptyImportNotice(snapshot(kind: .dropbox, status: .completed))
+            #expect(box == "Mục đã chọn không có ảnh hay video nào mà app đọc được.")
+            let drive = CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? ""
+            #expect(drive.hasPrefix("Mục đã chọn không có ảnh hay video nào mà app đọc được."))
+            #expect(drive.contains("Nhập ảnh… › Từ Google Drive…") && !drive.contains("đăng nhập lại"))
+            #expect(!drive.contains("bản cũ"), "a new import is never blamed on an older version")
+        }
+        en {
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: .localFolder, status: .completed)) == "The selection had no photos or videos the app could read.")
+            let drive = CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? ""
+            #expect(drive.contains("Import photos… › From Google Drive…"))
+            #expect(!drive.contains("older versions"))
+        }
     }
 
     @Test func signInRequiredForCloudImportsHeldOrFinished() {
@@ -121,4 +139,52 @@ import Testing
             #expect(ImportProgressText.statusLabel(snapshot(kind: .googleDrive, status: .importing)) == "Đang upload…")
         }
     }
+
+    // MARK: Releasing finished imports
+
+    @Test func releaseDeletesOnlyTheImportItemAndDropsTheAdapterAfterwards() async {
+        let a = SourceID.folder(), b = SourceID.folder(), c = SourceID.folder()
+        let log = Recorder()
+        let result = await CloudImportKeychain.release(
+            ids: [a, b, c], hasGrant: { $0 != b },
+            deleteGrant: { account in log.add("delete \(account)"); return account != CloudTokenAccount.importGrant(c) },
+            dropAdapter: { log.add("drop \($0.rawValue)") })
+        #expect(log.lines == ["delete import-\(a.rawValue)", "drop \(a.rawValue)", "delete import-\(c.rawValue)"])
+        #expect(result.released == 1 && result.failed == 1)
+        #expect(!log.lines.contains { $0.contains(CloudTokenAccount.dropbox) })
+    }
+
+    @Test func releaseTwiceChangesNothing() async {
+        let a = SourceID.folder()
+        let log = Recorder()
+        let present = Flag()
+        let hasGrant: @Sendable (SourceID) -> Bool = { _ in present.value }
+        let first = await CloudImportKeychain.release(ids: [a], hasGrant: hasGrant, deleteGrant: { _ in present.value = false; return true }, dropAdapter: { _ in log.add("drop") })
+        let second = await CloudImportKeychain.release(ids: [a], hasGrant: hasGrant, deleteGrant: { _ in log.add("again"); return true }, dropAdapter: { _ in log.add("drop") })
+        #expect(first.released == 1 && second.released == 0 && second.failed == 0)
+        #expect(log.lines == ["drop"])
+    }
+
+    @Test func onlyOpenCloudImportsWithoutATokenAreMissingOne() {
+        func row(_ kind: SourceKind, _ status: SourceStatus) -> SourceRecord {
+            SourceRecord(id: .folder(), kind: kind, mode: .oneTime, displayName: "n", config: SourceConfig(), status: status,
+                         createdAt: Date(timeIntervalSince1970: 1_800_000_000))
+        }
+        let rows = [row(.googleDrive, .completed), row(.dropbox, .cancelled), row(.googleDrive, .importing), row(.dropbox, .offline), row(.localFolder, .scanning)]
+        #expect(CloudImportKeychain.missingToken(rows, hasGrant: { _ in false }) == 2)
+        #expect(CloudImportKeychain.missingToken(rows, hasGrant: { _ in true }) == 0)
+    }
+}
+
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = true
+    var value: Bool { get { lock.withLock { stored } } set { lock.withLock { stored = newValue } } }
+}
+
+private final class Recorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ line: String) { lock.withLock { items.append(line) } }
+    var lines: [String] { lock.withLock { items } }
 }

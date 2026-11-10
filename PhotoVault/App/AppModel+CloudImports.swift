@@ -121,6 +121,27 @@ extension AppModel {
         }
     }
 
+    // MARK: Finished imports
+
+    /// Deletes the stored sign-in of every import that is closed with no upload of its files left, and drops its
+    /// adapter. Runs after each cycle; running it twice changes nothing. A destination added later finds the
+    /// import without a sign-in and asks the owner for one ("Đăng nhập lại").
+    func releaseFinishedImportGrants() async {
+        guard let env else { return }
+        let cloud = env.cloud
+        let ids: [SourceID]
+        do { ids = try await env.coordinator.closedImportsReadyToRelease(grantExists: { cloud.hasGrant($0) }) } catch {
+            env.log.log(.error, category: "import", "could not list finished imports: \(type(of: error))")
+            return
+        }
+        let coordinator = env.coordinator
+        let outcome = await CloudImportKeychain.release(
+            ids: ids, hasGrant: cloud.hasGrant, deleteGrant: { cloud.deleteTokens(accounts: [$0]) == 0 },
+            dropAdapter: { await coordinator.releaseImportSource($0) })
+        if outcome.released > 0 { env.log.log(.info, category: "import", "finished imports: \(outcome.released) sign-ins removed") }
+        if outcome.failed > 0 { env.log.log(.error, category: "import", "finished imports: \(outcome.failed) sign-ins could not be removed") }
+    }
+
     // MARK: Sign in again
 
     /// Reruns the sign-in of a held or finished import. It must be the account the import reads from; the
@@ -225,6 +246,14 @@ extension AppModel {
             case .selectionTooLarge:
                 showNotice(tr(vi: "Đã chọn quá nhiều mục cùng lúc. Hãy chọn ít hơn hoặc chia làm nhiều lần.", en: "Too many items were selected at once. Pick fewer, or import in several rounds."), isError: true)
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
+            case .readAccessDenied:
+                showNotice(tr(
+                    vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục. Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
+                    en: "PhotoVault needs permission to see your Drive files to import a folder. Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
+            case .pickAccessDenied:
+                showNotice(tr(
+                    vi: "Bạn cần cho phép PhotoVault truy cập các file bạn chọn trong Drive. Hãy thử lại và giữ ô “Xem, chỉnh sửa, tạo và xóa các file cụ thể trong Google Drive” được chọn.",
+                    en: "PhotoVault needs permission for the Drive files you pick. Try again and keep “See, edit, create, and delete only the specific Google Drive files you use with this app” ticked."), isError: true)
             case .tokenMissing: showNotice(tr(vi: "Google không trả quyền truy cập. Hãy thử lại.", en: "Google did not grant access. Try again."), isError: true)
             }
         } else if let dropbox = error as? DropboxAuthError {

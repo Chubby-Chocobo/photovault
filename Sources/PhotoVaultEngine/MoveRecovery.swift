@@ -11,6 +11,9 @@ struct MoveRecovery: RecoveryParticipant {
     let env: EngineEnvironment
 
     func recover() async throws {
+        // A move that gave up (for a reason that has passed) must not leave a file in the wrong folder for good.
+        let rearmed = try await env.store.write { db in try MoveJobRepository.rearmFailedOnStartup(db) }
+        if rearmed > 0 { env.log.log(.notice, category: "recovery", "failed moves queued again count=\(rearmed)") }
         for record in try await env.store.read({ db in try DestinationRepository.fetchAll(db) }) {
             let id = record.id
             let interrupted = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .inProgress) }
@@ -46,8 +49,8 @@ struct MoveRecovery: RecoveryParticipant {
         guard let moveId = move.id, let identity = JobIdentity(subject: move.subject, destinationId: record.id) else { return }
         let state: (job: UploadJob, target: String, folder: RemoteFolder?)? = try await env.store.read { db in
             guard let job = try JobRepository.fetch(db, identity: identity), let asset = try AssetRepository.fetch(db, key: identity.assetKey),
-                  let placement = asset.placement else { return nil }
-            let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: layout))
+                  asset.placement != nil else { return nil }
+            let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, asset: asset, layout: layout))
             return (job, target, try RemoteFolderRepository.fetch(db, destinationId: record.id, logicalPath: target))
         }
         guard let state, let remoteId = state.job.remoteId, let name = state.job.remoteName else {
