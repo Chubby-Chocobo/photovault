@@ -56,23 +56,14 @@ extension AppModel {
         }
     }
 
-    enum SyncedImportOutcome { case started, cancelled, useBrowser }
-
     /// Imports from the provider's folder synced to this Mac: a Mac-folder import, no sign-in with the provider.
-    /// `.useBrowser` when the owner asks for the web flow instead.
-    func importFromSyncedFolder(_ provider: SyncedCloudProvider) -> SyncedImportOutcome {
-        guard canStartImport else { return .cancelled }
+    func importFromSyncedFolder(_ provider: SyncedCloudProvider) {
+        guard canStartImport else { return }
         do {
-            switch try FolderPicker.chooseSyncedFolder(
-                provider: provider, startAt: syncedFolderDetection(provider).startDirectory,
-                offerBrowser: provider == .googleDrive ? googleImportAvailable : dropboxImportAvailable) {
-            case .cancelled: return .cancelled
-            case .useBrowser: return .useBrowser
-            case .picked(let pick): beginFolderImport(pick); return .started
-            }
+            guard let pick = try FolderPicker.chooseSyncedFolder(provider: provider, startAt: syncedFolderDetection(provider).startDirectory) else { return }
+            beginFolderImport(pick)
         } catch {
             reportBookmarkFailure()
-            return .cancelled
         }
     }
 

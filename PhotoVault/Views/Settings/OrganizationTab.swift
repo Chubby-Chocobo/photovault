@@ -49,7 +49,7 @@ struct OrganizationTab: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("By place")
                     if !model.settings.placeNamesEnabled {
-                        Text(tr(vi: "Cần bật địa danh ở tab Địa danh & riêng tư", en: "Turn on place names in the Places & privacy tab")).font(.caption).foregroundStyle(.secondary)
+                        Text(tr(vi: "Cần bật địa danh ở tab Địa danh", en: "Turn on place names in the Places tab")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }

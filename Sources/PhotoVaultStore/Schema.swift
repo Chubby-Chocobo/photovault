@@ -10,7 +10,17 @@ enum Schema {
         migrator.registerMigration("v4-provisional-index", migrate: createProvisionalIndex)
         migrator.registerMigration("v5-sources", migrate: createSources)
         migrator.registerMigration("v6-day-place", migrate: createDayPlace)
+        migrator.registerMigration("v7-import-retry", migrate: addImportRetry)
         return migrator
+    }
+
+    /// How often a file of an import could not be read and when that first happened, kept across relaunches
+    /// so a file that never reads is given up on schedule. Both stay NULL until a read fails.
+    private static func addImportRetry(_ db: Database) throws {
+        try db.execute(sql: """
+        ALTER TABLE import_item ADD COLUMN fail_count INTEGER;
+        ALTER TABLE import_item ADD COLUMN first_failed_at DATETIME;
+        """)
     }
 
     /// What a path-addressed (local / NAS) upload is about to write: persisted before the first byte,

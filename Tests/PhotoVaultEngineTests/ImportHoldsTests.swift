@@ -48,6 +48,15 @@ import Testing
         #expect(holds.noteFailure(id, group: "g", now: start.addingTimeInterval(30 * 3600)).giveUp)
     }
 
+    @Test func aStoredCountCarriesOnWhenNothingIsKeptInMemory() {
+        let holds = ImportHolds()
+        let prior = ImportHolds.Prior(tries: 9, first: start)
+        let early = holds.noteFailure(id, group: "g", now: start.addingTimeInterval(3600), prior: prior)
+        #expect(!early.giveUp && !early.isFresh && early.tries == 10 && early.first == start)
+        let fresh = ImportHolds()
+        #expect(fresh.noteFailure(id, group: "g", now: start.addingTimeInterval(25 * 3600), prior: prior).giveUp)
+    }
+
     @Test func aDecidedGroupStartsFromScratch() {
         let holds = ImportHolds()
         for index in 0..<23 { _ = holds.noteFailure(id, group: "g", now: start.addingTimeInterval(Double(index) * 3600)) }
