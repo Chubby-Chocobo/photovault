@@ -110,6 +110,7 @@ extension SyncCoordinator {
         }
         lastCheckBlock = nil
         changesPending = false
+        try await markEarlierBackfillOnce()
         report.uploadsHeld = !(await uploadsAllowedNow())
         try await DestinationHealth(env: env).refresh()
         _ = try await recovery.resolveInterrupted()

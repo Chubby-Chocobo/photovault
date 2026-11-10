@@ -54,6 +54,8 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var updatedAt: Date
     /// One-time imports, newest first (running ones and finished ones).
     public var imports: [ImportSnapshot] = []
+    /// How the last backfill ended; nil until one has. A record, not progress: the menu bar ignores it.
+    public var backfillCompletion: BackfillCompletionSummary?
 }
 
 /// Progress of one folder import, for Settings and the menu bar.
