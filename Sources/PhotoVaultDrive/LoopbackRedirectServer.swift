@@ -157,8 +157,10 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
                 // long: it gets a readable page and ends the flow now. The state may come after the ids, so a long
                 // request is read on, up to a few times the limit, to find it. One without the state is a stray
                 // request: refused, and the flow keeps waiting.
+                // The search reaches back far enough to see a `state=` whose value finished in this read.
+                let stateWindow = buffer.index(buffer.startIndex, offsetBy: max(0, previousCount - Self.stateKey.count - self.expectedState.utf8.count))..<buffer.endIndex
                 let mayCarryState = buffer.range(of: Self.stateKey, in: previousCount < LoopbackRequestParser.maxRequestBytes
-                    ? buffer.startIndex..<buffer.endIndex : fresh) != nil
+                    ? buffer.startIndex..<buffer.endIndex : stateWindow) != nil
                 if mayCarryState,
                    LoopbackRequestParser.carriesState(String(decoding: buffer, as: UTF8.self), expectedState: self.expectedState) {
                     self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
