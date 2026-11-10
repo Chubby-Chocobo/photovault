@@ -21,8 +21,6 @@ public struct SourceID: Hashable, Codable, Sendable, Comparable, CustomStringCon
         SourceID(rawValue: "folder-" + uuid.uuidString.lowercased())!
     }
 
-    public var kind: SourceKind { rawValue == "photos" ? .photos : .localFolder }
-
     public init(from decoder: any Decoder) throws {
         let value = try decoder.singleValueContainer().decode(String.self)
         guard let id = SourceID(rawValue: value) else {
@@ -43,6 +41,27 @@ public struct SourceID: Hashable, Codable, Sendable, Comparable, CustomStringCon
 public enum SourceKind: String, Codable, Sendable, CaseIterable {
     case photos
     case localFolder
+    /// Files and folders picked in Google Drive (desktop Picker, `drive.file`).
+    case googleDrive
+    /// A folder in Dropbox, or the whole account.
+    case dropbox
+
+    /// One-time import kinds: everything except Photos.
+    public var isImport: Bool { self != .photos }
+}
+
+/// Keychain account names of cloud import grants, shared by the adapters and the app.
+public enum CloudTokenAccount {
+    /// The Dropbox account the owner browses with; each import keeps its own copy.
+    public static let dropbox = "dropbox-account"
+
+    /// The grant one cloud import reads with.
+    public static func importGrant(_ id: SourceID) -> String { "import-\(id.rawValue)" }
+
+    /// True for every item a cloud import or the Dropbox account keeps in the Keychain.
+    public static func isCloudItem(_ account: String) -> Bool { account == dropbox || account.hasPrefix(importGrantPrefix) }
+
+    private static let importGrantPrefix = "import-"
 }
 
 public enum SourceMode: String, Codable, Sendable, CaseIterable {

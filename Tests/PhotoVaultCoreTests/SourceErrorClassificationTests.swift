@@ -7,6 +7,7 @@ import Testing
         #expect(ErrorClassifier.classify(SourceError.fileMissing) == .permanent(.resourceMissing))
         #expect(ErrorClassifier.classify(SourceError.fileChanged) == .permanent(.resourceMissing))
         #expect(ErrorClassifier.classify(SourceError.cancelled) == .transient)
+        #expect(ErrorClassifier.classify(SourceError.busy) == .transient)
         #expect(ErrorClassifier.classify(SourceError.readFailed(code: 5)) == .itemLevel)
     }
 }

@@ -22,6 +22,7 @@ struct ImportsCard: View {
                         .help(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                         .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                 }
+                Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
                 ProgressBar(fraction: ImportProgressText.fraction(item))
                     .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
                 Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
@@ -52,6 +53,6 @@ struct ImportsCard: View {
     private func statusText(_ item: ImportSnapshot) -> String {
         if let reason = waitingReason(item) { return reason }
         let line = ImportProgressText.progressLine(item)
-        return line.isEmpty || item.status == .offline ? ImportProgressText.statusLabel(item.status) : line
+        return line.isEmpty || item.status == .offline || ImportProgressText.waitsForDisk(item) ? ImportProgressText.statusLabel(item) : line
     }
 }

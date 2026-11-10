@@ -11,6 +11,7 @@
 		A1B2C3D4E5F6000000000016 /* PhotoVaultStore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000015 /* PhotoVaultStore */; };
 		A1B2C3D4E5F6000000000018 /* PhotoVaultPhotos in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000017 /* PhotoVaultPhotos */; };
 		A1B2C3D4E5F600000000001A /* PhotoVaultDrive in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000019 /* PhotoVaultDrive */; };
+		A1B2C3D4E5F6000000000202 /* PhotoVaultDropbox in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000201 /* PhotoVaultDropbox */; };
 		A1B2C3D4E5F600000000001C /* PhotoVaultLocal in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000001B /* PhotoVaultLocal */; };
 		A1B2C3D4E5F600000000001E /* PhotoVaultEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000001D /* PhotoVaultEngine */; };
 		A1B2C3D4E5F6000000000102 /* PhotoVaultAppSupport in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000101 /* PhotoVaultAppSupport */; };
@@ -38,6 +39,7 @@
 				A1B2C3D4E5F6000000000016 /* PhotoVaultStore in Frameworks */,
 				A1B2C3D4E5F6000000000018 /* PhotoVaultPhotos in Frameworks */,
 				A1B2C3D4E5F600000000001A /* PhotoVaultDrive in Frameworks */,
+				A1B2C3D4E5F6000000000202 /* PhotoVaultDropbox in Frameworks */,
 				A1B2C3D4E5F600000000001C /* PhotoVaultLocal in Frameworks */,
 				A1B2C3D4E5F600000000001E /* PhotoVaultEngine in Frameworks */,
 				A1B2C3D4E5F6000000000102 /* PhotoVaultAppSupport in Frameworks */,
@@ -96,6 +98,7 @@
 				A1B2C3D4E5F6000000000015 /* PhotoVaultStore */,
 				A1B2C3D4E5F6000000000017 /* PhotoVaultPhotos */,
 				A1B2C3D4E5F6000000000019 /* PhotoVaultDrive */,
+				A1B2C3D4E5F6000000000201 /* PhotoVaultDropbox */,
 				A1B2C3D4E5F600000000001B /* PhotoVaultLocal */,
 				A1B2C3D4E5F600000000001D /* PhotoVaultEngine */,
 				A1B2C3D4E5F6000000000101 /* PhotoVaultAppSupport */,
@@ -254,6 +257,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F6000000000012 /* XCLocalSwiftPackageReference "." */;
 			productName = PhotoVaultDrive;
+		};
+		A1B2C3D4E5F6000000000201 /* PhotoVaultDropbox */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F6000000000012 /* XCLocalSwiftPackageReference "." */;
+			productName = PhotoVaultDropbox;
 		};
 		A1B2C3D4E5F600000000001B /* PhotoVaultLocal */ = {
 			isa = XCSwiftPackageProductDependency;

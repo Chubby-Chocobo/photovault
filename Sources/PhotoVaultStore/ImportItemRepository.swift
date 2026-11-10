@@ -19,14 +19,29 @@ public enum ImportItemRepository {
     }
 
     /// Pending items of up to `limit` whole groups, ordered by group then path. A group is never split.
-    public static func nextGroups(_ db: Database, sourceId: SourceID, limit: Int) throws -> [[ImportItem]] {
+    /// Groups named in `excluding` are left out, so a group that cannot be read now does not hide the others.
+    /// With `only`, just those groups are considered.
+    public static func nextGroups(
+        _ db: Database, sourceId: SourceID, limit: Int, excluding: Set<String> = [], only: Set<String>? = nil
+    ) throws -> [[ImportItem]] {
+        let skipped = excluding.sorted()
+        let wanted = only?.sorted() ?? []
+        func marks(_ count: Int) -> String { Array(repeating: "?", count: count).joined(separator: ", ") }
+        var filter = skipped.isEmpty ? "" : "AND group_key NOT IN (\(marks(skipped.count)))"
+        if only != nil { filter += wanted.isEmpty ? " AND 0" : " AND group_key IN (\(marks(wanted.count)))" }
+        let marks = filter
+        var values: [any DatabaseValueConvertible] = [sourceId.rawValue, sourceId.rawValue]
+        values += skipped
+        values += wanted
+        values.append(limit)
+        let arguments = StatementArguments(values.map(\.databaseValue))
         let rows = try Row.fetchAll(db, sql: """
         SELECT * FROM import_item
-        WHERE source_id = ?1 AND state = 'pending' AND group_key IN (
-            SELECT group_key FROM import_item WHERE source_id = ?1 AND state = 'pending'
-            GROUP BY group_key ORDER BY group_key LIMIT ?2)
+        WHERE source_id = ? AND state = 'pending' AND group_key IN (
+            SELECT group_key FROM import_item WHERE source_id = ? AND state = 'pending' \(marks)
+            GROUP BY group_key ORDER BY group_key LIMIT ?)
         ORDER BY group_key, rel_path
-        """, arguments: [sourceId.rawValue, limit])
+        """, arguments: arguments)
         var groups: [[ImportItem]] = []
         for item in try rows.map(decode) {
             if groups.last?.first?.groupKey == item.groupKey { groups[groups.count - 1].append(item) } else { groups.append([item]) }

@@ -45,7 +45,7 @@ Types: `string`, `number` (integer or fixed-decimal), `bool`, `array`, `object`.
 | `burstIdentifier` | string | `asset.burstIdentifier` is set | `asset.burstIdentifier` | |
 | `location` | object | `asset.location` is set | `asset.location` | `{ "latitude": number, "longitude": number }`, 6 decimals. **Exact coordinates, not rounded.** |
 | `place` | object | `SidecarInput.place` is set | geocode of the asset's cell | see below |
-| `source` | object | the asset was imported from a folder (`SidecarInput.source` is set) | the import | see [`source`](#source); absent for Photos assets |
+| `source` | object | the asset was imported from a folder or a cloud folder (`SidecarInput.source` is set) | the import | see [`source`](#source); absent for Photos assets |
 | `camera` | object | at least one camera field is set | asset and device name | see below |
 | `albums` | array of string | always (may be empty) | `SidecarInput.albumTitles` | sorted by UTF-8 bytes, duplicates removed |
 | `resources` | array of object | always (may be empty) | `SidecarInput.resources` | see below |
@@ -66,13 +66,13 @@ Each key is omitted when nil. The object can be empty if every field is nil.
 
 ### `source`
 
-Written only for assets imported from a folder (`ImportIngest`, `SidecarFactory.sourceBlock`). A Photos asset's sidecar has no `source` key, so its bytes did not change when sources were added (the schema stays at version 1 because the key is optional).
+Written only for assets imported from a folder on this Mac, Google Drive or Dropbox (`ImportIngest`, `SidecarFactory.sourceBlock`, which writes the source kind's raw value). A Photos asset's sidecar has no `source` key, so its bytes did not change when sources were added (the schema stays at version 1 because the key is optional).
 
 | Key | Type | When | Source |
 |---|---|---|---|
-| `kind` | string | always | the source kind, `localFolder` |
-| `name` | string | always | the import's display name (the folder's name) |
-| `path` | string | always | path of the primary file inside the folder, NFC |
+| `kind` | string | always | the source kind: `localFolder`, `googleDrive` or `dropbox` (`SourceKind` raw values) |
+| `name` | string | always | a name that does not depend on the app language: the folder's name for a Mac folder, a single picked Drive folder or a Dropbox folder; otherwise the provider (`Google Drive` for several picks, `Dropbox` for the whole account). It is `SourceConfig.sidecarName`, and the import's display name when that is unset |
+| `path` | string | always | path of the primary file inside the imported folder, NFC. For a Google Drive pick it is inside the picked folder, or the file's name when a file was picked. For Dropbox it is relative to the chosen folder (or the account root). |
 | `dateSource` | string | the primary's import row has it | `exif`, `video` or `fileDate`: which rule gave the creation date |
 
 Example (keys sorted like the rest of the file):

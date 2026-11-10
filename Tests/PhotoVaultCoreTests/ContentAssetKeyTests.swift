@@ -27,11 +27,10 @@ import Testing
     @Test func sourceIdsAndLocators() throws {
         let uuid = UUID()
         let id = SourceID.folder(uuid)
-        #expect(id.rawValue == "folder-" + uuid.uuidString.lowercased() && id.kind == .localFolder)
+        #expect(id.rawValue == "folder-" + uuid.uuidString.lowercased())
         #expect(SourceID(rawValue: id.rawValue) == id)
         #expect(SourceID(rawValue: "folder-" + uuid.uuidString.uppercased()) == nil)
         #expect(SourceID(rawValue: "folder-nope") == nil && SourceID(rawValue: "x") == nil)
-        #expect(SourceID.photos.kind == .photos)
         let decoded = try JSONDecoder().decode(SourceID.self, from: JSONEncoder().encode(id))
         #expect(decoded == id)
 

@@ -90,6 +90,12 @@ public enum ResourceRepository {
                        arguments: [message, key.rawValue, type.rawValue])
     }
 
+    /// Forgets a recorded export error, for a file whose source is only waiting.
+    public static func clearExportError(_ db: Database, key: AssetKey, type: ResourceType) throws {
+        try db.execute(sql: "UPDATE resource SET last_error = NULL WHERE asset_key = ? AND res_type = ?",
+                       arguments: [key.rawValue, type.rawValue])
+    }
+
     /// the backoff. Returns the new attempt count, or nil when the resource was not exporting.
     @discardableResult
     public static func failExport(
