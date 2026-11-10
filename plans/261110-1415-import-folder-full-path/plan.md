@@ -1,16 +1,16 @@
 # Import history shows where each import came from
 
-Status: In Progress. Owner request: two imports of folders both named "2024" look the same; show the full location.
+Status: Completed. Owner request: two imports of folders both named "2024" look the same; show the full location.
 
 ## Phases
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | Core: `SourceConfig.locationPaths/locationURL`, `ImportLocationPath`, `ImportLocation` (red-first tests) | In Progress |
-| 2 | Drive: parent-chain resolver (`pickedLocations`), never fails the import | Pending |
-| 3 | Engine/AppSupport: snapshot field, texts | Pending |
-| 4 | App: record at creation, row line, Finder/web links, popover tooltip | Pending |
-| 5 | Docs: spec FR, README, mockup | Pending |
+| 1 | Core: `SourceConfig.locationPaths/locationURL`, `ImportLocationPath`, `ImportLocation` (red-first tests) | Completed |
+| 2 | Drive: parent-chain resolver (`pickedLocations`), never fails the import | Completed |
+| 3 | Engine/AppSupport: snapshot field, texts | Completed |
+| 4 | App: record at creation, row line, Finder/web links, popover tooltip | Completed |
+| 5 | Docs: spec FR, README, mockup | Completed |
 
 ## Decisions
 
@@ -21,3 +21,5 @@ Status: In Progress. Owner request: two imports of folders both named "2024" loo
 - Mac home is shown as "~" using the real home from `getpwuid`, not `NSHomeDirectory()` (that is the sandbox container).
 - Older Mac rows: path derived from the bookmark when the row appears (off the main thread); nothing written back.
 - Privacy: `SourceConfig` and `ImportLocation` have redacted `description`s, so default string dumps never include paths, bookmark or account.
+- Spec: new FR-126 (FR-125 was taken). No import-row mockup exists in `docs/design/mockups`, so none changed.
+- Drive walk also has a 10 s overall timeout so a slow network cannot hold the import back.
