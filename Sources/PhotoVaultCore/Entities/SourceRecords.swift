@@ -11,13 +11,29 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     /// Name written to sidecars. Cloud imports set it to a name that does not depend on the app language
     /// (the picked folder's name, or the provider's); nil means the display name.
     public var sidecarName: String?
+    /// A Mac-folder import that reads a cloud provider's synced folder (`"googleDrive"` or `"dropbox"`), so the
+    /// history says where the photos came from. Kept as text so a value this version does not know still decodes.
+    public var syncedProvider: String?
 
-    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil) {
+    /// `syncedProvider` as a known provider; nil when absent or not known to this version.
+    public var syncedCloudProvider: SyncedCloudProvider? {
+        get { syncedProvider.flatMap(SyncedCloudProvider.init(rawValue:)) }
+        set { syncedProvider = newValue?.rawValue }
+    }
+
+    public init(bookmark: Data? = nil, account: String? = nil, remoteItems: [String]? = nil, sidecarName: String? = nil,
+                syncedProvider: SyncedCloudProvider? = nil) {
         self.bookmark = bookmark
         self.account = account
         self.remoteItems = remoteItems
         self.sidecarName = sidecarName
+        self.syncedProvider = syncedProvider?.rawValue
     }
+}
+
+/// Cloud providers whose desktop app keeps a synced folder on this Mac.
+public enum SyncedCloudProvider: String, Sendable, CaseIterable {
+    case googleDrive, dropbox
 }
 
 /// Row of `source`: a one-time import job (or, later, a continuous source).

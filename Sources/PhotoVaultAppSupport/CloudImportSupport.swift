@@ -6,7 +6,8 @@ import PhotoVaultEngine
 /// only; they never reach logs.
 public enum CloudImportText {
     /// "Thư mục trên Mac", "Google Drive · email", "Dropbox · email".
-    public static func providerLabel(kind: SourceKind, account: String?) -> String {
+    public static func providerLabel(kind: SourceKind, account: String?, syncedProvider: SyncedCloudProvider? = nil) -> String {
+        if kind == .localFolder, let syncedProvider { return SyncedCloudText.label(syncedProvider, account: account) }
         let name: String
         switch kind {
         case .googleDrive: name = "Google Drive"
