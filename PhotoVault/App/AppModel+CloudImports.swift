@@ -25,6 +25,8 @@ extension AppModel {
             }
             // The owner may have pressed Cancel while the token was being exchanged.
             try Task.checkCancellation()
+            // The browser part is over; recording the import waits for the running sync to reach a safe point.
+            cloudFlow.startingImport(flowID)
             let id = SourceID.folder()
             try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
@@ -156,6 +158,7 @@ extension AppModel {
                 let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
+                cloudFlow.startingImport(flowID)
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
                 var config = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config } ?? SourceConfig()
                 let merged = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: picked.pickedIds)
@@ -175,6 +178,7 @@ extension AppModel {
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: signIn.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: signIn.email) else { return refuseOtherAccount(item) }
                 try Task.checkCancellation()
+                cloudFlow.startingImport(flowID)
                 try await env.cloud.dropboxAuthorizer(account: CloudTokenAccount.importGrant(id)).store(signIn)
                 // A job whose token was missing at launch has no adapter yet.
                 let root = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config.remoteItems?.first } ?? ""
@@ -193,24 +197,29 @@ extension AppModel {
 
     // MARK: Shared
 
+    /// Tells the row that Google's second consent opened. A notice that lands after the flow moved on is ignored.
     private var readStepNotifier: @Sendable () -> Void {
-        { [weak self] in Task { @MainActor in self?.cloudFlowReadStep = true } }
+        let flow = cloudFlowID
+        return { [weak self] in Task { @MainActor in self?.cloudFlow.reachReadStep(flow) } }
     }
+
+    private var flowID: Int { cloudFlowID }
 
     /// Runs a browser flow as a task the owner can cancel while it waits for the browser.
     private func runCloudFlow(_ body: @escaping @MainActor () async throws -> Void) {
-        cloudFlowBusy = true
-        Task { _ = await trackedFlow(body) }
+        cloudFlowID = cloudFlow.begin()
+        let flow = cloudFlowID
+        Task { _ = await trackedFlow(flow: flow, body) }
     }
 
     /// Marks the flow busy, keeps a way to cancel it, and reports its failure. Nil when it failed or was cancelled.
-    private func trackedFlow<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async -> T? {
-        cloudFlowBusy = true
+    private func trackedFlow<T: Sendable>(flow: Int? = nil, _ body: @escaping @MainActor () async throws -> T) async -> T? {
+        let flow = flow ?? cloudFlow.begin()
+        cloudFlowID = flow
         let task = Task { @MainActor in try await body() }
         cloudFlowCancel = { task.cancel() }
         defer {
-            cloudFlowBusy = false
-            cloudFlowReadStep = false
+            cloudFlow.end(flow)
             cloudFlowCancel = nil
         }
         do { return try await task.value } catch {

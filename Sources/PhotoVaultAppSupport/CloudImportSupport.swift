@@ -140,3 +140,51 @@ public enum CloudImportKeychain {
         }
     }
 }
+
+/// Where a Google or Dropbox sign-in flow is, for the row that shows it.
+public enum CloudFlowStage: Sendable, Equatable {
+    case idle
+    /// The browser is open on the first consent.
+    case browser
+    /// The browser is open on Google's second consent (reading the chosen folder).
+    case readStep
+    /// The browser is done; the app waits for the running sync to reach a safe point before it records the import.
+    case starting
+
+    public var text: String {
+        switch self {
+        case .idle, .browser: return CloudImportText.waitingForBrowser
+        case .readStep: return CloudImportText.waitingForReadStep
+        case .starting:
+            return tr(vi: "Đã cho phép. Đang chờ việc đồng bộ hiện tại dừng ở chỗ an toàn để bắt đầu nhập…",
+                      en: "Access granted. Waiting for the current sync to reach a safe point to start the import…")
+        }
+    }
+}
+
+/// The stage of the running flow. Every change names the flow it belongs to, so a notice that arrives after
+/// its flow ended (or after a newer one began) changes nothing, and the stage only moves forward.
+public struct CloudFlowTracker: Sendable {
+    public private(set) var stage: CloudFlowStage = .idle
+    private var current = 0
+
+    public init() {}
+
+    public mutating func begin() -> Int {
+        current += 1
+        stage = .browser
+        return current
+    }
+
+    public mutating func reachReadStep(_ flow: Int) {
+        if flow == current, stage == .browser { stage = .readStep }
+    }
+
+    public mutating func startingImport(_ flow: Int) {
+        if flow == current, stage == .browser || stage == .readStep { stage = .starting }
+    }
+
+    public mutating func end(_ flow: Int) {
+        if flow == current { stage = .idle }
+    }
+}

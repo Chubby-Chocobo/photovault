@@ -67,13 +67,13 @@ final class DropboxBrowserModel {
 
 /// Shown while a browser sign-in is open, so it never looks like nothing is happening.
 struct BrowserWaitRow: View {
-    var readStep = false
+    var stage: CloudFlowStage = .browser
     var onCancel: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
-            Text(readStep ? CloudImportText.waitingForReadStep : CloudImportText.waitingForBrowser).font(.caption).foregroundStyle(.secondary)
+            Text(stage.text).font(.caption).foregroundStyle(.secondary)
             Button(tr(vi: "Huỷ", en: "Cancel"), action: onCancel).controlSize(.small)
         }
     }
@@ -150,7 +150,7 @@ struct DropboxFolderSheet: View {
                     }
                 }
                 .disabled(model.cloudFlowBusy)
-                if model.cloudFlowBusy { BrowserWaitRow(onCancel: model.cancelCloudFlow) }
+                if model.cloudFlowBusy { BrowserWaitRow(stage: model.cloudFlowStage, onCancel: model.cancelCloudFlow) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if browser.folders.isEmpty {

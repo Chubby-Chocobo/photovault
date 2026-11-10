@@ -53,9 +53,10 @@ final class AppModel {
     /// A Dropbox account token is stored (the folder browser needs no new sign-in).
     var dropboxSignedIn = false
     /// A Google or Dropbox sign-in is waiting for the browser; further starts are ignored meanwhile.
-    var cloudFlowBusy = false
-    /// The running Google flow is on its second consent (reading the chosen folder).
-    var cloudFlowReadStep = false
+    var cloudFlow = CloudFlowTracker()
+    @ObservationIgnored var cloudFlowID = 0
+    var cloudFlowBusy: Bool { cloudFlow.stage != .idle }
+    var cloudFlowStage: CloudFlowStage { cloudFlow.stage }
     /// Cancels the browser sign-in that is running; nil when none is.
     @ObservationIgnored var cloudFlowCancel: (() -> Void)?
     var hardening: (any HardeningCommands)?

@@ -231,3 +231,21 @@ extension ImportFolder {
         return id
     }
 }
+
+@Suite struct CancelledImportStartTests {
+    @Test func aCancelledStartRecordsNoImport() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        try await h.baseline(.googleDrive)
+        let folder = try ImportFolder()
+        let coordinator = h.coordinator
+        let source = folder.source()
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
+        }
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+        let rows = try h.read { db in try SourceRepository.fetchAll(db) }
+        #expect(rows.isEmpty)
+    }
+}
