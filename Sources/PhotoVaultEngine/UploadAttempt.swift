@@ -147,6 +147,7 @@ struct UploadAttempt: Sendable {
             env.transfers.begin(
                 kind: record.kind == .googleDrive ? .upload : .copy, fileName: $0.originalFilename,
                 destinationName: record.displayName, accountEmail: record.kind == .googleDrive ? record.accountEmail : nil,
+                sourceId: plan.asset.sourceId, isBackfill: job.origin == .backfill || job.origin == .destinationBackfill,
                 bytesTotal: content.size)
         }
         defer { transfer?.end() }

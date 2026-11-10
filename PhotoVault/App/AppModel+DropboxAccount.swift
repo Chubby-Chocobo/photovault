@@ -4,7 +4,7 @@ import PhotoVaultCore
 
 extension AppModel {
     /// Reads the stored e-mail of the Dropbox browsing account. A token from an older version has none: it
-    /// is asked from Dropbox once and kept. Offline, the line shows "signed in" without it until next time.
+    /// is asked from Dropbox once and kept. Offline, the menu item shows the sign-in without the e-mail until next time.
     func refreshDropboxEmail() async {
         guard dropboxSignedIn, let cloud = env?.cloud, let client = dropboxBrowserClient() else {
             dropboxEmail = nil
