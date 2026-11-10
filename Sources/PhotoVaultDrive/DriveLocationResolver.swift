@@ -110,14 +110,26 @@ struct DriveLocationResolver {
 }
 
 extension DriveImportSource {
-    /// The paths of the first picked items, read with metadata GETs only. nil on any error: this must never
-    /// delay or fail the import, which keeps the folder's name.
-    public func pickedLocations() async -> DriveImportLocations? {
+    /// The paths of the first picked items, read with metadata GETs only. nil on any error or when `timeout`
+    /// passes: this must never delay or fail the import, which keeps the folder's name.
+    public func pickedLocations(timeout: Duration = .seconds(10)) async -> DriveImportLocations? {
         let http = http
-        var resolver = DriveLocationResolver(lookup: { id in
-            let url = DriveURL.make(DriveURL.api, "/files/" + FormEncoding.escape(id), [("fields", DriveLocationNode.fields), ("supportsAllDrives", "true")])
-            return try await http.sendJSON(DriveLocationNode.self, url, method: "GET")
-        })
-        return await resolver.resolve(picked: lister.pickedIds)
+        let picked = lister.pickedIds
+        return await withTaskGroup(of: DriveImportLocations?.self) { group in
+            group.addTask {
+                var resolver = DriveLocationResolver(lookup: { id in
+                    let url = DriveURL.make(DriveURL.api, "/files/" + FormEncoding.escape(id), [("fields", DriveLocationNode.fields), ("supportsAllDrives", "true")])
+                    return try await http.sendJSON(DriveLocationNode.self, url, method: "GET")
+                })
+                return await resolver.resolve(picked: picked)
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 }

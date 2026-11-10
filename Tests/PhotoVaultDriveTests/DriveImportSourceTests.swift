@@ -311,4 +311,14 @@ func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(fo
         rig.stub.fail("R", with: .json(500, [:]))
         #expect(await rig.source(["Y"]).pickedLocations() == nil)
     }
+
+    @Test func aSlowDriveDoesNotHoldTheImportBack() async throws {
+        let rig = try ImportRig()
+        rig.stub.add(.init(id: "R", name: "My Drive", mime: DriveMime.folder, isRoot: true))
+        rig.stub.add(.init(id: "Y", name: "2024", mime: DriveMime.folder, parent: "R"))
+        rig.stub.latency = .seconds(30)
+        let started = ContinuousClock.now
+        #expect(await rig.source(["Y"]).pickedLocations(timeout: .milliseconds(100)) == nil)
+        #expect(ContinuousClock.now - started < .seconds(5))
+    }
 }
