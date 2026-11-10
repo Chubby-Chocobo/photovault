@@ -112,7 +112,7 @@ struct SidecarDocument: Decodable, Sendable {
         var sha256: String?
     }
 
-    struct Camera: Decodable, Sendable, Equatable {
+    struct Camera: Codable, Sendable, Equatable {
         var make: String?
         var model: String?
         var lens: String?

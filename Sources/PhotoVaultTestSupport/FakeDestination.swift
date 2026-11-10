@@ -57,6 +57,8 @@ public actor FakeDestination: ViewDestination, RootManaging, SmallFileReading {
     public var listsWholeAccount = false
     private var failures: [Operation: [DestinationError]] = [:]
     private var crashes: [Operation: Int] = [:]
+    private var readFailures: [String: DestinationError] = [:]
+    private var periodicFailures: [Operation: (Int, DestinationError)] = [:]
     private var sessions: [String: UploadRequest] = [:]
     private var nextId = 1
     private var uploadHook: (@Sendable (UploadRequest) async -> Void)?
@@ -117,8 +119,15 @@ public actor FakeDestination: ViewDestination, RootManaging, SmallFileReading {
         return parts.joined(separator: "/")
     }
 
+    /// Every `n`th call of `op` throws `error`, from the first call on.
+    public func failEvery(_ op: Operation, n: Int, with error: DestinationError) { periodicFailures[op] = (n, error) }
+    public func failReads(of remoteId: String, with error: DestinationError?) { readFailures[remoteId] = error }
+    public func clearPeriodicFailures() { periodicFailures = [:] }
+    public func failAlways(_ op: Operation, with error: DestinationError) { periodicFailures[op] = (1, error) }
+
     private func step(_ op: Operation) throws {
         operationLog.append(op)
+        if let (n, error) = periodicFailures[op], operationLog.filter({ $0 == op }).count % n == 0 { throw error }
         if var queue = failures[op], !queue.isEmpty {
             let error = queue.removeFirst()
             failures[op] = queue
@@ -291,6 +300,7 @@ public actor FakeDestination: ViewDestination, RootManaging, SmallFileReading {
 
     public func readSmallFile(remoteId: String, maxBytes: Int) async throws -> Data? {
         try step(.read)
+        if let error = readFailures[remoteId] { throw error }
         guard let item = items[remoteId], item.kind == .file, let data = item.data, data.count <= maxBytes else { return nil }
         return data
     }
