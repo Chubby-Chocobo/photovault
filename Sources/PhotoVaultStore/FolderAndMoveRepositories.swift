@@ -60,10 +60,15 @@ public enum MoveJobRepository {
         try Row.fetchOne(db, sql: "SELECT * FROM move_job WHERE id = ?", arguments: [id]).map(decode)
     }
 
-    /// The oldest `limit` jobs (all of them when nil).
+    /// The oldest `limit` jobs (all of them when nil). A file move that has failed before comes after the
+    /// ones that have not, so a few stubborn moves cannot hold back the rest of a capped pass; renames keep
+    /// their queue order.
     public static func fetch(_ db: Database, destinationId: DestinationID, state: MoveJobState, limit: Int? = nil) throws -> [MoveJob] {
         try Row.fetchAll(
-            db, sql: "SELECT * FROM move_job WHERE destination_id = ? AND state = ? ORDER BY id LIMIT ?",
+            db, sql: """
+                SELECT * FROM move_job WHERE destination_id = ? AND state = ?
+                ORDER BY CASE WHEN op = 'moveFile' THEN attempts ELSE 0 END, id LIMIT ?
+                """,
             arguments: [destinationId.rawValue, state.rawValue, limit ?? -1]).map(decode)
     }
 
@@ -93,6 +98,14 @@ public enum MoveJobRepository {
             sql: "UPDATE move_job SET state = ?, attempts = ?, last_error = ? WHERE id = ?",
             arguments: [state.rawValue, attempts, message, id])
         return state
+    }
+
+    /// Startup: `failed → pending` with a fresh attempt count. A move that no longer applies (the file
+    /// already sits in its slot's folder) is discarded when it runs; the others get another try.
+    @discardableResult
+    public static func rearmFailedOnStartup(_ db: Database) throws -> Int {
+        try db.execute(sql: "UPDATE move_job SET state = 'pending', attempts = 0 WHERE state = 'failed'")
+        return db.changesCount
     }
 
     /// Startup recovery: interrupted moves become pending again.

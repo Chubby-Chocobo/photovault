@@ -11,6 +11,9 @@ struct MoveRecovery: RecoveryParticipant {
     let env: EngineEnvironment
 
     func recover() async throws {
+        // A move that gave up (for a reason that has passed) must not leave a file in the wrong folder for good.
+        let rearmed = try await env.store.write { db in try MoveJobRepository.rearmFailedOnStartup(db) }
+        if rearmed > 0 { env.log.log(.notice, category: "recovery", "failed moves queued again count=\(rearmed)") }
         for record in try await env.store.read({ db in try DestinationRepository.fetchAll(db) }) {
             let id = record.id
             let interrupted = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .inProgress) }
