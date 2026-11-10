@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import PhotoVaultCore
 import Testing
 @testable import PhotoVaultDrive
@@ -61,6 +62,22 @@ import Testing
         await #expect(throws: LoopbackError.requestTooLarge) { try await server.awaitCode() }
         let reply = await browser.value
         #expect(reply?.1 == 400 && String(decoding: reply?.0 ?? Data(), as: UTF8.self).contains("Too many items"))
+    }
+
+    @Test func anOversizedPickWhoseStateIsSplitAcrossReadsStillEndsTheFlowAtOnce() async throws {
+        let state = String(repeating: "s", count: 43)
+        let server = try LoopbackRedirectServer(expectedState: state, timeout: 5)
+        let port = try await server.start()
+        let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
+        let head = "GET /oauth2/callback?picked_file_ids=\(huge)&code=c&state=\(state.prefix(20))"
+        let tail = "\(state.dropFirst(20)) HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+        let socket = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+        socket.start(queue: .global())
+        defer { socket.cancel() }
+        socket.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+        try await Task.sleep(nanoseconds: 300_000_000)
+        socket.send(content: Data(tail.utf8), completion: .contentProcessed { _ in })
+        await #expect(throws: LoopbackError.requestTooLarge) { try await server.awaitCode() }
     }
 
     @Test func aStrayRequestMuchLargerThanTheLimitIsRefusedWithoutEndingTheFlow() async throws {

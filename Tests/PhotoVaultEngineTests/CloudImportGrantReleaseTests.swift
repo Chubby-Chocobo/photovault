@@ -149,15 +149,15 @@ import Testing
     func en<T>(_ body: () -> T) -> T { L10n.$override.withValue(.en, operation: body) }
 
     @Test func anImportThatFoundNothingSaysSo() {
-        vi { #expect(ImportCompletion.summaryText([:], cancelled: false) == "Nhập xong 1 thư mục nhưng không có ảnh hay video nào mà app đọc được") }
-        en { #expect(ImportCompletion.summaryText([:], cancelled: false) == "Folder import finished, but it had no photos or videos the app could read") }
+        vi { #expect(ImportCompletion.summaryText([:], cancelled: false) == "Nhập xong nhưng không có ảnh hay video nào mà app đọc được") }
+        en { #expect(ImportCompletion.summaryText([:], cancelled: false) == "Import finished, but it had no photos or videos the app could read") }
     }
 
     @Test func aCancelledEmptyImportStaysACancel() {
-        en { #expect(ImportCompletion.summaryText([:], cancelled: true).hasPrefix("Folder import cancelled")) }
+        en { #expect(ImportCompletion.summaryText([:], cancelled: true).hasPrefix("Import cancelled")) }
     }
 
     @Test func anImportWithFilesKeepsTheCountsLine() {
-        en { #expect(ImportCompletion.summaryText([.imported: 2], cancelled: false) == "Folder import finished: 2 new, 0 already backed up, 0 skipped, 0 failed") }
+        en { #expect(ImportCompletion.summaryText([.imported: 2], cancelled: false) == "Import finished: 2 new, 0 already backed up, 0 skipped, 0 failed") }
     }
 }

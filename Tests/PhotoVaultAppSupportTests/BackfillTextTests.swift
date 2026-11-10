@@ -45,7 +45,7 @@ import Testing
             #expect(BackfillText.settingsLine(snapshot(completion: summary()), calendar: utc) == "Backfill: xong · 1.200 ảnh")
         }
         L10n.$override.withValue(.en) {
-            #expect(BackfillText.settingsLine(snapshot(completion: summary(at: at, assets: 1)), calendar: utc) == "Backfill: finished 3 Jan 2027 18:13 · 1 photo")
+            #expect(BackfillText.settingsLine(snapshot(completion: summary(at: at, assets: 1)), calendar: utc) == "Backfill: finished on 3 Jan 2027 at 18:13 · 1 photo")
             #expect(BackfillText.settingsLine(snapshot(completion: summary(assets: 2)), calendar: utc) == "Backfill: finished · 2 photos")
         }
     }

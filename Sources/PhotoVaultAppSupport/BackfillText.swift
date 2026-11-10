@@ -17,7 +17,10 @@ public enum BackfillText {
             return tr(vi: "Đang backfill: ", en: "Backfilling: ") + progress
         }
         guard let done = snapshot.backfillCompletion else { return nil }
-        let when = done.completedAt.map { " " + tr(vi: "lúc ", en: "") + RelativeTimeText.dateTime($0, calendar: calendar) } ?? ""
+        let when = done.completedAt.map { moment in
+            let day = RelativeTimeText.date(moment, calendar: calendar), time = RelativeTimeText.time(moment, calendar)
+            return tr(vi: " lúc \(day) \(time)", en: " on \(day) at \(time)")
+        } ?? ""
         return tr(vi: "Backfill: xong", en: "Backfill: finished") + when + " · " + photos(done.assets)
     }
 
