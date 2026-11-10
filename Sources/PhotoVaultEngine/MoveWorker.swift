@@ -201,7 +201,16 @@ actor MoveWorker {
         if case .folderMissing(let path)? = failure { try await ensurer.invalidate(logicalPath: path) }
         let message = failure.map(\.description) ?? "unexpected error"
         env.log.log(.notice, category: "move", "move failed op=\(move.operation.rawValue) error=\(message)")
-        try await env.store.write { db in _ = try MoveJobRepository.fail(db, id: id, message: message) }
+        let now = env.clock.now
+        let outcome = try await env.store.write { db -> MoveJobPlanner.FailedRenameOutcome in
+            guard try MoveJobRepository.fail(db, id: id, message: message) == .failed, move.operation == .renameFolder else { return .none }
+            return try MoveJobPlanner.requeueAfterFailedRename(db, failed: move, now: now)
+        }
+        if case .kept(let name) = outcome {
+            await ActivityLog(env: env).record(.notice, destination: move.destinationId, tr(
+                vi: "Không đổi được tên thư mục thành \"\(name)\"; thư mục giữ tên hiện tại",
+                en: "Could not rename a folder to \"\(name)\"; the folder keeps its current name"))
+        }
         return .retry
     }
 
