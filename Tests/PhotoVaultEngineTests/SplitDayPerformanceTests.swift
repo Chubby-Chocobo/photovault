@@ -75,4 +75,32 @@ import Testing
         #expect(elapsed < .seconds(10), "alone it takes well under a second; the bound allows for a loaded machine")
         #expect(try h.read { db in try KeyValueRepository.int(db, "place_split_backfill") } == 1)
     }
+
+    @Test func lookingUpOpenRenamesStaysFastOverHundredThousandFinishedMoves() throws {
+        let store = try Store.inMemory()
+        try store.write { db in
+            try db.execute(sql: "INSERT INTO destination (id, kind, display_name, status, status_since, scope_mode, rules_json, config_json, recovery_required, created_at) VALUES ('gdrive', 'drive', 'Drive', 'active', 0, 'full', '{}', '{}', 0, 0)")
+            let statement = try db.makeStatement(sql: """
+                INSERT INTO move_job (destination_id, op, subject, from_value, to_value, state, attempts, created_at)
+                VALUES ('gdrive', 'moveFile', ?, 'camera/2026-01-01', 'camera/2026-01-01@p0123456789ab', 'done', 0, 0)
+                """)
+            for index in 0..<100_000 { try statement.execute(arguments: ["l:asset-\(index)|1"]) }
+        }
+        let plan = try store.read { db in
+            try Row.fetchAll(db, sql: """
+                EXPLAIN QUERY PLAN SELECT from_value FROM move_job WHERE destination_id IN (SELECT id FROM destination)
+                    AND subject = 'camera/2026-01-01' AND op = 'renameFolder' AND state IN ('pending', 'inProgress')
+                """).map { $0["detail"] as String }.joined(separator: " | ")
+        }
+        #expect(plan.contains("move_job_subject"), "\(plan)")
+        let day = ArchiveDay(year: 2026, month: 1, day: 1)!
+        let clock = ContinuousClock()
+        let started = clock.now
+        try store.read { db in
+            for _ in 0..<3_000 { _ = try DaySplitWriter.reserved(db, day: day, slot: nil) }
+        }
+        let elapsed = started.duration(to: clock.now)
+        print("3000 open-rename lookups over 100000 moves: \(elapsed)")
+        #expect(elapsed < .seconds(2))
+    }
 }

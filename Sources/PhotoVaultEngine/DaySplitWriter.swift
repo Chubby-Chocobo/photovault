@@ -77,12 +77,15 @@ enum DaySplitWriter {
         }
     }
 
+    /// The destination filter lets SQLite use `move_job_subject(destination_id, subject)`; finished moves are kept, so the table only grows.
     /// Names a folder may still carry on disk at some destination: the old names of its open renames.
     static func reserved(_ db: Database, day: ArchiveDay, slot: String?) throws -> [String?] {
         let path = slot.map { DynamicLayout.slotLogicalPath(day: day, slot: $0) } ?? "camera/\(day)"
         let prefix = day.description + " "
         return try String.fetchAll(db, sql: """
-            SELECT from_value FROM move_job WHERE subject = ? AND op = 'renameFolder' AND state IN ('pending', 'inProgress')
+            SELECT from_value FROM move_job
+            WHERE destination_id IN (SELECT id FROM destination) AND subject = ? AND op = 'renameFolder'
+              AND state IN ('pending', 'inProgress')
             """, arguments: [path]).compactMap { folder in
             if folder == day.description { return .some(nil) }
             return folder.hasPrefix(prefix) ? .some(String(folder.dropFirst(prefix.count))) : nil

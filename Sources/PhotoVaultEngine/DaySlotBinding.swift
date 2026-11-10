@@ -79,14 +79,14 @@ enum DaySlotBinding {
             bound.slot = DynamicLayout.parseCameraDay(path)?.slot
             return bound
         }
-        result.files = inventory.files.map { file in
+        // The files of a skipped folder are not recovered at all: they stay where they are and their asset is
+        // uploaded again into the folder that holds the path.
+        result.files = inventory.files.compactMap { file in
             guard let parent = file.parentFolderId else { return file }
+            if dropped.contains(parent) { return nil }
+            guard let path = reassigned[parent] else { return file }
             var moved = file
-            if dropped.contains(parent) {
-                moved.parentLogical = nil
-            } else if let path = reassigned[parent] {
-                moved.parentLogical = path
-            }
+            moved.parentLogical = path
             return moved
         }
         return (result, conflicts)

@@ -35,9 +35,7 @@ import Testing
             root = real.root
             reader = real.reader
         }
-        if localFirst { try h.addNAS(scope: .full) }
-        if drive { try h.addDrive(scope: .full) }
-        if !localFirst, local { try h.addNAS(scope: .full) }
+        try addDestinations(h, drive: drive, local: local, localFirst: localFirst)
         await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         await h.geocoder.seed(hanoi, en: hanoiEnglish, local: hanoiVietnamese)
         for index in 0..<daLatCount { await h.add(h.snapshot("d\(index)", daysAgo: 3, location: daLat), recordChange: false) }
@@ -47,11 +45,24 @@ import Testing
         return World(h: h, root: root, reader: reader)
     }
 
+    /// The destinations get distinct creation times, which is what orders them in the cycle.
+    private func addDestinations(_ h: Harness, drive: Bool, local: Bool, localFirst: Bool) throws {
+        if localFirst, local { try h.addNAS(scope: .full); h.clock.advance(by: 1) }
+        if drive { try h.addDrive(scope: .full); h.clock.advance(by: 1) }
+        if !localFirst, local { try h.addNAS(scope: .full); h.clock.advance(by: 1) }
+    }
+
+    /// Drive files by id and path, so a move between two folders of the same name shows.
     private func listing(_ w: World) async -> [String] {
         var result: [String] = []
-        for file in await w.h.drive.files { result.append("drive:" + (await w.h.drive.path(of: file.id))) }
+        for file in await w.h.drive.files { result.append("drive:\(file.id):" + (await w.h.drive.path(of: file.id))) }
         if let root = w.root { result += treeListing(root).keys.filter { !$0.hasPrefix(".photovault") }.map { "local:" + $0 } }
         return result.sorted()
+    }
+
+    private func expectUniqueDriveFolderNames(_ w: World, sourceLocation: SourceLocation = #_sourceLocation) async {
+        let names = await w.h.drive.folders.filter { $0.id != "root" }.map { "\($0.parentId)/\($0.name)" }
+        #expect(Set(names).count == names.count, "two Drive folders share a name: \(names)", sourceLocation: sourceLocation)
     }
 
     private func folderRows(_ w: World) throws -> [String] {
@@ -65,6 +76,7 @@ import Testing
         let h = w.h
         let after = await listing(w)
         #expect(after == before, "the listing is unchanged", sourceLocation: sourceLocation)
+        await expectUniqueDriveFolderNames(w, sourceLocation: sourceLocation)
         let moves = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job") ?? 0 }
         #expect(moves == movesBefore, "no move or rename was queued", sourceLocation: sourceLocation)
         let shared = try h.read { db in
@@ -81,18 +93,7 @@ import Testing
 
     private func recoverFresh(_ w: World, drive: Bool, local: Bool, localFirst: Bool = false) async throws {
         try await w.h.loseDatabase(localContent: w.reader)
-        if localFirst {
-            // The cycle recovers destinations in id order, so the second one is added once the first is done.
-            try w.h.addNAS(scope: .full)
-            try await w.h.coordinator.beginBaseline(destinations: [w.h.nasId])
-            await w.h.settle(rounds: 10)
-            try w.h.addDrive(scope: .full)
-            try await w.h.coordinator.beginBaseline(destinations: [.googleDrive])
-            await w.h.settle(rounds: 10)
-            return
-        }
-        if drive { try w.h.addDrive(scope: .full) }
-        if local { try w.h.addNAS(scope: .full) }
+        try addDestinations(w.h, drive: drive, local: local, localFirst: localFirst)
         try await w.h.coordinator.beginBaseline(destinations: (drive ? [.googleDrive] : []) + (local ? [w.h.nasId] : []))
         await w.h.settle(rounds: 10)
     }
@@ -122,11 +123,11 @@ import Testing
         try await expectNothingMoved(w, listing: before, places: ["Hà Nội"])
     }
 
-    @Test func r3bLocalThenDriveWithALostDatabase() async throws {
+    @Test func r3bALocalDestinationCreatedFirstStillWaitsForDrive() async throws {
         let w = try await world(drive: true, local: true, localFirst: true)
         let before = await listing(w)
         try await recoverFresh(w, drive: true, local: true, localFirst: true)
-        try await expectNothingMoved(w, listing: before, places: ["Đà Lạt"])
+        try await expectNothingMoved(w, listing: before, places: ["Hà Nội"])
     }
 
     // MARK: Intact database, owner-requested
@@ -160,7 +161,7 @@ import Testing
             $0.viewFavoritesEnabled = false
             $0.placeNamesEnabled = false
         }
-        if driveFirst { try h.addDrive(scope: .full); try h.addNAS(scope: .full) } else { try h.addNAS(scope: .full); try h.addDrive(scope: .full) }
+        try addDestinations(h, drive: true, local: true, localFirst: !driveFirst)
         await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         await h.geocoder.seed(hanoi, en: hanoiEnglish, local: hanoiVietnamese)
         for index in 0..<10 { await h.add(h.snapshot("d\(index)", daysAgo: 3, location: daLat), recordChange: false) }
@@ -182,8 +183,9 @@ import Testing
         await h.settle(rounds: 10)
         let after = await listing(w)
         #expect(after == before, "the listing is unchanged")
-        let moves = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job WHERE op = 'moveFile'") ?? 0 }
-        #expect(moves == 0)
+        let moves = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job") ?? 0 }
+        #expect(moves == 0, "no move or rename was queued")
+        await expectUniqueDriveFolderNames(w)
         let shared = try h.read { db in
             try Int.fetchOne(db, sql: """
                 SELECT COUNT(*) FROM (SELECT destination_id, remote_id FROM remote_folder WHERE remote_id IS NOT NULL
@@ -222,12 +224,43 @@ import Testing
         #expect(localFolders == ["Camera Uploads/\(daLatFolder)"], "the NAS holds only the small group: \(localFolders)")
 
         try await h.loseDatabase(localContent: real.reader)
-        try h.addDrive(scope: .full)
         try h.addNAS(scope: .full, rules: rules)
-        try await h.coordinator.beginBaseline(destinations: [.googleDrive, h.nasId])
+        h.clock.advance(by: 1)
+        try h.addDrive(scope: .full)
+        try await h.coordinator.beginBaseline(destinations: [h.nasId, .googleDrive])
         await h.settle(rounds: 10)
         #expect(await listing(w) == before)
+        await expectUniqueDriveFolderNames(w)
         #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job") ?? 0 } == 0)
+    }
+
+    // MARK: Conflicting folders
+
+    @Test func filesOfAFolderThatClaimsABoundPathAreNotAdoptedAndStayWhereTheyAre() async throws {
+        let w = try await world(drive: true, local: false)
+        let h = w.h
+        let original = try #require(await h.drive.folders.first { $0.name == hanoiFolder })
+        // A second Drive folder with the same name and logical path, holding one of the photos.
+        let twin = FakeDestination.Item(
+            id: "twin-folder", name: original.name, parentId: original.parentId, kind: .folder, appProperties: original.appProperties)
+        await h.drive.put(twin)
+        var movedFile = try #require(await h.drive.files.first { $0.parentId == original.id && $0.name.contains("IMG_h0.HEIC") })
+        movedFile.parentId = twin.id
+        await h.drive.put(movedFile)
+        let before = await listing(w)
+        let job = try #require(try h.jobs().first { $0.remoteId == movedFile.id })
+
+        let outcome = try await h.coordinator.startRecovery(.googleDrive)
+        guard case .recovered(let stats) = outcome else {
+            Issue.record("expected a recovery, got \(outcome)")
+            return
+        }
+        #expect(stats.folderConflicts == 1)
+        #expect(stats.found - stats.matched >= 1, "the file in the dropped folder was left out of the recovery")
+        #expect(await listing(w) == before, "nothing at the destination was touched")
+        let after = try #require(try h.jobs().first { $0.assetKey == job.assetKey && $0.resType == job.resType })
+        #expect(after.remoteId == job.remoteId && after.remoteLogicalParent == job.remoteLogicalParent, "its job is as it was")
+        #expect(try h.activity().contains { $0.kind == .notice && $0.destinationId == .googleDrive && $0.message.contains("1") })
     }
 
     // MARK: Writer refusal
@@ -249,16 +282,39 @@ import Testing
 
     // MARK: Timezone restore
 
-    @Test func r9RestoringTheArchiveTimezoneClearsSlotsAndPlaceRows() async throws {
-        let h = try await Harness.organized()
+    @Test func r9RestoringTheArchiveTimezoneThroughRecoveryClearsLeftoverSlotsAndPlaceRows() async throws {
+        let w = try await world(drive: false, local: true)
+        let h = w.h
+        // The folder remembers another archive timezone than the fresh database that follows.
+        let real = try #require(try await h.env.destinations.destination(for: h.nasId) as? LocalFolderDestination)
+        try FileManager.default.removeItem(at: w.root!.appendingPathComponent(".photovault/destination.json"))
+        _ = try await real.writeMarker(DestinationMarker(id: h.nasId, createdAt: h.clock.now, archiveTimezone: "Asia/Ho_Chi_Minh"))
+        try await h.loseDatabase(localContent: w.reader)
+        try h.addNAS(scope: .full)
         try h.write { db in
-            try DayPlaceRepository.save(db, DayPlace(day: self.day, slot: "pabcdef012345", placeKey: nil, placeName: "Hà Nội"))
-            let asset = AssetRecord(assetKey: .local("x"), localId: "x", creationDate: h.clock.now, mediaType: .image, category: .camera, firstSeenAt: h.clock.now, lastSeenAt: h.clock.now)
-            try AssetRepository.upsert(db, asset, timeZone: utc)
-            try AssetPlacementRepository.setPlaceSlot(db, key: asset.assetKey, slot: "pabcdef012345")
+            try DayPlaceRepository.save(db, DayPlace(day: self.day, slot: "pleftover00000", placeKey: nil, placeName: "Leftover"))
         }
-        try await RecoveryService.clearDayState(env: h.env)
-        #expect(try h.read { db in try DayPlaceRepository.days(db) }.isEmpty)
-        #expect(try h.asset(.local("x"))?.placeSlot == nil)
+        try await h.coordinator.beginBaseline(destinations: [h.nasId])
+        await h.settle(rounds: 8)
+        #expect(await h.env.settings.snapshot().timeZone.identifier == "Asia/Ho_Chi_Minh", "the recovery restored the zone")
+        let names = try h.read { db in try DayPlaceRepository.fetchAll(db, day: self.day).compactMap(\.placeName) }
+        #expect(!names.contains("Leftover"), "\(names)")
+    }
+
+    @Test func aLocalDestinationWaitsWhileDriveIsOfflineThenRecovers() async throws {
+        let w = try await world(drive: true, local: true)
+        let before = await listing(w)
+        try await w.h.loseDatabase(localContent: w.reader)
+        try addDestinations(w.h, drive: true, local: true, localFirst: true)
+        await w.h.drive.setStatus(.unavailable(.offline))
+        try w.h.updateDestination(.googleDrive) { $0.recoveryRequired = true }
+        try await w.h.coordinator.beginBaseline(destinations: [w.h.nasId, .googleDrive])
+        await w.h.settle(rounds: 4)
+        #expect(try w.h.destinationRecord(w.h.nasId).recoveryRequired, "the NAS waits for Drive")
+        #expect(try w.h.jobs().isEmpty, "nothing was recovered from the local tree yet")
+        await w.h.drive.setStatus(.active)
+        await w.h.settle(rounds: 10)
+        #expect(try w.h.destinationRecord(w.h.nasId).recoveryRequired == false)
+        try await expectNothingMoved(w, listing: before, places: ["Hà Nội"])
     }
 }

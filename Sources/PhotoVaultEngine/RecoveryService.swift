@@ -57,7 +57,12 @@ actor RecoveryService {
                 return (record.id, record.recoveryRequired && !decision, enqueue)
             }
         }
-        for (id, needsRecovery, needsEnqueue) in ids {
+        // Destinations with app properties first: their folders carry the logical paths, so a local
+        // destination recovered after them is bound to the truth instead of guessing.
+        var withProperties = Set<DestinationID>()
+        for (id, _, _) in ids where await supportsAppProperties(id) { withProperties.insert(id) }
+        let ordered = ids.filter { withProperties.contains($0.0) } + ids.filter { !withProperties.contains($0.0) }
+        for (id, needsRecovery, needsEnqueue) in ordered {
             try Task.checkCancellation()
             do {
                 if needsRecovery {
@@ -76,10 +81,24 @@ actor RecoveryService {
         return outcomes
     }
 
+    // MARK: Order
+
+    private func supportsAppProperties(_ id: DestinationID) async -> Bool {
+        await env.destinations.destination(for: id)?.capabilities.supportsAppProperties == true
+    }
+
+    /// A registered destination with app properties (Drive) that is still waiting for its recovery.
+    private func driveNeedsRecovery() async throws -> Bool {
+        let waiting = try await env.store.read { db in try DestinationRepository.fetchAll(db).filter(\.recoveryRequired).map(\.id) }
+        for id in waiting where await supportsAppProperties(id) { return true }
+        return false
+    }
+
     // MARK: Recovery
 
     func recover(_ id: DestinationID) async throws -> RecoveryOutcome {
         guard !active.contains(id) else { return .notReady(.alreadyRunning) }
+        if !(await supportsAppProperties(id)), try await driveNeedsRecovery() { return .notReady(.waitingForDrive) }
         active.insert(id)
         defer { active.remove(id) }
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }),

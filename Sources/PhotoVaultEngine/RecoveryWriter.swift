@@ -59,7 +59,11 @@ struct RecoveryWriter: Sendable {
             for folder in ordered {
                 // A row whose folder is still listed is never re-pointed; only a stale one (a restored backup) is.
                 if let held = try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: folder.logicalPath)?.remoteId,
-                   held != folder.remoteId, listedIds.contains(held) { continue }
+                   held != folder.remoteId, listedIds.contains(held) {
+                    totals.conflicts += 1
+                    log.log(.notice, category: "recovery", "destination=\(id) kept a folder row that points at another listed folder")
+                    continue
+                }
                 let sharing = try Int.fetchOne(db, sql: """
                     SELECT COUNT(*) FROM remote_folder WHERE destination_id = ? AND remote_id = ? AND logical_path != ?
                     """, arguments: [id.rawValue, folder.remoteId, folder.logicalPath]) ?? 0

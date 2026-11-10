@@ -85,7 +85,7 @@ import Testing
         #expect(result.conflicts == 1)
         #expect(result.inventory.folders.count == 1)
         #expect(result.inventory.files.first { $0.item.remoteId == "f1" }?.parentLogical == "camera/2026-11-08")
-        #expect(result.inventory.files.first { $0.item.remoteId == "f2" }?.parentLogical == nil, "not adopted")
+        #expect(result.inventory.files.contains { $0.item.remoteId == "f2" } == false, "left out of the recovery")
     }
 
     @Test func filesFollowTheirFolderAndTheResultIsDeterministic() {

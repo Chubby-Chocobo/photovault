@@ -125,6 +125,12 @@ struct AppEnvironment: Sendable {
             store = try Self.openStore(at: layout.database, backups: backups, log: log)
             settings = try SettingsStore(store: store, log: log)
         } catch {
+            if let store = error as? StoreError, store == .newerSchema {
+                log.log(.fault, category: "launch", "database was written by a newer version; refusing to open it")
+                throw LaunchFailure.other(tr(
+                    vi: "Cơ sở dữ liệu này được tạo bởi một phiên bản PhotoVault mới hơn. Hãy cài lại phiên bản mới nhất; đừng dùng bản cũ hơn.",
+                    en: "This database was created by a newer version of PhotoVault. Install the latest version; do not use an older one."))
+            }
             log.log(.fault, category: "launch", "database could not be opened: \(type(of: error))")
             throw LaunchFailure.other(tr(vi: "Không mở được cơ sở dữ liệu. Chi tiết nằm trong thư mục log.", en: "Could not open the database. Details are in the log folder."))
         }

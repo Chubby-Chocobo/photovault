@@ -198,6 +198,13 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - Why: the new test E8 found that a named day plus one far, un-geocoded photo became `unnamed` (its folder lost its name) and was renamed again after the geocode.
 - Review later: no
 
+### Recovery order and conflict-dropped folders (review, 2026-11-10)
+- Chosen: `RecoveryService.runPending` recovers destinations with app properties (Drive) first, then the others, each in `created_at, id` order. A local destination's recovery returns `notReady(.waitingForDrive)` while a registered Drive destination has `recovery_required` set. With no Drive destination (or one that is not registered) a local destination recovers alone.
+- Why: a local listing can only guess which folder of a split day is the main one; that guess became `day_stat`/`day_place` and Drive was then made to follow it, which queued moves (reproduced with a restored pre-split backup and with a lost database, NAS created first). Limit: a Drive destination whose data has not been detected yet (offline from the start) has no `recovery_required`, so a local destination does not wait for it.
+- Files in a folder dropped because its path was already bound are left out of the recovery: nothing is adopted or moved, the folder and files stay at the destination, and their asset uploads again into the right folder.
+- `move_job` rows are not pruned: finished rows are the only record of what moved, nothing reads them at run time, and the index makes the lookups independent of their number (100k rows: 3000 lookups in 0.05 s).
+- Review later: no
+
 ### Decision record number
 - Chosen: `docs/decisions/0028-split-day-by-place.md`.
 - Alternatives: 0027.

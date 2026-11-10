@@ -39,6 +39,9 @@ public enum RecoveryBlocker: String, Sendable, Equatable {
     case scanIncomplete, cloudIdsPending, destinationUnavailable, unknownDestination, alreadyRunning
     /// The root holds a backup in the old `YYYY/MM` layout; it cannot be reused.
     case legacyLayout
+    /// A local destination waits while a Drive destination still has to be recovered: Drive's folders say
+    /// which folder of a split day is which, a local listing can only guess.
+    case waitingForDrive
 }
 
 public enum RecoveryOutcome: Sendable, Equatable {

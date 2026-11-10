@@ -54,9 +54,7 @@ public final class Store: Sendable {
     /// In-memory database for tests and previews.
     public static func inMemory() throws -> Store {
         let queue = try DatabaseQueue()
-        let migrator = Schema.makeMigrator()
-        if try queue.read(migrator.hasBeenSuperseded) { throw StoreError.newerSchema }
-        try migrator.migrate(queue)
+        try Schema.makeMigrator().migrate(queue)
         return Store(writer: queue)
     }
 

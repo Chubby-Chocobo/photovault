@@ -131,6 +131,10 @@ enum RecoveryCommandError: Error, Equatable {
                 vi: "Thư mục này chứa bản sao lưu của PhotoVault 0.1.0 (bố cục cũ) nên không dùng lại được. Hãy chuyển nó vào Thùng rác hoặc chọn thư mục khác.",
                 en: "This folder holds a PhotoVault 0.1.0 backup (the old layout), so it can’t be reused. Move it to the Trash or pick another folder.")
         case .notReady(.alreadyRunning): tr(vi: "Đang khôi phục đích này.", en: "This destination is being recovered.")
+        case .notReady(.waitingForDrive):
+            tr(
+                vi: "Cần khôi phục Google Drive trước. Thử lại khi Drive đã khôi phục xong.",
+                en: "Google Drive must be recovered first. Try again once Drive has finished.")
         }
     }
 }
