@@ -56,4 +56,11 @@ import Testing
                      ImportProgressText.menuTitle(folderName: item.displayName), String(describing: item), String(reflecting: item)]
         for text in texts { #expect(!text.contains("Trips")) }
     }
+
+    @Test func aQueuedImportCarriesItsLocation() {
+        let location = ImportLocation(paths: ["My Drive/Trips"])
+        let item = ImportQueue.snapshot(id: .folder(), kind: .googleDrive, account: "a@b.c", displayName: "Trips", now: Date(), location: location)
+        #expect(item.location == location)
+        #expect(ImportQueue.snapshot(id: .folder(), kind: .dropbox, account: nil, displayName: "x", now: Date()).location == nil)
+    }
 }

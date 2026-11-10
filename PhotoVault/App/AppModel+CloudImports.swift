@@ -39,7 +39,9 @@ extension AppModel {
                 _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw CancellationError()
             }
-            enqueueImport(id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") {
+            enqueueImport(
+                id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive",
+                location: ImportLocation.make(kind: .googleDrive, config: config)) {
                 try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
             }
         }
@@ -98,7 +100,9 @@ extension AppModel {
         let name = CloudImportText.dropboxDisplayName(path: path)
         let source = env.cloud.dropboxSource(id: id, rootPath: path)
         let config = SourceConfig(account: email, remoteItems: [path], sidecarName: CloudImportText.dropboxSidecarName(path: path))
-        enqueueImport(id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox") {
+        enqueueImport(
+            id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox",
+            location: ImportLocation.make(kind: .dropbox, config: config)) {
             try await env.coordinator.startImport(source: source, kind: .dropbox, displayName: name, config: config)
         }
         return true
@@ -199,8 +203,8 @@ extension AppModel {
     /// between sync passes, which can take long, and the owner may close the window meanwhile. Cancelling the
     /// queued entry cancels the start and deletes the stored sign-in; so does a start that fails.
     private func enqueueImport(id: SourceID, kind: SourceKind, account: String, displayName: String, provider: String,
-                               start: @escaping @MainActor () async throws -> SourceID) {
-        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date()))
+                               location: ImportLocation? = nil, start: @escaping @MainActor () async throws -> SourceID) {
+        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date(), location: location))
         queuedStarts[id] = Task { @MainActor [self] in
             defer {
                 queuedImports.removeAll { $0.id == id }
