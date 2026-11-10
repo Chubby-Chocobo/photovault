@@ -28,6 +28,9 @@ Owner request: show the name and progress of the file being synced on the status
 - Dropbox browsing account e-mail: stored in the Keychain as `dropbox-account-email` beside the token (written by `DropboxTokenAuthorizer.store`, removed with the token, included in the factory-reset cleanup). An older token has none: `refreshDropboxEmail` asks `users/get_current_account` once and stores it. If that fails the line says "signed in" without the e-mail.
 - Settings line sits in the existing imports row of `SourcesTab` (4 added lines); the hotfix-touched `AppModel+CloudImports.swift` is not edited.
 
+- Elapsed time (`m:ss`) joins the line after 10 s; the 1 Hz app clock makes it move between 8 MiB chunk acks. Rates are not shown: between acks they would be a stale step.
+- Photos export with 0 bytes received reads "Đang tải … từ iCloud". The assumption (not verified on a device): `PHAssetResourceManager` delivers data only after an iCloud-only original is on this Mac, so no byte callback fires during the download. If bytes do stream during download, the line shows normal export progress, which is also correct.
+
 ## Unresolved
 
 - Tooltip on the status item is unverified on a real menu bar.
