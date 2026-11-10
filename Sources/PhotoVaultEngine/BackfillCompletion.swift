@@ -81,8 +81,19 @@ enum BackfillCompletion {
         Int64(try KeyValueRepository.int(db, Key.completedMaxJob) ?? 0)
     }
 
+    /// Highest id of the backfill jobs of destinations the owner has not paused. A paused destination's
+    /// jobs are left out so that the work it does after it resumes is recorded as its own end.
     private static func latestJobId(_ db: Database) throws -> Int64? {
-        try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM upload_job WHERE origin IN (\(origins)) AND state != 'cancelled'")
+        let paused = try pausedDestinations(db)
+        let marks = paused.map { _ in "?" }.joined(separator: ", ")
+        let skip = paused.isEmpty ? "" : " AND destination_id NOT IN (\(marks))"
+        return try Int64.fetchOne(
+            db, sql: "SELECT MAX(id) FROM upload_job WHERE origin IN (\(origins)) AND state != 'cancelled'\(skip)",
+            arguments: StatementArguments(paused))
+    }
+
+    private static func pausedDestinations(_ db: Database) throws -> [String] {
+        try DestinationRepository.fetchAll(db).filter { $0.status == .paused(.userPaused) }.map(\.id.rawValue)
     }
 
     /// Every backfill job (of a destination the owner has not paused) is closed, at least one exists,

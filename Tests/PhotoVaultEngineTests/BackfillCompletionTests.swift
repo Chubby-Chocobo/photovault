@@ -279,4 +279,34 @@ import Testing
         let progress = try h.read { db in try EngineQueries.backfillProgress(db) }
         #expect(progress.done < progress.total)
     }
+
+    @Test func aHiddenPhotoTheSettingsExcludeDoesNotHoldTheEnd() async throws {
+        let h = try await finishedBackfill()
+        let settings = await h.env.settingsSnapshot()
+        #expect(!settings.settings.includeHidden)
+        try h.write { db in
+            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMaxJob, nil)
+            try db.execute(sql: "DELETE FROM activity")
+            try db.execute(sql: "UPDATE asset SET category_provisional = 1, is_hidden = 1 WHERE asset_key = (SELECT MIN(asset_key) FROM asset)")
+            try BackfillCompletion.note(db, drained: true, now: Date(), settings: settings)
+        }
+        #expect(try rows(h).count == 1)
+    }
+
+    @Test func workDoneAfterAPausedDestinationResumesIsRecordedOnce() async throws {
+        let h = try await harness()
+        try h.addNAS(scope: .full)
+        try h.write { db in try DestinationRepository.setStatus(db, id: h.nasId, status: .paused(.userPaused), now: h.clock.now) }
+        for index in 0..<3 { await h.add(h.snapshot("old\(index)", daysAgo: 5), recordChange: false) }
+        try await h.baseline(.googleDrive, h.nasId)
+        await h.settle()
+        #expect(try rows(h).count == 1, "Drive finished; the paused NAS does not hold the end")
+        try await h.coordinator.acknowledgeBackfillNotification()
+
+        try h.write { db in try DestinationRepository.setStatus(db, id: h.nasId, status: .active, now: h.clock.now) }
+        await h.settle()
+        #expect(try rows(h).count == 2, "the NAS's three files are a backfill of their own")
+        await h.settle()
+        #expect(try rows(h).count == 2)
+    }
 }

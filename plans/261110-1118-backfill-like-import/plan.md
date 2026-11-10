@@ -23,3 +23,4 @@ Status: Completed. Owner request: backfill is a one-time job; the menu-bar popov
 - "N ảnh" counts photos with a finished backfill job after the previous watermark; bytes likewise, so a second end does not repeat the first's size. Skipped photos are not counted.
 - Owner decision on waits: a destination paused by the owner (`userPaused`) does not keep the backfill open or the card visible (`EngineQueries.backfillProgress` leaves its jobs out); temporary states (offline, waiting for disk, deferred) are live waits and keep the card.
 - The app re-reads the engine's notification flag right before posting, so the snapshot stream and the poll cannot both post. Not covered by a unit test: the code lives in the app target.
+- The watermark is taken over jobs of destinations that are not paused by the owner, so work a destination does after it resumes is recorded as its own end.
