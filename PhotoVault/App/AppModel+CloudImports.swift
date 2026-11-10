@@ -30,9 +30,11 @@ extension AppModel {
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
             let folderName = await source.singlePickedFolderName()
             let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
+            let locations = await source.pickedLocations()
             let config = SourceConfig(
                 account: email, remoteItems: picked.pickedIds,
-                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
+                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count),
+                locationPaths: locations?.paths, locationURL: locations?.webURL)
             if Task.isCancelled {
                 _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw CancellationError()

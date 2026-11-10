@@ -15,7 +15,7 @@ struct ImportsCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(ImportProgressText.menuTitle(folderName: item.displayName)).font(.subheadline.weight(.semibold))
-                        .lineLimit(1).truncationMode(.middle)
+                        .lineLimit(1).truncationMode(.middle).help(ImportLocationText.tooltip(item.location) ?? "")
                     Spacer(minLength: 6)
                     Button { confirming.toggle() } label: { Image(systemName: "xmark.circle") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
