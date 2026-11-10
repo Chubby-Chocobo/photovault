@@ -1,7 +1,7 @@
 ---
 phase: "02"
 title: "Core: PlaceSplitPolicy (grouping)"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1-2h

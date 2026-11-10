@@ -5,11 +5,18 @@ public struct PlaceAsset: Hashable, Sendable {
     public var location: GeoPoint?
     public var isHidden: Bool
     public var isDeleted: Bool
+    /// Identifies the asset in a split result; empty where only the location matters.
+    public var id: String
+    public var creationDate: Date?
 
-    public init(location: GeoPoint?, isHidden: Bool = false, isDeleted: Bool = false) {
+    public init(
+        location: GeoPoint?, isHidden: Bool = false, isDeleted: Bool = false, id: String = "", creationDate: Date? = nil
+    ) {
         self.location = location
         self.isHidden = isHidden
         self.isDeleted = isDeleted
+        self.id = id
+        self.creationDate = creationDate
     }
 }
 
