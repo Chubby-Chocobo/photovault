@@ -67,6 +67,27 @@ enum BackfillCompletion {
         try store(db, marks: merged([:], latest, db), at: finishedAt, state: state, pending: false)
     }
 
+    /// Files that recovery matched to what the destination already holds are written as finished backfill
+    /// jobs although nothing was uploaded. Moves the destination's mark past them, with no row and no
+    /// notification, so only what is uploaded afterwards counts as a backfill. Jobs still open keep
+    /// their place: the mark stops before the first of them.
+    static func skipRecovered(_ db: Database, destinationId: String) throws {
+        let id = try Int64.fetchOne(db, sql: """
+            SELECT MAX(id) FROM upload_job
+            WHERE destination_id = ?1 AND origin IN (\(origins)) AND state = 'done'
+              AND id < COALESCE((SELECT MIN(id) FROM upload_job
+                                 WHERE destination_id = ?1 AND origin IN (\(origins))
+                                   AND state IN ('pending', 'uploading', 'deferred', 'missingRemote')), 9223372036854775807)
+            """, arguments: [destinationId])
+        guard let id else { return }
+        var marks = try recordedMarks(db) ?? [:]
+        guard id > (marks[destinationId] ?? 0) else { return }
+        marks[destinationId] = id
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        try KeyValueRepository.set(db, Key.completedMarks, String(decoding: try encoder.encode(marks), as: UTF8.self))
+    }
+
     static func acknowledgeNotification(_ db: Database) throws {
         try KeyValueRepository.set(db, Key.notifyPending, 0)
     }

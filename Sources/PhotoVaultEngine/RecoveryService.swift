@@ -235,6 +235,8 @@ actor RecoveryService {
         }
         let written = try await writer.writeFiles(matches.files, daysWithRows: daysWithRows)
         stats.suspect = written.suspect
+        let recoveredId = record.id.rawValue
+        try await env.store.write { db in try BackfillCompletion.skipRecovered(db, destinationId: recoveredId) }
         stats.shortcuts = try await writer.writeShortcuts(matches.shortcuts)
         env.log.log(.info, category: "recovery", "destination=\(record.id) matched=\(stats.matched) unmatched=\(stats.unmatched) folders=\(stats.folders)")
         try await finish(record, stats: stats, verifyLocal: !destination.capabilities.supportsAppProperties)
