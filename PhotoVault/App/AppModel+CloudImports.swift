@@ -250,6 +250,10 @@ extension AppModel {
                 showNotice(tr(
                     vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục. Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
                     en: "PhotoVault needs permission to see your Drive files to import a folder. Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
+            case .pickAccessDenied:
+                showNotice(tr(
+                    vi: "Bạn cần cho phép PhotoVault truy cập các file bạn chọn trong Drive. Hãy thử lại và giữ ô “Xem, chỉnh sửa, tạo và xóa các file cụ thể trong Google Drive” được chọn.",
+                    en: "PhotoVault needs permission for the Drive files you pick. Try again and keep “See, edit, create and delete only the specific Google Drive files you use with this app” ticked."), isError: true)
             case .tokenMissing: showNotice(tr(vi: "Google không trả quyền truy cập. Hãy thử lại.", en: "Google did not grant access. Try again."), isError: true)
             }
         } else if let dropbox = error as? DropboxAuthError {

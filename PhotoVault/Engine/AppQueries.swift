@@ -78,7 +78,7 @@ enum AppQueries {
             device: try count("SELECT COUNT(*) FROM asset WHERE category = 'camera' AND camera_model IS NOT NULL AND deleted_at IS NULL"),
             place: try count("SELECT COUNT(*) FROM asset WHERE geo_cell IS NOT NULL AND deleted_at IS NULL"),
             favorites: try count("SELECT COUNT(*) FROM asset WHERE is_favorite = 1 AND deleted_at IS NULL"),
-            lens: try count("SELECT COUNT(*) FROM asset WHERE category = 'camera' AND TRIM(COALESCE(lens_model, '')) != '' AND deleted_at IS NULL"),
+            lens: try AssetRepository.countCameraWithLens(db),
             files: try count("SELECT COUNT(*) FROM upload_job WHERE destination_id = 'gdrive' AND state != 'cancelled'"),
             folders: try count("SELECT COUNT(*) FROM remote_folder WHERE destination_id = 'gdrive'"))
     }

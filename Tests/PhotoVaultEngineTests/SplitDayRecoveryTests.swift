@@ -306,7 +306,7 @@ import Testing
         let before = await listing(w)
         let job = try #require(try h.jobs().first { $0.remoteId == movedFile.id })
 
-        let outcome = try await h.coordinator.startRecovery(.googleDrive)
+        let outcome = try await L10n.$override.withValue(.en) { try await h.coordinator.startRecovery(.googleDrive) }
         guard case .recovered(let stats) = outcome else {
             Issue.record("expected a recovery, got \(outcome)")
             return
@@ -316,7 +316,7 @@ import Testing
         #expect(await listing(w) == before, "nothing at the destination was touched")
         let after = try #require(try h.jobs().first { $0.assetKey == job.assetKey && $0.resType == job.resType })
         #expect(after.remoteId == job.remoteId && after.remoteLogicalParent == job.remoteLogicalParent, "its job is as it was")
-        #expect(try h.activity().contains { $0.kind == .notice && $0.destinationId == .googleDrive && $0.message.contains("1") })
+        #expect(try h.activity().contains { $0.kind == .notice && $0.destinationId == .googleDrive && $0.message.hasSuffix("1 folder claimed a path already in use and was left out") })
     }
 
     // MARK: Writer refusal

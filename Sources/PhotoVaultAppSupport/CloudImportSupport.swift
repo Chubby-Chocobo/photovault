@@ -42,15 +42,15 @@ public enum CloudImportText {
     }
 
     /// Shown for a finished import whose listing found no photo or video the app could read, so it never
-    /// looks like a silent success. A Google Drive import also gets the way to import again: imports made before
-    /// Drive reading was granted only saw the picked folder itself.
+    /// looks like a silent success. A Google Drive import also gets the way to import again, in case the
+    /// folder does hold photos (an import made before Drive reading was granted only saw the picked folder itself).
     public static func emptyImportNotice(_ item: ImportSnapshot) -> String? {
         guard item.status == .completed, item.found == 0 else { return nil }
         let base = tr(vi: "Mục đã chọn không có ảnh hay video nào mà app đọc được.", en: "The selection had no photos or videos the app could read.")
         guard item.kind == .googleDrive else { return base }
         return base + " " + tr(
-            vi: "Hãy nhập lại: Nhập ảnh… › Từ Google Drive… (bản cũ chỉ có quyền hạn chế).",
-            en: "Import again: Import photos… › From Google Drive… (older versions had limited access).")
+            vi: "Nếu thư mục có ảnh, hãy nhập lại: Nhập ảnh… › Từ Google Drive…",
+            en: "If the folder does hold photos, import again: Import photos… › From Google Drive…")
     }
 
     /// A cloud import the provider no longer lets in: an open one is held, a finished one waits for its files.

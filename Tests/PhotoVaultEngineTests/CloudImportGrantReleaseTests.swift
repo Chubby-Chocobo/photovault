@@ -76,6 +76,29 @@ import Testing
         #expect(try await h.coordinator.closedImportsReadyToRelease() == [source.id])
     }
 
+    private func statusReason(_ h: Harness, _ source: FakeContentSource) throws -> String? {
+        try h.read { db in try SourceRepository.fetch(db, id: source.id)?.statusReason }
+    }
+
+    @Test func aClosedImportThatWaitsForNothingNoLongerAsksForASignIn() async throws {
+        let h = try await harness()
+        let source = try await seed(h, status: .completed)
+        try h.write { db in try SourceRepository.setStatusReason(db, id: source.id, reason: "signInRequired") }
+        try setJobs(h, .cancelled)
+        // No stored sign-in any more: the notice must still go.
+        #expect(try await h.coordinator.closedImportsReadyToRelease(grantExists: { _ in false }).isEmpty)
+        #expect(try statusReason(h, source) == nil)
+    }
+
+    @Test func aClosedImportWithFilesStillWaitingKeepsItsSignInNotice() async throws {
+        let h = try await harness()
+        let source = try await seed(h, status: .completed)
+        try h.write { db in try SourceRepository.setStatusReason(db, id: source.id, reason: "signInRequired") }
+        try setJobs(h, .pending)
+        _ = try await h.coordinator.closedImportsReadyToRelease(grantExists: { _ in false })
+        #expect(try statusReason(h, source) == "signInRequired")
+    }
+
     @Test func onlyImportsWithAGrantAreChecked() async throws {
         let h = try await harness()
         let source = try await seed(h, status: .completed)
