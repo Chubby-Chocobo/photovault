@@ -94,8 +94,6 @@ public enum SyncedCloudText {
         }
     }
 
-    public static var useBrowserInstead: String { tr(vi: "Dùng trình duyệt thay thế", en: "Use the browser instead") }
-
     /// Said before the browser flow, because Google shows its "not verified" screen for the restricted read scope.
     public static var googleUnverifiedWarning: String {
         tr(vi: "Google sẽ báo “chưa xác minh” vì app dùng quyền đọc Drive; đây là app của bạn — chọn Nâng cao › Đi tới PhotoVault.",
@@ -108,4 +106,49 @@ public enum SyncedCloudText {
     }
 
     public static let googleDriveDesktopURL = URL(string: "https://www.google.com/drive/download/")!
+}
+
+/// What "Nhập ảnh…" offers for one provider: the synced folder on this Mac and the browser sign-in are separate,
+/// named items, so the owner chooses between them instead of finding the second inside a panel.
+public enum ImportMenuChoices {
+    public enum Action: Equatable, Sendable { case syncedFolder, browser }
+
+    public struct Item: Equatable, Sendable {
+        public var action: Action
+        public var title: String
+        public var help: String
+        public var isEnabled: Bool
+    }
+
+    /// `appPresent`: the provider's desktop app was found. `browserConfigured`: the build has the Google client ID or
+    /// the Dropbox app key. One way available gives one plain item; neither gives one disabled item that says why.
+    public static func items(_ provider: SyncedCloudProvider, appPresent: Bool, browserConfigured: Bool) -> [Item] {
+        let name = provider == .googleDrive ? "Google Drive" : "Dropbox"
+        let plain = tr(vi: "Từ \(name)…", en: "From \(name)…")
+        switch (appPresent, browserConfigured) {
+        case (true, true):
+            return [
+                Item(action: .syncedFolder, title: tr(vi: "\(name) trên máy này…", en: "\(name) on this Mac…"),
+                     help: provider == .googleDrive
+                        ? tr(vi: "Không cần đăng nhập, không có cảnh báo của Google", en: "No sign-in, no Google warning")
+                        : tr(vi: "Không cần đăng nhập", en: "No sign-in"),
+                     isEnabled: true),
+                Item(action: .browser, title: tr(vi: "\(name) qua trình duyệt…", en: "\(name) in the browser…"),
+                     help: tr(vi: "Dùng được với tài khoản \(provider == .googleDrive ? "Google" : "Dropbox") chưa đồng bộ trên máy này",
+                              en: "Works with a \(provider == .googleDrive ? "Google" : "Dropbox") account that is not synced on this Mac"),
+                     isEnabled: true),
+            ]
+        case (true, false):
+            return [Item(action: .syncedFolder, title: plain, help: "", isEnabled: true)]
+        case (false, true):
+            return [Item(action: .browser, title: plain, help: "", isEnabled: true)]
+        case (false, false):
+            let why = provider == .googleDrive
+                ? tr(vi: "Cài Google Drive cho máy tính, hoặc dùng bản build có Google client ID.",
+                     en: "Install Google Drive for desktop, or use a build with a Google client ID.")
+                : tr(vi: "Cài ứng dụng Dropbox, hoặc dùng bản build có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
+                     en: "Install the Dropbox app, or use a build with a Dropbox app key (DROPBOX_APP_KEY).")
+            return [Item(action: .browser, title: plain, help: why, isEnabled: false)]
+        }
+    }
 }
