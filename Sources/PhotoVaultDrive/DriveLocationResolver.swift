@@ -27,6 +27,7 @@ struct DriveLocationNode: Decodable, Equatable, Sendable {
 struct DriveLocationResolver {
     static let myDrive = "My Drive"
     static let sharedWithMe = "Shared with me"
+    static let sharedDrive = "Shared drive"
 
     private struct Failure: Error {}
 
@@ -82,7 +83,12 @@ struct DriveLocationResolver {
             names.append(name)
             guard let parent = current.parents?.first else { terminal = current; break }
             if names.count >= maxDepth { cut = true; break }
-            current = try await node(parent)
+            do { current = try await node(parent) } catch is CancellationError { throw CancellationError() } catch {
+                // The top of a shared drive can refuse to be read; its id is never shown.
+                guard current.driveId != nil else { throw error }
+                names.append(Self.sharedDrive)
+                break
+            }
         }
         names.reverse()
         if cut { names.insert("…", at: 0) }

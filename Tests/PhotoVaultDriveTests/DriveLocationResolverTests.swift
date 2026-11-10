@@ -72,6 +72,17 @@ private final class Tree: @unchecked Sendable {
         #expect(await tree.resolve(picked: ["X"])?.paths == ["Family/Scans"])
     }
 
+    @Test func aSharedDriveWhoseNameCannotBeReadIsCalledSharedDriveNeverByItsId() async {
+        let tree = Tree()
+        tree.add("D-secret-id", "Family", driveId: "D-secret-id")
+        tree.add("X", "Scans", parent: "D-secret-id", driveId: "D-secret-id")
+        tree.add("Y", "2024", parent: "X", driveId: "D-secret-id")
+        tree.failing = ["D-secret-id"]
+        let path = await tree.resolve(picked: ["Y"])?.paths.first
+        #expect(path == "Shared drive/Scans/2024")
+        #expect(path?.contains("secret") == false)
+    }
+
     @Test func severalPicksKeepOrderAndShareLookups() async {
         let tree = Tree()
         tree.add("T", "Trips", parent: "R")
