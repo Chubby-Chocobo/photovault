@@ -12,7 +12,8 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 | 0.1.0 | 2026-11-09 | Ứng dụng menu bar sao lưu Photos sang Google Drive và thư mục local/NAS |
 | 0.2.0 | 2026-11-09 | Nhiều nguồn; nhập một lần từ thư mục trên Mac (#22); một thư mục cho mỗi ngày; khởi động lại từ onboarding (factory reset); giao diện tiếng Việt và tiếng Anh |
 | 0.3.0 | 2026-11-10 | Nhập một lần từ thư mục Google Drive (Picker, `drive.file`) và từ thư mục Dropbox (#25) |
-| 0.4.0 | 2026-11-10 | Xem bảng dưới |
+| 0.4.0 | 2026-11-10 | By lens, tách ngày theo nơi chụp, nhập Drive đọc được nội dung thư mục (xem bảng dưới) |
+| 0.5.0 | 2026-11-10 | Nhập từ thư mục Google Drive/Dropbox đồng bộ trên máy (không còn cảnh báo "chưa xác minh"); dòng trạng thái hiện file đang chuyển; hàng đợi nhập dạng danh sách; Huỷ nhập có hiệu lực ngay; đường dẫn đầy đủ trong lịch sử nhập |
 
 ### 0.4.0 (phát hành 2026-11-10)
 
@@ -34,6 +35,8 @@ Chỉ Photos là nguồn liên tục ([quyết định 0029](../decisions/0029-p
 | 3 | Nguồn liên tục Drive của tài khoản Google khác | Chưa lên lịch. Cần kiểm tra trên tài khoản thật rằng `drive.readonly` liệt kê được thư mục lồng nhau (quyết định 0030) |
 | 4 | Nguồn liên tục S3-compatible | Chưa lên lịch. Cần bộ chặn xoá hàng loạt |
 | 5 | Nguồn liên tục Flickr | Chưa lên lịch. Cần API key và secret từ owner |
+
+Việc tiếp theo đã có issue: tải đợt sau trong lúc upload đợt trước khi nhập từ cloud (#69); bổ sung test cho phần huỷ nhập (#68).
 
 Các mục khác trong spec §15, chưa lên lịch:
 
