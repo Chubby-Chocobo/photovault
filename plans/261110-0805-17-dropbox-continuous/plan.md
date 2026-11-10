@@ -1,7 +1,7 @@
 ---
 title: "Dropbox as a continuous source, and a mechanism for adding providers"
 description: "A Dropbox folder (or the whole account) watched through a change feed, ingested through the import pipeline; plus a provider guide for OneDrive, S3 and Flickr"
-status: pending
+status: on-hold
 priority: P2
 size: L
 human_effort: 8.5-16.5h
@@ -140,6 +140,8 @@ Checked against its plan (`plans/261110-0735-27-split-day-by-place`, worktree `p
 - Docs (`photovault-spec-v1.md`, `system-architecture.md`, `decisions/README.md`): text conflicts. #27 takes decision 0028, this plan takes 0029.
 
 ## Decisions
+
+Plan complete and audited; implementation on hold by owner decision 2026-11-10: Photos is the only continuous source for now. `docs/architecture/continuous-source-extension.md` (branch `docs/future-continuous-sources`) points here as the place to resume.
 
 ### Change feed contract in Core
 - Chosen: `protocol ContinuousSource: ContentSource { probe(); changes(since cursor: String?) -> SourceChanges; inspect(remoteId:uti:mediaType:control:) }`.
