@@ -25,19 +25,23 @@ public struct TransferProgress: Sendable, Equatable, Identifiable, CustomStringC
     public var accountEmail: String?
     /// The source the file belongs to (Photos, or an import); the cards show their own files.
     public var sourceId: SourceID?
+    /// The file is part of a backfill (its jobs have a backfill origin), whatever source it comes from.
+    public var isBackfill: Bool
     public var bytesDone: Int64
     /// Nil when the total is not known; only the bytes done are shown then.
     public var bytesTotal: Int64?
     public var startedAt: Date
 
     public init(id: UUID = UUID(), kind: TransferKind, fileName: String, destinationName: String? = nil,
-                accountEmail: String? = nil, sourceId: SourceID? = nil, bytesDone: Int64 = 0, bytesTotal: Int64? = nil, startedAt: Date) {
+                accountEmail: String? = nil, sourceId: SourceID? = nil, isBackfill: Bool = false,
+                bytesDone: Int64 = 0, bytesTotal: Int64? = nil, startedAt: Date) {
         self.id = id
         self.kind = kind
         self.fileName = fileName
         self.destinationName = destinationName
         self.accountEmail = accountEmail
         self.sourceId = sourceId
+        self.isBackfill = isBackfill
         self.bytesDone = bytesDone
         self.bytesTotal = bytesTotal
         self.startedAt = startedAt

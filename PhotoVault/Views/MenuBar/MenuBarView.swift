@@ -105,6 +105,12 @@ private struct BackfillSection: View {
     @Environment(AppModel.self) private var model
     var snapshot: EngineSnapshot
 
+    private func activityLine(now: Date) -> some View {
+        let activity = CardActivityText.backfill(
+            snapshot: snapshot, transfers: model.transfers, now: now, disk: model.diskState, settings: model.persistedSettings)
+        return CardActivityLine(text: activity.text, isBusy: activity.isBusy, isWaiting: !activity.isBusy)
+    }
+
     var body: some View {
         if BackfillText.isRunning(snapshot) {
             VStack(alignment: .leading, spacing: 4) {
@@ -117,11 +123,13 @@ private struct BackfillSection: View {
                 }
                 ProgressBar(fraction: ProgressText.fraction(done: snapshot.backfillDoneAssets, total: snapshot.backfillTotalAssets))
                     .accessibilityLabel(tr(vi: "Tiến độ backfill", en: "Backfill progress"))
-                // `transferNow` ticks while files move, so the elapsed time and the one-second rule keep up.
+                // `transferNow` ticks while files move; a retry countdown has nothing moving, so it brings its own clock.
                 let _ = model.transferNow
-                let activity = CardActivityText.backfill(
-                    snapshot: snapshot, transfers: model.transfers, now: Date(), disk: model.diskState, settings: model.persistedSettings)
-                CardActivityLine(text: activity.text, isBusy: activity.isBusy, isWaiting: !activity.isBusy)
+                if snapshot.nextRetryAt != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in activityLine(now: context.date) }
+                } else {
+                    activityLine(now: Date())
+                }
                 HStack {
                     Text(tr(vi: "Đã upload \(VietnameseFormat.bytes(snapshot.bytesUploaded))", en: "Uploaded \(VietnameseFormat.bytes(snapshot.bytesUploaded))"))
                     Spacer()

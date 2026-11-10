@@ -145,6 +145,14 @@ import Testing
         #expect(await h.drive.files.count == 1)
     }
 
+    private func setRetry(_ h: Harness, job: UploadJob, at date: Date?, origin: String? = nil) throws {
+        try h.write { db in
+            try db.execute(sql: "UPDATE upload_job SET next_attempt_at = ? WHERE id = ?", arguments: [date, job.id])
+            if let origin { try db.execute(sql: "UPDATE upload_job SET origin = ? WHERE id = ?", arguments: [origin, job.id]) }
+        }
+    }
+
+
     @Test func theSnapshotSaysWhenTheNextRetryIsDue() async throws {
         let h = try await Harness()
         try await oneJob(h)
@@ -156,6 +164,38 @@ import Testing
         #expect(snapshot.nextRetryAt == due && due > h.clock.now)
         h.clock.advance(by: 3600)
         #expect(await h.coordinator.currentSnapshot().nextRetryAt == nil, "a retry that is already due is not a wait")
+    }
+
+    @Test func noRetryIsReportedWhileAnotherBackfillJobIsDue() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        await h.add(h.snapshot("b", daysAgo: 1), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.drive.failNext(.upload, with: .itemRejected(reason: "bad"), times: 2)
+        await h.run()
+        let jobs = try h.jobs().sorted { ($0.id ?? 0) < ($1.id ?? 0) }
+        #expect(jobs.count == 2 && jobs.allSatisfy { $0.state == .pending && $0.origin == .backfill })
+        let later = h.clock.now.addingTimeInterval(300)
+        try setRetry(h, job: jobs[1], at: nil)  // this one is due now
+        try setRetry(h, job: jobs[0], at: later)
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt == nil, "the other job is due: nothing is waiting")
+        try setRetry(h, job: jobs[1], at: later.addingTimeInterval(60))
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt == later, "the earliest of the waiting jobs")
+    }
+
+    @Test func onlyBackfillJobsCountForTheBackfillCard() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("a", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.drive.failNext(.upload, with: .itemRejected(reason: "bad"))
+        await h.run()
+        let job = try #require(try h.jobs().first)
+        try setRetry(h, job: job, at: h.clock.now.addingTimeInterval(300), origin: "incremental")
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt == nil)
+        try setRetry(h, job: job, at: h.clock.now.addingTimeInterval(300), origin: "destinationBackfill")
+        #expect(await h.coordinator.currentSnapshot().nextRetryAt != nil)
     }
 
     @Test func deferredForThirtyDaysBecomesSkipped() async throws {

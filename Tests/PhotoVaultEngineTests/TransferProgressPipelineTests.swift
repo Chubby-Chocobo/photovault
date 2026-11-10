@@ -59,6 +59,23 @@ private extension Harness {
         #expect(imported.contains { $0.kind == .upload })
     }
 
+    @Test func transfersSayWhetherTheirFileIsPartOfABackfill() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        await h.add(h.snapshot("old", daysAgo: 30), recordChange: false)
+        try await h.baseline(.googleDrive)
+        h.clock.advance(by: 60)
+        await h.add(h.snapshot("fresh", daysAgo: 0.1))
+        let recorder = h.recordTransfers()
+        h.photos.beforeExport = { _, _, control in _ = control.record(bytes: 5) }
+        await h.run()
+        let byName = Dictionary(grouping: recorder.seen, by: \.fileName)
+        #expect(byName["IMG_old.HEIC"]?.isEmpty == false && byName["IMG_old.HEIC"]?.allSatisfy(\.isBackfill) == true)
+        #expect(byName["IMG_fresh.HEIC"]?.isEmpty == false && byName["IMG_fresh.HEIC"]?.allSatisfy { !$0.isBackfill } == true)
+        let kinds = Set((byName["IMG_old.HEIC"] ?? []).map { "\($0.kind)" })
+        #expect(kinds.contains("exportFromPhotos") && kinds.contains("upload"), "\(kinds)")
+    }
+
     @Test func aFailedExportClearsTheTransfer() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)

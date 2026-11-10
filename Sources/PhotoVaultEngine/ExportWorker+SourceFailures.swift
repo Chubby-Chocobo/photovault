@@ -20,7 +20,8 @@ extension ExportWorker {
             account = source?.config.account
         }
         let transfer = env.transfers.begin(
-            kind: kind, fileName: started.resource.originalFilename, accountEmail: account, sourceId: asset.sourceId, bytesTotal: started.resource.sizeBytes)
+            kind: kind, fileName: started.resource.originalFilename, accountEmail: account, sourceId: asset.sourceId, isBackfill: started.isBackfill,
+            bytesTotal: started.resource.sizeBytes)
         defer { transfer.end() }
         started.permit.control.setProgress(transfer.sink)
         let file: ExportedFile

@@ -24,11 +24,13 @@ struct CardActivityTextTests {
 
     private func transfer(
         _ kind: TransferKind = .upload, source: SourceID = .photos, to destination: String? = "Google Drive", account: String? = "ten@example.com",
-        done: Int64 = gib_, total: Int64? = 2 * gib_, ago: TimeInterval = 5
+        done: Int64 = gib_, total: Int64? = 2 * gib_, ago: TimeInterval = 5, backfill: Bool = true
     ) -> TransferProgress {
-        TransferProgress(
+        var transfer = TransferProgress(
             kind: kind, fileName: "IMG_1234.MOV", destinationName: destination, accountEmail: account, sourceId: source,
             bytesDone: done, bytesTotal: total, startedAt: Date(timeIntervalSince1970: 1_793_000_000 - ago))
+        transfer.isBackfill = backfill
+        return transfer
     }
 
     private func destination(_ name: String, _ status: DestinationStatus) -> DestinationSnapshot {
@@ -49,10 +51,11 @@ struct CardActivityTextTests {
         #expect(en { backfill(snapshot(), [transfer()]) } == .transfer("Uploading IMG_1234.MOV to Google Drive (ten@example.com) · 1.0 / 2.0 GB (50%)"))
     }
 
-    @Test func importFilesAreNotTheBackfillsCurrentFile() {
-        let other = SourceID.folder()
-        let activity = vi { backfill(snapshot(), [transfer(source: other)]) }
-        #expect(activity == .preparing("Đang chuẩn bị file tiếp theo…"))
+    @Test func theBackfillCardFollowsTheJobOriginNotTheSource() {
+        let imported = transfer(source: .folder(), backfill: true)
+        if case .transfer = vi({ backfill(snapshot(), [imported]) }) {} else { Issue.record("an imported file uploading as backfill belongs on the card") }
+        let fresh = transfer(backfill: false)
+        #expect(vi { backfill(snapshot(), [fresh]) } == .preparing("Đang chuẩn bị file tiếp theo…"))
     }
 
     @Test func aTransferThatHasNotRunASecondYetDoesNotCountAndTheCardSaysItIsPreparing() {
@@ -71,12 +74,18 @@ struct CardActivityTextTests {
         guard case .waiting(let criticalText) = vi({ backfill(snapshot(), disk: .critical) }) else { Issue.record("critical disk must wait"); return }
         #expect(criticalText.hasPrefix("Ổ Mac gần đầy"))
         let away = snapshot(destinations: [destination("NAS", .unavailable(.offline))])
-        #expect(vi { backfill(away) } == .waiting("NAS không khả dụng · chờ kết nối lại"))
+        #expect(vi { backfill(away) } == .waiting("NAS chưa kết nối"))
+        #expect(en { backfill(away) } == .waiting("NAS is not connected"))
+        // One destination that is away is no reason to wait while another can still make progress.
+        let working = snapshot(destinations: [destination("NAS", .unavailable(.offline)), destination("Drive", .active)])
+        #expect(vi { backfill(working) } == .preparing("Đang chuẩn bị file tiếp theo…"))
         let retry = snapshot(nextRetryAt: t0.addingTimeInterval(125))
         #expect(vi { backfill(retry) } == .waiting("Chờ thử lại sau 2:05"))
         #expect(en { backfill(retry) } == .waiting("Retrying in 2:05"))
+        // The countdown ran out and the next snapshot has not arrived yet.
         let due = snapshot(nextRetryAt: t0.addingTimeInterval(-5))
-        #expect(vi { backfill(due) } == .preparing("Đang chuẩn bị file tiếp theo…"))
+        #expect(vi { backfill(due) } == .preparing("Đang thử lại…"))
+        #expect(en { backfill(due) } == .preparing("Retrying…"))
     }
 
     @Test func aRunningTransferWinsOverAnyWaitingReason() {
@@ -97,6 +106,31 @@ struct CardActivityTextTests {
 
     // MARK: Header
 
+    @Test func theHeaderStaysFullWhenNoCardShowsTheSameFile() {
+        // A fresh photo uploads while a backfill is unfinished: the Backfill card does not show it.
+        let incremental = transfer(backfill: false)
+        let backfilling = snapshot(done: 10, total: 100)
+        let header = vi { OverallStatusText.make(snapshot: backfilling, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [incremental]) }
+        #expect(header.subtitle == "Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)")
+        // A finished import has no card.
+        var finished = snapshot(done: 0, total: 0)
+        let id = SourceID.folder()
+        finished.imports = [ImportSnapshot(id: id, displayName: "Trip", status: .completed, createdAt: t0, finishedAt: t0)]
+        let plain = vi { OverallStatusText.make(snapshot: finished, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [transfer(source: id, backfill: false)]) }
+        #expect(plain.subtitle.contains("lên Google Drive"))
+        // Only the newest running import has a card.
+        let older = SourceID.folder(), newest = SourceID.folder()
+        var two = snapshot(done: 0, total: 0)
+        two.imports = [
+            ImportSnapshot(id: newest, displayName: "New", status: .importing, createdAt: t0),
+            ImportSnapshot(id: older, displayName: "Old", status: .importing, createdAt: t0.addingTimeInterval(-60)),
+        ]
+        let hidden = vi { OverallStatusText.make(snapshot: two, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [transfer(source: older, backfill: false)]) }
+        #expect(hidden.subtitle.contains("lên Google Drive"), "the older import has no card: \(hidden.subtitle)")
+        let shown = vi { OverallStatusText.make(snapshot: two, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [transfer(source: newest, backfill: false)]) }
+        #expect(shown.subtitle == "Đang upload IMG_1234.MOV · 50%")
+    }
+
     @Test func theHeaderUsesTheShortLineWhileACardShowsTheFullOne() {
         let upload = transfer()
         let backfilling = snapshot(done: 10, total: 100)
@@ -107,8 +141,10 @@ struct CardActivityTextTests {
         let plain = vi { OverallStatusText.make(snapshot: idle, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [upload]) }
         #expect(plain.subtitle == "Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)")
         var importing = idle
-        importing.imports = [ImportSnapshot(id: .folder(), displayName: "Trip", status: .importing, createdAt: t0)]
-        let shortToo = vi { OverallStatusText.make(snapshot: importing, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [upload]) }
+        let importId = SourceID.folder()
+        importing.imports = [ImportSnapshot(id: importId, displayName: "Trip", status: .importing, createdAt: t0)]
+        let mine = transfer(source: importId, backfill: false)
+        let shortToo = vi { OverallStatusText.make(snapshot: importing, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [mine]) }
         #expect(shortToo.subtitle == "Đang upload IMG_1234.MOV · 50%")
     }
 

@@ -224,11 +224,22 @@ enum EngineQueries {
         return (total - open, total)
     }
 
-    /// The earliest moment an open job that waits out a retry delay is tried again.
+    /// When the backfill's earliest waiting job is tried again; nil while any backfill job is due or uploading
+    /// (the work is not waiting) or when none waits. Jobs of destinations the owner paused do not count, as in
+    /// `backfillProgress`.
     static func nextRetryAt(_ db: Database, after now: Date) throws -> Date? {
-        try Date.fetchOne(db, sql: """
-            SELECT MIN(next_attempt_at) FROM upload_job WHERE state IN ('pending', 'deferred') AND next_attempt_at > ?
-            """, arguments: [now])
+        let paused = try DestinationRepository.fetchAll(db).filter { $0.status == .paused(.userPaused) }.map(\.id.rawValue)
+        let marks = paused.map { _ in "?" }.joined(separator: ", ")
+        let scope = "origin IN ('backfill', 'destinationBackfill')" + (paused.isEmpty ? "" : " AND destination_id NOT IN (\(marks))")
+        let arguments = StatementArguments(paused)
+        let due = try Bool.fetchOne(db, sql: """
+            SELECT EXISTS (SELECT 1 FROM upload_job WHERE \(scope) AND state IN ('pending', 'uploading')
+                           AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+            """, arguments: arguments + [now]) ?? false
+        if due { return nil }
+        return try Date.fetchOne(db, sql: """
+            SELECT MIN(next_attempt_at) FROM upload_job WHERE \(scope) AND state IN ('pending', 'deferred') AND next_attempt_at > ?
+            """, arguments: arguments + [now])
     }
 
     static func uploadedBytes(_ db: Database) throws -> Int64 {

@@ -25,12 +25,12 @@ public enum CardActivity: Equatable, Sendable {
 }
 
 public enum CardActivityText {
-    /// The backfill card: the longest-running Photos file, else why it waits, else "preparing".
+    /// The backfill card: the longest-running file of a backfill job (whatever source it comes from), else why it
+    /// waits, else "preparing".
     public static func backfill(snapshot: EngineSnapshot, transfers: [TransferProgress], now: Date, disk: MacDiskState, settings: GlobalSettings) -> CardActivity {
-        let photos = transfers.filter { $0.sourceId == .photos }
-        if let line = TransferLineText.make(photos, now: now) { return .transfer(line) }
-        if let reason = waitingReason(snapshot: snapshot, now: now, disk: disk, settings: settings) { return .waiting(reason) }
-        return .preparing(tr(vi: "Đang chuẩn bị file tiếp theo…", en: "Preparing the next file…"))
+        if let line = TransferLineText.make(transfers.filter(\.isBackfill), now: now) { return .transfer(line) }
+        return waiting(snapshot: snapshot, now: now, disk: disk, settings: settings)
+            ?? .preparing(tr(vi: "Đang chuẩn bị file tiếp theo…", en: "Preparing the next file…"))
     }
 
     /// The import card: the transfer of this import's files (download from its source, upload of its files); nil when
@@ -39,23 +39,41 @@ public enum CardActivityText {
         TransferLineText.make(transfers.filter { $0.sourceId == id }, now: now)
     }
 
-    private static func waitingReason(snapshot: EngineSnapshot, now: Date, disk: MacDiskState, settings: GlobalSettings) -> String? {
+    /// The transfers whose full line a card shows now: the Backfill card while it is shown, and the newest running
+    /// import's card. The header keeps its short form only for these.
+    public static func shownOnCards(snapshot: EngineSnapshot, transfers: [TransferProgress], now: Date) -> Set<UUID> {
+        var ids = Set<UUID>()
+        if PopoverJobVisibility.shows(backfill: snapshot), let main = TransferLineText.visible(transfers.filter(\.isBackfill), now: now).first {
+            ids.insert(main.id)
+        }
+        if let newest = ImportProgressText.running(snapshot.imports).first,
+           let main = TransferLineText.visible(transfers.filter { $0.sourceId == newest.id }, now: now).first {
+            ids.insert(main.id)
+        }
+        return ids
+    }
+
+    private static func waiting(snapshot: EngineSnapshot, now: Date, disk: MacDiskState, settings: GlobalSettings) -> CardActivity? {
         switch snapshot.overall {
-        case .paused: return tr(vi: "Đã tạm dừng · bấm Tiếp tục tất cả", en: "Paused · click Resume all")
-        case .photosUnauthorized: return tr(vi: "Chưa có quyền Photos", en: "No Photos access")
+        case .paused: return .waiting(tr(vi: "Đã tạm dừng · bấm Tiếp tục tất cả", en: "Paused · click Resume all"))
+        case .photosUnauthorized: return .waiting(tr(vi: "Chưa có quyền Photos", en: "No Photos access"))
         default: break
         }
         if disk != .ok {
             let resume = VietnameseFormat.gigabytes(MacDiskState.resumeBytes(settings: settings))
-            return tr(vi: "Ổ Mac gần đầy · backfill chờ trống từ \(resume)", en: "Mac disk almost full · backfill waits for \(resume) free")
+            return .waiting(tr(vi: "Ổ Mac gần đầy · backfill chờ trống từ \(resume)", en: "Mac disk almost full · backfill waits for \(resume) free"))
         }
-        if snapshot.overall == .offline { return tr(vi: "Chờ có mạng", en: "Waiting for the network") }
-        if let away = snapshot.destinations.first(where: { if case .unavailable = $0.status { true } else { false } }) {
-            return tr(vi: "\(away.displayName) không khả dụng · chờ kết nối lại", en: "\(away.displayName) unavailable · waiting to reconnect")
+        if snapshot.overall == .offline { return .waiting(tr(vi: "Chờ có mạng", en: "Waiting for the network")) }
+        // A destination that is away only holds the backfill back when no other destination can make progress.
+        let destinations = snapshot.destinations
+        if !destinations.isEmpty, !destinations.contains(where: { $0.status == .active }),
+           let away = destinations.first(where: { if case .unavailable = $0.status { true } else { false } }) {
+            return .waiting(tr(vi: "\(away.displayName) chưa kết nối", en: "\(away.displayName) is not connected"))
         }
-        if let due = snapshot.nextRetryAt, due > now {
+        if let due = snapshot.nextRetryAt {
+            guard due > now else { return .preparing(tr(vi: "Đang thử lại…", en: "Retrying…")) }
             let left = TransferLineText.clock(seconds: due.timeIntervalSince(now))
-            return tr(vi: "Chờ thử lại sau \(left)", en: "Retrying in \(left)")
+            return .waiting(tr(vi: "Chờ thử lại sau \(left)", en: "Retrying in \(left)"))
         }
         return nil
     }
