@@ -99,7 +99,7 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
         let file: DriveFile
         do {
             file = try await uploader.upload(.create(write), file: request.content.file, size: request.content.size,
-                                             md5: request.content.md5, onSession: onSession)
+                                             md5: request.content.md5, progress: request.progress, onSession: onSession)
         } catch {
             releaseCap(reservation)
             // Only the session-start request can mean "parent missing"; transfer errors never reach here as notFound.
@@ -118,7 +118,7 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
         let reservation = try reserveCap(request.content.size)
         let file: DriveFile
         do {
-            file = try await uploader.resume(sessionRef: session.sessionRef, file: request.content.file, size: request.content.size)
+            file = try await uploader.resume(sessionRef: session.sessionRef, file: request.content.file, size: request.content.size, progress: request.progress)
         } catch {
             releaseCap(reservation)
             throw error
@@ -135,7 +135,7 @@ public actor GoogleDriveDestination: ViewDestination, RootManaging {
         let file: DriveFile
         do {
             file = try await uploader.upload(.update(id: remoteId), file: request.content.file, size: request.content.size,
-                                             md5: request.content.md5, onSession: { _ in })
+                                             md5: request.content.md5, progress: request.progress, onSession: { _ in })
         } catch {
             releaseCap(reservation)
             throw error

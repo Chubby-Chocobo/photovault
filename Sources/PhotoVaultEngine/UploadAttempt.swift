@@ -143,7 +143,15 @@ struct UploadAttempt: Sendable {
             job: identity, jobId: job.id, kind: job.kind, reservedRemoteId: job.remoteId, parent: parent,
             fileName: plan.fileName, content: content, appProperties: plan.properties, description: description,
             expectedPriorHash: job.uploadedHash)
-        guard let result = try await deliver(request, job: job) else { return .skipped }
+        let transfer = ready.resource.map {
+            env.transfers.begin(
+                kind: record.kind == .googleDrive ? .upload : .copy, fileName: $0.originalFilename,
+                destinationName: record.displayName, bytesTotal: content.size)
+        }
+        defer { transfer?.end() }
+        var tracked = request
+        tracked.progress = transfer?.sink
+        guard let result = try await deliver(tracked, job: job) else { return .skipped }
         // FR-47: every write answer is checked; a file that landed in a trashed folder is not done.
         if result.trashed { throw DestinationError.folderTrashed(logicalPath: plan.parentLogical) }
         try env.reach(.afterUploadBeforeCommit)

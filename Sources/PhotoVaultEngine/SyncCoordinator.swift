@@ -205,6 +205,9 @@ public actor SyncCoordinator {
 
     private func removeSubscriber(_ id: UUID) { subscribers[id] = nil }
 
+    /// The files being transferred now, at most twice a second. In memory; an empty list means nothing moves.
+    public nonisolated func transferUpdates() -> AsyncStream<[TransferProgress]> { env.transfers.updates() }
+
     public func currentSnapshot() async -> EngineSnapshot {
         (try? await buildSnapshot()) ?? lastPublished ?? EngineSnapshot.empty(at: env.clock.now)
     }

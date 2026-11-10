@@ -56,6 +56,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
     private var crashes: [Operation: Int] = [:]
     private var sessions: [String: UploadRequest] = [:]
     private var nextId = 1
+    private var uploadHook: (@Sendable (UploadRequest) async -> Void)?
 
     public init(id: DestinationID = .googleDrive, reservesIds: Bool = true, rootName: String = "Camera Uploads") {
         self.id = id
@@ -73,6 +74,10 @@ public actor FakeDestination: ViewDestination, RootManaging {
     public nonisolated var root: RemoteFolderRef { .root(remoteId: rootId) }
 
     // MARK: Test controls
+
+    /// Runs at the start of every upload, before any bytes count as delivered; a test reports chunks through
+    /// `request.progress` here and looks at what the engine shows meanwhile.
+    public func setUploadHook(_ hook: (@Sendable (UploadRequest) async -> Void)?) { uploadHook = hook }
 
     public func failNext(_ op: Operation, with error: DestinationError, times: Int = 1) {
         failures[op, default: []].append(contentsOf: Array(repeating: error, count: times))
@@ -223,6 +228,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
 
     public func upload(_ request: UploadRequest, onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> UploadResult {
         try step(.upload)
+        await uploadHook?(request)
         let parent = try requireParent(request.parent)
         let parentId = parent?.id ?? rootId
         if capabilities.reservesIds {

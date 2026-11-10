@@ -95,9 +95,14 @@ extension ImportStage {
                 env.log.log(.info, category: "import", "import file waits for disk room")
                 return .waitingForDisk
             }
+            let transfer = env.transfers.begin(
+                kind: .download(source.kind), fileName: (item.relativePath as NSString).lastPathComponent, bytesTotal: item.sizeBytes)
+            defer { transfer.end() }
+            let control = ExportControl()
+            control.setProgress(transfer.sink)
             do {
                 inspected[item.relativePath] = try await adapter {
-                    try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: ExportControl())
+                    try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
                 }
             } catch is AdapterFault {
                 try await hold(source.id)

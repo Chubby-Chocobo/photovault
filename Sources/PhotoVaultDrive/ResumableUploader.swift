@@ -32,20 +32,20 @@ struct ResumableUploader: Sendable {
     }
 
     /// Starts a session, reports it through `onSession` BEFORE the first byte, then transfers.
-    func upload(_ target: Target, file: URL, size: Int64, md5: String,
+    func upload(_ target: Target, file: URL, size: Int64, md5: String, progress: TransferSink? = nil,
                 onSession: @Sendable (SessionCheckpoint) async throws -> Void) async throws -> DriveFile {
         try await writeLimiter?.acquire(lane: .upload)
         let session = try await startSession(target, file: file, size: size)
         try await onSession(SessionCheckpoint(sessionRef: session.absoluteString, md5: md5, totalBytes: size))
-        return try await transfer(session, file: file, size: size, from: 0)
+        return try await transfer(session, file: file, size: size, from: 0, progress: progress)
     }
 
     /// Continues a persisted session; `.sessionExpired` when Drive no longer knows it.
-    func resume(sessionRef: String, file: URL, size: Int64) async throws -> DriveFile {
+    func resume(sessionRef: String, file: URL, size: Int64, progress: TransferSink? = nil) async throws -> DriveFile {
         guard let session = URL(string: sessionRef), DriveURL.isTrustedSession(session) else { throw DestinationError.sessionExpired }
         switch try await probe(session, size: size) {
         case .done(let file): return file
-        case .offset(let offset): return try await transfer(session, file: file, size: size, from: offset)
+        case .offset(let offset): return try await transfer(session, file: file, size: size, from: offset, progress: progress)
         }
     }
 
@@ -77,8 +77,9 @@ struct ResumableUploader: Sendable {
         return session
     }
 
-    private func transfer(_ session: URL, file: URL, size: Int64, from start: Int64) async throws -> DriveFile {
+    private func transfer(_ session: URL, file: URL, size: Int64, from start: Int64, progress: TransferSink?) async throws -> DriveFile {
         var offset = start
+        if start > 0 { progress?.report(start) }
         var recoveries = 0
         var stalls = 0
         while true {
@@ -100,9 +101,13 @@ struct ResumableUploader: Sendable {
             do {
                 let (data, response) = try await http.send(session, method: "PUT", headers: ["Content-Range": range], body: body)
                 switch response.statusCode {
-                case 200, 201: return try Self.decode(data)
+                case 200, 201:
+                    let finished = try Self.decode(data)
+                    progress?.report(size)
+                    return finished
                 case 308:
                     let acknowledged = Self.nextOffset(response)
+                    progress?.report(acknowledged)
                     stalls = acknowledged > offset ? 0 : stalls + 1
                     stalled = stalls >= Self.maxStalls
                     offset = acknowledged

@@ -11,6 +11,15 @@ extension ExportWorker {
         let locator = ResourceLocator(
             sourceId: asset.sourceId, localId: asset.localId, type: started.resource.type,
             originalFilename: started.resource.originalFilename)
+        let kind: TransferKind
+        if asset.sourceId == .photos { kind = .exportFromPhotos } else {
+            let id = asset.sourceId
+            let sourceKind = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.kind }
+            kind = .download(sourceKind ?? .localFolder)
+        }
+        let transfer = env.transfers.begin(kind: kind, fileName: started.resource.originalFilename, bytesTotal: started.resource.sizeBytes)
+        defer { transfer.end() }
+        started.permit.control.setProgress(transfer.sink)
         let file: ExportedFile
         do { file = try await content.exportResource(locator, to: url, control: started.permit.control) } catch {
             // An adapter reports `SourceError` only; anything else is a source that cannot be read now.
