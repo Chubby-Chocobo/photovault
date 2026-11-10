@@ -82,6 +82,7 @@ import Testing
         let stored = ["refresh-token", "import-folder-1", "dropbox-account", "import-folder-2", "other"]
         #expect(CloudImportKeychain.accountsToDelete(stored: stored) == ["import-folder-1", "dropbox-account", "import-folder-2"])
         #expect(CloudImportKeychain.accountsToDelete(stored: []).isEmpty)
+        #expect(CloudImportKeychain.accountsToDelete(stored: ["dropbox-account-email", "other"]) == ["dropbox-account-email"])
     }
 
     @Test func mergingPicksKeepsOrderAndDropsRepeats() {

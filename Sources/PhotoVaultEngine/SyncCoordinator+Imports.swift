@@ -10,6 +10,8 @@ extension SyncCoordinator {
     @discardableResult
     public func startImport(source: any FolderImportSource, kind: SourceKind, displayName: String, config: SourceConfig) async throws -> SourceID {
         try await exclusive {
+            // The owner cancelled while this waited for its turn: record nothing.
+            try Task.checkCancellation()
             try await refuseLegacyLayout()
             guard baseline.isTaken else { throw EngineError.notBaselined }
             let record = SourceRecord(
@@ -22,10 +24,13 @@ extension SyncCoordinator {
         return source.id
     }
 
-    /// A Mac folder import; the app keeps its security-scoped bookmark with the job.
+    /// A Mac folder import; the app keeps its security-scoped bookmark with the job, and `locationPath` (home as `~`)
+    /// for the owner to read in the history.
     @discardableResult
-    public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?) async throws -> SourceID {
-        try await startImport(source: source, kind: .localFolder, displayName: displayName, config: SourceConfig(bookmark: bookmark))
+    public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?, locationPath: String? = nil) async throws -> SourceID {
+        try await startImport(
+            source: source, kind: .localFolder, displayName: displayName,
+            config: SourceConfig(bookmark: bookmark, locationPaths: locationPath.map { [$0] }))
     }
 
     /// Adopts the adapters of jobs that were open when the app last ran.
@@ -82,34 +87,31 @@ extension SyncCoordinator {
         await env.sources.remove(id)
     }
 
+    /// Finishes the cancels the owner asked for before a quit. Runs in the lane at launch.
+    func finishStoredImportCancels() async throws {
+        let pending = try await env.store.read { db in
+            try SourceRepository.fetchAll(db).filter { $0.kind.isImport && $0.status.isOpen && $0.config.cancelRequested == true }.map(\.id)
+        }
+        for id in pending { try await ImportCancellation.apply(id, env: env, extensions: planningExtensions) }
+        if !pending.isEmpty { await publish() }
+    }
+
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled
     /// and what already reached a destination stays. Running the same import again brings them back.
     public func cancelImport(_ id: SourceID) async throws {
+        // At once, without the lane: the intent is stored first (when that fails the import keeps running and the error
+        // reaches the owner), then the import stops reading. The bookkeeping follows when the lane is free (here, or in the
+        // cycle's next import stage, whichever comes first).
+        let env = env
+        try await env.store.write { db in try SourceRepository.requestCancel(db, id: id) }
+        importInterrupts.requestCancel(id)
+        await publish()
+        let extensions = planningExtensions
         try await exclusive {
-            let env = env
-            let settings = await env.settingsSnapshot()
-            let extensions = planningExtensions
-            _ = try await env.store.write { db -> Bool in
-                guard let source = try SourceRepository.fetch(db, id: id), source.status.isOpen else { return false }
-                try ImportItemRepository.cancelPending(db, sourceId: id)
-                let context = try env.context(db, settings)
-                var dirty = Set<ArchiveDay>()
-                let keys = try String.fetchAll(db, sql: """
-                    SELECT DISTINCT a.asset_key FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
-                    WHERE a.source_id = ? AND a.deleted_at IS NULL AND j.state IN ('pending', 'uploading', 'deferred')
-                    """, arguments: [id.rawValue])
-                for raw in keys {
-                    guard let key = AssetKey(rawValue: raw), var asset = try AssetRepository.fetch(db, key: key) else { continue }
-                    asset.deletedAt = context.now
-                    try AssetRepository.upsert(db, asset, timeZone: context.timeZone)
-                    try EligibilityService.recompute(db, asset: asset, context: context, extensions: extensions)
-                    if asset.category == .camera, let creation = asset.creationDate { dirty.insert(ArchiveDay(date: creation, timeZone: context.timeZone)) }
-                }
-                try AssetFinalizer.recount(db, days: dirty, context: context)
-                return try ImportCompletion.finish(db, id: id, as: .cancelled, now: context.now)
-            }
+            try await ImportCancellation.apply(id, env: env, extensions: extensions)
             // The adapter stays: the assets kept by a cancel can still go to a destination added later.
         }
+        importInterrupts.clearCancel(id)
         await publish()
     }
 }

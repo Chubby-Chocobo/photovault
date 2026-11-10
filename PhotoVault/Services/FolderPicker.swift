@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import PhotoVaultDrive
 import PhotoVaultLocal
+import PhotoVaultAppSupport
 import PhotoVaultCore
 
 /// NSOpenPanel for NAS and external folders (FR-70) and the security-scoped bookmark of the pick.
@@ -40,6 +41,23 @@ enum FolderPicker {
         panel.canCreateDirectories = false
         panel.allowsMultipleSelection = false
         panel.message = tr(vi: "Chọn thư mục ảnh để nhập một lần. PhotoVault chỉ đọc, không sửa hay xoá gì trong thư mục.", en: "Choose a folder of photos to import once. PhotoVault only reads it and never changes or deletes anything in it.")
+        panel.prompt = tr(vi: "Nhập", en: "Import")
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard let bookmark = try? SecurityScopedBookmarkRoot.makeBookmark(for: url, readOnly: true) else { throw BookmarkFailed() }
+        return Pick(url: url, bookmark: bookmark, volumeName: nil)
+    }
+
+    /// Opens at the provider's synced folder on this Mac. Read-only like `chooseImportFolder`. nil when the owner
+    /// cancels; throws `BookmarkFailed` when the pick cannot be kept.
+    static func chooseSyncedFolder(provider: SyncedCloudProvider, startAt: URL) throws -> Pick? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = startAt
+        panel.message = SyncedCloudText.panelTitle(provider)
         panel.prompt = tr(vi: "Nhập", en: "Import")
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return nil }

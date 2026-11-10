@@ -25,6 +25,15 @@ enum OrganizationLookups {
         return PlaceNameRule.display(english: english, local: local, withNative: false)
     }
 
+    /// True while the asset's place would be named but a geocode answer for its cell is still missing.
+    /// Only camera assets are geocoded (`GeocodeScheduler`), so any other asset never waits.
+    static func placeIsPending(_ db: Database, asset: AssetRecord, settings: GlobalSettings) throws -> Bool {
+        guard asset.category == .camera, asset.deletedAt == nil, settings.placeNamesEnabled, settings.includeHidden || !asset.isHidden,
+              let cell = asset.geoCell ?? asset.location.map(GeoCell.init) else { return false }
+        for locale in ["en", localLocaleKey] where try GeoCacheRepository.fetch(db, cell: cell, locale: locale) == nil { return true }
+        return false
+    }
+
     /// FR-43 description text for the files of `asset`.
     static func descriptionText(_ db: Database, asset: AssetRecord, settings: GlobalSettings) throws -> String? {
         DescriptionBuilder.text(asset: asset, deviceName: try deviceName(db, asset: asset), place: try place(db, asset: asset, settings: settings))

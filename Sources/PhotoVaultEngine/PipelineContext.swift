@@ -11,6 +11,8 @@ struct PipelineContext: Sendable {
     var now: Date
     var nameBuilder: NameStemBuilder
     var layout: any LayoutPolicy
+    /// True when place names can still arrive: a geocoder is configured (FR-85).
+    var geocodingAvailable = false
 
     /// Reads the destinations inside the caller's transaction.
     init(_ db: Database, snapshot: SettingsSnapshot, now: Date, utiResolver: any UTIResolver,
@@ -34,7 +36,9 @@ extension EngineEnvironment {
     func settingsSnapshot() async -> SettingsSnapshot { await settings.snapshot() }
 
     func context(_ db: Database, _ snapshot: SettingsSnapshot) throws -> PipelineContext {
-        try PipelineContext(db, snapshot: snapshot, now: clock.now, utiResolver: utiResolver, layout: layout)
+        var context = try PipelineContext(db, snapshot: snapshot, now: clock.now, utiResolver: utiResolver, layout: layout)
+        context.geocodingAvailable = geocoder != nil
+        return context
     }
 
     func logJob(_ level: LogLevel, _ category: String, jobId: Int64?, _ message: String) {

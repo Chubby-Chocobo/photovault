@@ -10,7 +10,7 @@
 </head>
 <!--
   Settings window ~720x520 (SwiftUI Settings scene, toolbar tabs). Tabs per FR-05:
-  Chung · Nội dung · Sắp xếp · Địa danh & riêng tư · Đích · Nâng cao. Deep-link with #tab id.
+  Chung · Nội dung · Sắp xếp · Địa danh · Đích · Nâng cao. Deep-link with #tab id.
   One Alpine state for the whole window, so the global ceiling set in "Nội dung"
   is reflected live in the per-destination rules editor (FR-72).
 -->
@@ -170,7 +170,7 @@
         <p class="group-foot">Đổi tên = đổi tên thư mục trên Drive. Gộp = gán model sang nhóm khác và chuyển shortcut.</p>
       </div>
 
-      <!-- ============ Địa danh & riêng tư ============ -->
+      <!-- ============ Địa danh ============ -->
       <div x-show="tab === 'places'" x-cloak class="px-6 py-5" role="tabpanel">
         <div class="group">
           <label class="row"><span class="grow">Đặt tên địa danh cho thư mục ngày<br><span class="small t-2">Ví dụ “2026-11-07 Đà Lạt”, hoặc “2026-10-02 Kyoto, Nhật Bản” khi ở nước ngoài.</span></span><input type="checkbox" class="switch" x-model="g.places"></label>
@@ -348,7 +348,7 @@
         { id: 'general', label: 'Chung', icon: 't-general' },
         { id: 'content', label: 'Nội dung', icon: 't-content' },
         { id: 'organization', label: 'Sắp xếp', icon: 't-org' },
-        { id: 'places', label: 'Địa danh & riêng tư', icon: 't-places' },
+        { id: 'places', label: 'Địa danh', icon: 't-places' },
         { id: 'destinations', label: 'Đích', icon: 't-dest' },
         { id: 'advanced', label: 'Nâng cao', icon: 't-adv' },
       ],
@@ -419,7 +419,7 @@
       get views() {
         return [
           { id: 'device', name: 'By device', path: 'By device/<Thiết bị>/YYYY/MM', count: 31204 },
-          { id: 'place', name: 'By place', path: 'By place/<Quốc gia>/<Tỉnh>/YYYY', count: 22910, blocked: this.g.places ? '' : 'Cần bật địa danh ở tab Địa danh & riêng tư' },
+          { id: 'place', name: 'By place', path: 'By place/<Quốc gia>/<Tỉnh>/YYYY', count: 22910, blocked: this.g.places ? '' : 'Cần bật địa danh ở tab Địa danh' },
           { id: 'favorites', name: 'Favorites', path: 'Favorites/YYYY', count: 1842 },
         ];
       },

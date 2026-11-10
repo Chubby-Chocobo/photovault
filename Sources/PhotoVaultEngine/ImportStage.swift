@@ -12,13 +12,24 @@ struct ImportStage: CycleStage {
     let env: EngineEnvironment
     let extensions: [any JobPlanningExtension]
     let holds: ImportHolds
+    let interrupts: ImportInterrupts
+    /// True while an owner command waits for the lane.
+    let commandWaiting: @Sendable () async -> Bool
     var step: CycleStep { .classify }
 
-    init(env: EngineEnvironment, extensions: [any JobPlanningExtension], holds: ImportHolds = ImportHolds()) {
+    init(
+        env: EngineEnvironment, extensions: [any JobPlanningExtension], holds: ImportHolds = ImportHolds(),
+        interrupts: ImportInterrupts = ImportInterrupts(), commandWaiting: @escaping @Sendable () async -> Bool = { false }
+    ) {
         self.env = env
         self.extensions = extensions
         self.holds = holds
+        self.interrupts = interrupts
+        self.commandWaiting = commandWaiting
     }
+
+    /// The pass should end after the file in hand: the owner paused, or a command waits for the lane.
+    func shouldYield() async -> Bool { interrupts.paused ? true : await commandWaiting() }
 
     func run(trigger: SyncTrigger) async throws -> Bool {
         let open = try await env.store.read { db in
@@ -27,6 +38,13 @@ struct ImportStage: CycleStage {
         var changed = false
         for source in open {
             try Task.checkCancellation()
+            // A cancel the owner asked for (now, or stored before a relaunch): finish its bookkeeping here, where the lane is ours.
+            if interrupts.isCancelRequested(source.id) || source.config.cancelRequested == true {
+                try await ImportCancellation.apply(source.id, env: env, extensions: extensions)
+                interrupts.clearCancel(source.id)
+                changed = true
+                continue
+            }
             guard let folder = await env.sources.folder(for: source.id) else {
                 // A cloud import whose token is gone has no adapter; only signing in again brings it back.
                 if source.kind != .localFolder, source.status != .offline || source.statusReason != SourceStatusReason.signInRequired {
@@ -36,6 +54,12 @@ struct ImportStage: CycleStage {
                 continue
             }
             if try await advance(source, folder) { changed = true }
+            // A cancel that came during the pass: end it here, before the exporter reads the groups this pass committed.
+            if interrupts.isCancelRequested(source.id) {
+                try await ImportCancellation.apply(source.id, env: env, extensions: extensions)
+                interrupts.clearCancel(source.id)
+                changed = true
+            }
         }
         return changed
     }

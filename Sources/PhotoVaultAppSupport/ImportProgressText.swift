@@ -29,6 +29,12 @@ public enum ImportProgressText {
             : tr(vi: "Chưa kết nối được, sẽ tiếp tục khi có lại", en: "Can’t connect right now; it will continue when it is back")
     }
 
+    /// The owner pressed Cancel and the import has not ended yet: the engine already stopped reading (`cancelRequested`), or this
+    /// app's own command is still waiting for its turn (`pending`).
+    public static func isCancelling(_ item: ImportSnapshot, pending: Set<SourceID>) -> Bool {
+        item.isFinished ? false : item.cancelRequested || pending.contains(item.id)
+    }
+
     /// True while a cloud file waits because the Mac has no room to download it yet.
     public static func waitsForDisk(_ item: ImportSnapshot) -> Bool {
         item.status == .scanning && item.statusReason == "diskFull"
@@ -92,13 +98,6 @@ public enum ImportProgressText {
 
     public static func menuTitle(folderName: String) -> String {
         tr(vi: "Nhập từ “\(folderName)”", en: "Importing from “\(folderName)”")
-    }
-
-    /// "+ 2 lần nhập khác"; nil when there is no other.
-    public static func moreImports(_ count: Int) -> String? {
-        guard count > 0 else { return nil }
-        let number = L10n.integer(count)
-        return tr(vi: "+ \(number) lần nhập khác", en: "+ \(number) more \(L10n.plural(count, one: "import", other: "imports"))")
     }
 
     /// Imports that still have work (or wait for their folder), newest first.

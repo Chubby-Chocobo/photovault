@@ -1,3 +1,4 @@
+import AppKit
 import PhotoVaultAppSupport
 import PhotoVaultCore
 import PhotoVaultEngine
@@ -15,6 +16,8 @@ struct SourcesTab: View {
         VStack(alignment: .leading, spacing: 14) {
             ongoingSection
             importsSection
+            queueSection
+            finishedSection
             SettingsNote(tr(
                 vi: "Giữ thư mục và ổ đĩa chứa nó kết nối cho tới khi nhập xong. PhotoVault chỉ đọc, không sửa hay xoá gì trong thư mục.",
                 en: "Keep the folder and the disk it is on connected until the import is done. PhotoVault only reads; it never changes or deletes anything in the folder."))
@@ -22,10 +25,13 @@ struct SourcesTab: View {
                 vi: "Google Drive và Dropbox: PhotoVault chỉ đọc và tải ảnh về để sao lưu, không sửa hay xoá gì trên tài khoản của bạn.",
                 en: "Google Drive and Dropbox: PhotoVault only reads and downloads photos to back them up; it never changes or deletes anything in your account."))
         }
+        .onAppear { model.refreshSyncedFolders() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshSyncedFolders() }
         .sheet(isPresented: $showGoogleExplainer) { GoogleDriveExplainerSheet() }
         .sheet(isPresented: $showDropboxBrowser) { DropboxFolderSheet() }
         // Counted again with every snapshot, so the number follows the library while this tab is open.
         .task(id: model.snapshot?.updatedAt) { photosCount = await model.photosAssetCount() }
+        .task(id: "\(model.dropboxSignedIn)-\(model.cloudFlowBusy)") { await model.refreshDropboxEmail() }
         .confirmationDialog(
             tr(vi: "Huỷ lần nhập này?", en: "Cancel this import?"), isPresented: Binding(get: { confirmCancel != nil }, set: { if !$0 { confirmCancel = nil } }),
             titleVisibility: .visible
@@ -40,6 +46,29 @@ struct SourcesTab: View {
                 vi: "File chưa upload sẽ không được upload nữa. File đã upload vẫn ở nguyên. Nhập lại thư mục này sau đó sẽ lấy lại phần còn thiếu.",
                 en: "Files not yet uploaded will no longer be uploaded. Files already uploaded stay where they are. Importing the same folder again later picks up what is missing."))
         }
+    }
+
+    /// The menu items for one provider: the synced folder on this Mac and/or the browser sign-in.
+    @ViewBuilder
+    private func providerItems(_ provider: SyncedCloudProvider, browserConfigured: Bool, openBrowser: @escaping () -> Void) -> some View {
+        ForEach(ImportMenuChoices.items(
+            provider, appPresent: model.syncedAvailable(provider), browserConfigured: browserConfigured,
+            dropbox: provider == .dropbox ? (model.dropboxSignedIn ? .signedIn(email: model.dropboxEmail) : .signedOut) : .notApplicable,
+            canStartImport: model.canStartImport, flowBusy: model.cloudFlowBusy), id: \.title) { item in
+            Button(item.title) {
+                switch item.action {
+                case .syncedFolder: model.importFromSyncedFolder(provider)
+                case .browser: openBrowser()
+                case .signOut: model.signOutDropbox()
+                }
+            }
+            .disabled(!item.isEnabled)
+            .help(item.help)
+        }
+    }
+
+    private func openDropboxBrowser() {
+        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
     }
 
     // MARK: Ongoing
@@ -95,48 +124,60 @@ struct SourcesTab: View {
             HStack {
                 Menu {
                     Button(tr(vi: "Từ thư mục trên Mac…", en: "From a folder on this Mac…")) { model.importFolder() }
-                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) { showGoogleExplainer = true }
-                        .disabled(!model.googleImportAvailable || model.cloudFlowBusy)
-                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
-                        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
-                    }
-                    .disabled(!model.dropboxImportAvailable || model.cloudFlowBusy)
-                    .help(model.dropboxImportAvailable ? "" : tr(
-                        vi: "Bản này chưa có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
-                        en: "This build has no Dropbox app key (DROPBOX_APP_KEY)."))
+                        .disabled(!model.canStartImport)
+                    providerItems(.googleDrive, browserConfigured: model.googleImportAvailable) { showGoogleExplainer = true }
+                    providerItems(.dropbox, browserConfigured: model.dropboxImportAvailable) { openDropboxBrowser() }
                 } label: {
                     Label(tr(vi: "Nhập ảnh…", en: "Import photos…"), systemImage: "square.and.arrow.down")
                 }
                 .menuStyle(.button)
                 .fixedSize()
-                .disabled(!model.canStartImport)
+                // Stays usable while signed in to Dropbox so that "Đăng xuất Dropbox" is always reachable.
+                .disabled(!model.canStartImport && !model.dropboxSignedIn)
                 if !model.canStartImport {
                     Text(tr(vi: "Hoàn tất thiết lập ban đầu trước.", en: "Finish the first setup first.")).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                if model.dropboxSignedIn {
-                    Button(tr(vi: "Đăng xuất Dropbox", en: "Sign out of Dropbox")) { model.signOutDropbox() }
-                        .controlSize(.small)
-                        .help(tr(vi: "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.", en: "Existing imports keep their own read access."))
-                }
             }
             if model.cloudFlowBusy { BrowserWaitRow(stage: model.cloudFlowStage, onCancel: model.cancelCloudFlow) }
-            if !model.dropboxImportAvailable {
-                Text(tr(vi: "Nhập từ Dropbox cần khoá ứng dụng Dropbox trong bản build này.", en: "Importing from Dropbox needs a Dropbox app key in this build."))
-                    .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Running and waiting imports as a numbered list, apart from the "Nhập một lần" actions.
+    private var queueSection: some View {
+        let rows = model.queueRows
+        return SettingsSection(ImportQueueLayout.queueTitle) {
+            if rows.isEmpty {
+                Text(ImportQueueLayout.emptyText).font(.callout).foregroundStyle(.secondary)
+            } else {
+                ImportListBox {
+                    ForEach(rows) { row in
+                        ImportListRow(first: row.number == 1) {
+                            ImportRunningRow(
+                                row: row,
+                                waitingReason: ImportProgressText.waitingForPhotos(row.item, photosAllowsReading: model.photosAuthorization.allowsReading),
+                                signedInWaiting: model.resumingImports.contains(row.id), cancelling: model.isCancelling(row.item),
+                                queueWait: model.queueWait(for: row.item), waitReason: model.engineWaitReason,
+                                onCancel: { confirmCancel = row.id }, onSignInAgain: { model.reconnectImport(row.item) })
+                        }
+                    }
+                }
             }
-            let running = model.runningImports
-            if running.isEmpty && model.finishedImports.isEmpty {
-                Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
-            }
-            ForEach(running) { item in
-                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), signedInWaiting: model.resumingImports.contains(item.id), onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
-            }
-            let finished = model.finishedImports
-            if !finished.isEmpty {
-                Divider()
-                Text(tr(vi: "Đã xong", en: "Finished")).font(.subheadline.weight(.semibold))
-                ForEach(finished) { item in ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), onSignInAgain: { model.reconnectImport(item) }) }
+        }
+    }
+
+    /// Finished and cancelled imports, newest first.
+    @ViewBuilder private var finishedSection: some View {
+        let finished = model.finishedImports
+        if !finished.isEmpty {
+            SettingsSection(ImportQueueLayout.finishedTitle) {
+                ImportListBox {
+                    ForEach(Array(finished.enumerated()), id: \.element.id) { index, item in
+                        ImportListRow(first: index == 0) {
+                            ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), waitReason: model.engineWaitReason, onSignInAgain: { model.reconnectImport(item) })
+                        }
+                    }
+                }
             }
         }
     }

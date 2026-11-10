@@ -290,3 +290,38 @@ func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(fo
         #expect(try rig.keychain.read(account: CloudTokenAccount.importGrant(importSourceId)) == Data("r-2".utf8))
     }
 }
+
+@Suite struct DriveImportLocationTests {
+    @Test func theSourceWalksParentsWithMetadataRequestsOnly() async throws {
+        let rig = try ImportRig()
+        rig.stub.add(.init(id: "R", name: "My Drive", mime: DriveMime.folder, isRoot: true))
+        rig.stub.add(.init(id: "T", name: "Trips", mime: DriveMime.folder, parent: "R"))
+        rig.stub.add(.init(id: "Y", name: "2024", mime: DriveMime.folder, parent: "T"))
+        let result = await rig.source(["Y"]).pickedLocations()
+        #expect(result?.paths == ["My Drive/Trips/2024"])
+        #expect(result?.webURL == "https://drive.google.com/drive/folders/Y")
+        #expect(rig.stub.requests.allSatisfy { $0.httpMethod == "GET" })
+        #expect(rig.stub.listingRequests == 0)
+    }
+
+    @Test func aServerErrorKeepsTheNameOnly() async throws {
+        let rig = try ImportRig()
+        rig.stub.add(.init(id: "R", name: "My Drive", mime: DriveMime.folder, isRoot: true))
+        rig.stub.add(.init(id: "Y", name: "2024", mime: DriveMime.folder, parent: "R"))
+        rig.stub.fail("R", with: .json(500, [:]))
+        #expect(await rig.source(["Y"]).pickedLocations() == nil)
+    }
+
+    /// The Drive call is held until the test says so, so no bound on the clock decides the result: the lookup
+    /// gives up (nil) while the call is still unanswered, and a hang would be stopped by the time limit.
+    @Test(.timeLimit(.minutes(1))) func aSlowDriveDoesNotHoldTheImportBack() async throws {
+        let rig = try ImportRig()
+        rig.stub.add(.init(id: "R", name: "My Drive", mime: DriveMime.folder, isRoot: true))
+        rig.stub.add(.init(id: "Y", name: "2024", mime: DriveMime.folder, parent: "R"))
+        rig.stub.holdAnswers()
+        defer { rig.stub.releaseAnswers() }
+        #expect(await rig.source(["Y"]).pickedLocations(timeout: .milliseconds(50)) == nil)
+        #expect(rig.stub.requests.count >= 1, "the lookup did ask Drive")
+        #expect(rig.stub.answered == 0, "and gave up while Drive had not answered")
+    }
+}

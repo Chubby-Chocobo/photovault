@@ -6,8 +6,13 @@ extension ImportStage {
     /// Records the files of the folder as import items (idempotent: a second listing adds only new files).
     func list(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {
         let entries: [FolderFileEntry]
+        let id = source.id
         do {
-            entries = try await adapter { try await folder.listFiles() }
+            // A cancel does not wait for a long listing (a big synced tree can take minutes).
+            guard let listed = try await adapter({ try await interrupts.untilCancelled(id) { try await folder.listFiles() } }) else { return true }
+            entries = listed
+        } catch where interrupts.isCancelRequested(id) {
+            return true
         } catch SourceError.accessRevoked {
             try await holdForSignIn(source.id)
             return true
@@ -21,6 +26,7 @@ extension ImportStage {
             try await hold(source.id)
             return true
         }
+        if interrupts.isCancelRequested(id) { return true }
         let items = entries.map { entry in
             let ignored = FolderItemGrouper.isIgnored(relativePath: entry.relativePath)
             return ImportItem(
@@ -30,7 +36,6 @@ extension ImportStage {
         }
         let batch = max(1, env.tuning.importListBatch)
         let now = env.clock.now
-        let id = source.id
         for start in stride(from: 0, to: items.count, by: batch) {
             let slice = Array(items[start..<min(start + batch, items.count)])
             let last = start + batch >= items.count

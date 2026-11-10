@@ -55,11 +55,14 @@ public enum CloudTokenAccount {
     /// The Dropbox account the owner browses with; each import keeps its own copy.
     public static let dropbox = "dropbox-account"
 
+    /// The e-mail of that account, kept beside its token for the Settings line. Display only.
+    public static let dropboxEmail = "dropbox-account-email"
+
     /// The grant one cloud import reads with.
     public static func importGrant(_ id: SourceID) -> String { "import-\(id.rawValue)" }
 
     /// True for every item a cloud import or the Dropbox account keeps in the Keychain.
-    public static func isCloudItem(_ account: String) -> Bool { account == dropbox || account.hasPrefix(importGrantPrefix) }
+    public static func isCloudItem(_ account: String) -> Bool { account == dropbox || account == dropboxEmail || account.hasPrefix(importGrantPrefix) }
 
     private static let importGrantPrefix = "import-"
 }

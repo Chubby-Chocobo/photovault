@@ -14,6 +14,9 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         var props: [String: String] = [:]
         /// Picked folders may hide their children from the app.
         var hidesChildren = false
+        /// The "My Drive" folder, also answered for the `root` alias.
+        var isRoot = false
+        var driveId: String?
     }
 
     private let lock = NSLock()
@@ -25,10 +28,44 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
     private var oneShots: [String: StubResponse] = [:]
     private var inFlight = 0
     private var peak = 0
+    private var held: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var holding = false
+    private var answeredCount = 0
     var pageSize = 1000
     /// Each answer takes this long, so overlapping requests can be seen.
     var latency: Duration = .zero
     let validToken = LockedBox("token-1")
+
+    /// Every request waits, without a timer, until `releaseAnswers()`; a cancelled request stops waiting.
+    func holdAnswers() { lock.withLock { holding = true } }
+    func releaseAnswers() {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            holding = false
+            defer { held = [:] }
+            return Array(held.values)
+        }
+        waiting.forEach { $0.resume() }
+    }
+    /// Requests that were answered (not still held, not cancelled while held).
+    var answered: Int { lock.withLock { answeredCount } }
+
+    private func waitWhileHeld() async throws {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.withLock { () -> Bool in
+                    guard holding else { return true }
+                    held[id] = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        } onCancel: {
+            let waiting = lock.withLock { held.removeValue(forKey: id) }
+            waiting?.resume()
+        }
+        try Task.checkCancellation()
+    }
 
     func add(_ node: Node) { lock.withLock { nodes[node.id] = node; order.append(node.id) } }
     func remove(_ id: String) { lock.withLock { nodes[id] = nil } }
@@ -54,6 +91,8 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         }
         defer { lock.withLock { inFlight -= 1 } }
         if latency > .zero { try await Task.sleep(for: latency) }
+        try await waitWhileHeld()
+        lock.withLock { answeredCount += 1 }
         let url = request.url!
         let response = route(request, url)
         return (response.body, response.http(for: url))
@@ -67,6 +106,7 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         return lock.withLock {
             if url.path == "/drive/v3/files" { return list(query) }
             let id = String(url.path.dropFirst("/drive/v3/files/".count))
+            if id == "root", let root = nodes.values.first(where: \.isRoot) { return .json(200, render(root)) }
             if let failure = failures[id] { return failure }
             if let once = oneShots.removeValue(forKey: id) { return once }
             guard let node = nodes[id] else { return .json(404, ["error": ["errors": [["reason": "notFound"]]]]) }
@@ -93,6 +133,8 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         var json: [String: Any] = ["id": node.id, "name": node.name, "mimeType": node.mime, "trashed": node.trashed,
                                    "createdTime": "2024-05-01T10:00:00.000Z", "modifiedTime": "2024-05-02T10:00:00Z"]
         if node.mime != DriveMime.folder { json["size"] = String(node.content.count) }
+        if let parent = node.parent { json["parents"] = [parent] }
+        if let driveId = node.driveId { json["driveId"] = driveId }
         if !node.props.isEmpty { json["appProperties"] = node.props }
         return json
     }

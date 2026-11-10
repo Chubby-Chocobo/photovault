@@ -49,6 +49,8 @@ public struct EngineTuning: Sendable {
     public var scanBatchSize = 500
     public var classifyBatchSize = 25
     public var exportCheckpointBytes = ExportControl.defaultCheckpointBytes
+    /// The status line hears about a running transfer at most this often.
+    public var transferPublishInterval: TimeInterval = 0.5
     /// Staged files not touched for this long, with no transfer running, are released (8.9.3).
     public var stagingIdleExpiry: TimeInterval = 2 * 3600
     public var transientRetries = ErrorClassifier.transientRetries
@@ -99,6 +101,8 @@ public struct EngineEnvironment: Sendable {
     public var geocoder: (any ReverseGeocoding)?
     /// Reads sidecars, hashes and the marker of local destinations; nil limits local recovery to names.
     public var localContent: (any LocalContentReading)?
+    /// The files being transferred now; in memory, for the status line.
+    public var transfers: TransferTracker
 
     public init(
         store: Store, photos: any PhotosSource, destinations: DestinationRegistry, metadataReader: any MetadataReading,
@@ -107,7 +111,7 @@ public struct EngineEnvironment: Sendable {
         transform: any Transform = IdentityTransform(), stagingDirectory: URL, containerDirectory: URL,
         settings: SettingsStore, tuning: EngineTuning = EngineTuning(), faults: (any FaultInjecting)? = nil,
         geocoder: (any ReverseGeocoding)? = nil, localContent: (any LocalContentReading)? = nil,
-        sources: SourceRegistry? = nil
+        sources: SourceRegistry? = nil, transfers: TransferTracker? = nil
     ) {
         self.store = store
         self.photos = photos
@@ -128,6 +132,7 @@ public struct EngineEnvironment: Sendable {
         self.faults = faults
         self.geocoder = geocoder
         self.localContent = localContent
+        self.transfers = transfers ?? TransferTracker(clock: clock, minInterval: tuning.transferPublishInterval)
     }
 
     func reach(_ point: CrashPoint) throws { try faults?.reach(point) }

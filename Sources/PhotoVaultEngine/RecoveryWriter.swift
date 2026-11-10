@@ -244,16 +244,36 @@ struct RecoveryWriter: Sendable {
                     en: "A recovered file has a different size from its sidecar; confirmation is needed before uploading again")))
         }
         try JobRepository.save(db, &job)
-        if !file.resType.isSidecar, let size = item.size {
-            try db.execute(
-                sql: "UPDATE resource SET size_bytes = ? WHERE asset_key = ? AND res_type = ? AND size_bytes IS NULL",
-                arguments: [size, file.assetKey.rawValue, file.resType.rawValue])
+        if !file.resType.isSidecar {
+            try restoreLostInputs(db, file, size: item.size)
         }
         if job.state == .done, placed.placement != nil, let from = job.remoteLogicalParent {
             let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, asset: placed, layout: context.layout))
             try MoveJobPlanner.enqueueMove(db, identity: identity, from: from, to: target, now: context.now)
         }
         return suspect ? .suspect : .applied
+    }
+
+    /// What the lost database knew and the destination still tells: the size, and the hashes and camera
+    /// fields the sidecar lists. Only empty values are filled, so the sidecar built next matches the one
+    /// at the destination when nothing else changed.
+    private static func restoreLostInputs(_ db: Database, _ file: RecoveredFile, size: Int64?) throws {
+        let key = file.assetKey.rawValue
+        if let size {
+            try db.execute(
+                sql: "UPDATE resource SET size_bytes = ? WHERE asset_key = ? AND res_type = ? AND size_bytes IS NULL",
+                arguments: [size, key, file.resType.rawValue])
+        }
+        try db.execute(sql: """
+            UPDATE resource SET md5 = COALESCE(md5, ?), sha256 = COALESCE(sha256, ?)
+            WHERE asset_key = ? AND res_type = ? AND (md5 IS NULL OR sha256 IS NULL)
+            """, arguments: [file.entry.contentMd5, file.entry.contentSha256, key, file.resType.rawValue])
+        if let camera = file.entry.camera {
+            try db.execute(sql: """
+                UPDATE asset SET camera_make = COALESCE(camera_make, ?), camera_model = COALESCE(camera_model, ?),
+                    lens_model = COALESCE(lens_model, ?) WHERE asset_key = ?
+                """, arguments: [camera.make, camera.model, camera.lens, key])
+        }
     }
 
     /// Step 5: the placement is whatever the file says: category and day from where it is and what

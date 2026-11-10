@@ -94,12 +94,22 @@ private struct OverallHeader: View {
         guard let snapshot = model.snapshot else {
             return OverallPresentation(title: tr(vi: "Đang kiểm tra…", en: "Checking…"), subtitle: "", tone: .ok, isWorking: false)
         }
-        return OverallStatusText.make(snapshot: snapshot, disk: model.diskState, settings: model.persistedSettings, now: Date())
+        // `transferNow` ticks while files move, which re-renders the line as a transfer passes its first second.
+        _ = model.transferNow
+        return OverallStatusText.make(
+            snapshot: snapshot, disk: model.diskState, settings: model.persistedSettings, now: Date(), transfers: model.transfers)
     }
 }
 
 private struct BackfillSection: View {
+    @Environment(AppModel.self) private var model
     var snapshot: EngineSnapshot
+
+    private func activityLine(now: Date) -> some View {
+        let activity = CardActivityText.backfill(
+            snapshot: snapshot, transfers: model.transfers, now: now, disk: model.diskState, settings: model.persistedSettings)
+        return CardActivityLine(text: activity.text, isBusy: activity.isBusy, isWaiting: !activity.isBusy)
+    }
 
     var body: some View {
         if BackfillText.isRunning(snapshot) {
@@ -113,6 +123,13 @@ private struct BackfillSection: View {
                 }
                 ProgressBar(fraction: ProgressText.fraction(done: snapshot.backfillDoneAssets, total: snapshot.backfillTotalAssets))
                     .accessibilityLabel(tr(vi: "Tiến độ backfill", en: "Backfill progress"))
+                // `transferNow` ticks while files move; a retry countdown has nothing moving, so it brings its own clock.
+                let _ = model.transferNow
+                if snapshot.nextRetryAt != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in activityLine(now: context.date) }
+                } else {
+                    activityLine(now: Date())
+                }
                 HStack {
                     Text(tr(vi: "Đã upload \(VietnameseFormat.bytes(snapshot.bytesUploaded))", en: "Uploaded \(VietnameseFormat.bytes(snapshot.bytesUploaded))"))
                     Spacer()

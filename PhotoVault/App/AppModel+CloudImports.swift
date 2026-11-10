@@ -30,15 +30,22 @@ extension AppModel {
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
             let folderName = await source.singlePickedFolderName()
             let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
-            let config = SourceConfig(
+            var config = SourceConfig(
                 account: email, remoteItems: picked.pickedIds,
                 sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
             if Task.isCancelled {
                 _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw CancellationError()
             }
-            enqueueImport(id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") {
-                try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
+            enqueueImport(
+                id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") { [self] in
+                // The walk runs here, after the sign-in row has left its browser step; it never fails the import.
+                let locations = await source.pickedLocations()
+                try Task.checkCancellation()
+                config.locationPaths = locations?.paths
+                config.locationURL = locations?.webURL
+                queuedImports = ImportQueue.setting(ImportLocation.make(kind: .googleDrive, config: config), for: id, in: queuedImports)
+                return try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
             }
         }
     }
@@ -96,7 +103,9 @@ extension AppModel {
         let name = CloudImportText.dropboxDisplayName(path: path)
         let source = env.cloud.dropboxSource(id: id, rootPath: path)
         let config = SourceConfig(account: email, remoteItems: [path], sidecarName: CloudImportText.dropboxSidecarName(path: path))
-        enqueueImport(id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox") {
+        enqueueImport(
+            id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox",
+            location: ImportLocation.make(kind: .dropbox, config: config)) {
             try await env.coordinator.startImport(source: source, kind: .dropbox, displayName: name, config: config)
         }
         return true
@@ -151,14 +160,19 @@ extension AppModel {
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
-                var config = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config } ?? SourceConfig()
-                let merged = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: picked.pickedIds)
                 try Task.checkCancellation()
                 try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
-                config.remoteItems = merged
-                config.account = config.account ?? picked.email
-                let stored = config
-                try await env.store.write { db in try SourceRepository.setConfig(db, id: id, stored) }
+                // Read and written in one transaction, so a cancel stored meanwhile is kept.
+                let pickedIds = picked.pickedIds, email = picked.email
+                let merged = try await env.store.write { db -> [String] in
+                    var result: [String] = []
+                    try SourceRepository.updateConfig(db, id: id) { config in
+                        result = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: pickedIds)
+                        config.remoteItems = result
+                        config.account = config.account ?? email
+                    }
+                    return result
+                }
                 await env.coordinator.registerSources([
                     env.cloud.driveSource(id: id, pickedIds: merged, initial: (picked.accessToken, picked.expiresAt))])
                 resumeInBackground(id)
@@ -196,9 +210,10 @@ extension AppModel {
     /// Lists the import as "waiting for its turn" and records it in a task of its own: the engine runs the start
     /// between sync passes, which can take long, and the owner may close the window meanwhile. Cancelling the
     /// queued entry cancels the start and deletes the stored sign-in; so does a start that fails.
-    private func enqueueImport(id: SourceID, kind: SourceKind, account: String, displayName: String, provider: String,
-                               start: @escaping @MainActor () async throws -> SourceID) {
-        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date()))
+    func enqueueImport(id: SourceID, kind: SourceKind, account: String?, syncedProvider: SyncedCloudProvider? = nil, displayName: String,
+                       provider: String, location: ImportLocation? = nil, start: @escaping @MainActor () async throws -> SourceID) {
+        queuedImports.append(ImportQueue.snapshot(
+            id: id, kind: kind, account: account, syncedProvider: syncedProvider, displayName: displayName, now: Date(), location: location))
         queuedStarts[id] = Task { @MainActor [self] in
             defer {
                 queuedImports.removeAll { $0.id == id }
@@ -259,7 +274,7 @@ extension AppModel {
     /// The owner gave up waiting for the browser: the flow's task is cancelled, which closes its local listener.
     func cancelCloudFlow() { cloudFlowCancel?() }
 
-    private func didStartCloudImport(_ provider: String) {
+    func didStartCloudImport(_ provider: String) {
         env?.log.log(.info, category: "import", "\(provider) import started")
         requestSync(.manual)
         Task { await refreshSnapshot() }

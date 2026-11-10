@@ -56,6 +56,8 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var imports: [ImportSnapshot] = []
     /// How the last backfill ended; nil until one has. A record, not progress: the menu bar ignores it.
     public var backfillCompletion: BackfillCompletionSummary?
+    /// When the earliest waiting backfill job is tried again; nil while any backfill job is due or when none waits.
+    public var nextRetryAt: Date?
 }
 
 /// Progress of one folder import, for Settings and the menu bar.
@@ -64,6 +66,8 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     public var kind: SourceKind
     /// Cloud account (email) the import reads from. Shown in the app only; never logged.
     public var account: String?
+    /// Set when a Mac-folder import reads a Google Drive or Dropbox folder synced to this Mac.
+    public var syncedProvider: SyncedCloudProvider?
     /// Why an offline import waits (`signInRequired` when the provider rejected the grant).
     public var statusReason: String?
     /// The folder's name. Shown in the app only; never written to logs or the activity list.
@@ -82,18 +86,25 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     /// Upload jobs of this import that finished, and all that will or did upload (every destination).
     public var filesUploaded: Int
     public var filesTotal: Int
+    /// Where the import came from. Shown in the app only; never written to logs or the activity list.
+    public var location: ImportLocation?
+    /// The owner asked to cancel; the engine has stopped reading and finishes the bookkeeping when the lane is free.
+    public var cancelRequested: Bool
 
     public var isFinished: Bool { !status.isOpen }
 
     public init(
-        id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, statusReason: String? = nil,
+        id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, syncedProvider: SyncedCloudProvider? = nil, statusReason: String? = nil,
         displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
         processed: Int = 0, imported: Int = 0, duplicates: Int = 0, unsupported: Int = 0, failed: Int = 0,
-        filesUploaded: Int = 0, filesTotal: Int = 0
+        filesUploaded: Int = 0, filesTotal: Int = 0, location: ImportLocation? = nil, cancelRequested: Bool = false
     ) {
+        self.location = location
+        self.cancelRequested = cancelRequested
         self.id = id
         self.kind = kind
         self.account = account
+        self.syncedProvider = syncedProvider
         self.statusReason = statusReason
         self.displayName = displayName
         self.status = status

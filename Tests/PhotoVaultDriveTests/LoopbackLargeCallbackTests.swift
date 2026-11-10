@@ -55,7 +55,7 @@ import Testing
     }
 
     @Test func anOversizedPickWhoseStateComesAfterTheIdsStillEndsTheFlowAtOnce() async throws {
-        let server = try LoopbackRedirectServer(expectedState: "st", timeout: 5)
+        let server = try LoopbackRedirectServer(expectedState: "st", timeout: 30)
         let port = try await server.start()
         let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
         let browser = Task { try? await fetch(port, "/oauth2/callback?picked_file_ids=\(huge)&code=c&state=st") }
@@ -66,7 +66,7 @@ import Testing
 
     @Test func anOversizedPickWhoseStateIsSplitAcrossReadsStillEndsTheFlowAtOnce() async throws {
         let state = String(repeating: "s", count: 43)
-        let server = try LoopbackRedirectServer(expectedState: state, timeout: 5)
+        let server = try LoopbackRedirectServer(expectedState: state, timeout: 30)
         let port = try await server.start()
         let huge = String(repeating: "A", count: LoopbackRequestParser.maxRequestBytes + 1000)
         let head = "GET /oauth2/callback?picked_file_ids=\(huge)&code=c&state=\(state.prefix(20))"

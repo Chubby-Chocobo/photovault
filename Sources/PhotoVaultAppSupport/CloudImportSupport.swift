@@ -6,7 +6,8 @@ import PhotoVaultEngine
 /// only; they never reach logs.
 public enum CloudImportText {
     /// "Thư mục trên Mac", "Google Drive · email", "Dropbox · email".
-    public static func providerLabel(kind: SourceKind, account: String?) -> String {
+    public static func providerLabel(kind: SourceKind, account: String?, syncedProvider: SyncedCloudProvider? = nil) -> String {
+        if kind == .localFolder, let syncedProvider { return SyncedCloudText.label(syncedProvider, account: account) }
         let name: String
         switch kind {
         case .googleDrive: name = "Google Drive"
@@ -130,10 +131,12 @@ public enum CloudImportKeychain {
     }
 
     /// `import-<id>` items with no import row. A start that was still waiting for its turn when the app quit leaves one;
-    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account item is not one.
+    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account token and its e-mail are not.
     public static func orphanGrants(stored: [String], knownImports: Set<SourceID>) -> [String] {
         let known = Set(knownImports.map(CloudTokenAccount.importGrant))
-        return stored.filter { $0 != CloudTokenAccount.dropbox && CloudTokenAccount.isCloudItem($0) && !known.contains($0) }
+        return stored.filter {
+            $0 != CloudTokenAccount.dropbox && $0 != CloudTokenAccount.dropboxEmail && CloudTokenAccount.isCloudItem($0) && !known.contains($0)
+        }
     }
 
     /// Open cloud imports that have no stored sign-in. Finished imports let their sign-in go on purpose.
@@ -197,8 +200,45 @@ public struct CloudFlowTracker: Sendable {
 public enum ImportQueue {
     static let reason = "queued"
 
-    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date) -> ImportSnapshot {
-        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now)
+    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, syncedProvider: SyncedCloudProvider? = nil,
+                                displayName: String, now: Date, location: ImportLocation? = nil) -> ImportSnapshot {
+        ImportSnapshot(id: id, kind: kind, account: account, syncedProvider: syncedProvider, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now,
+                       location: location)
+    }
+
+    /// The queue with `location` set on the entry `id` (a Drive walk finishing after the import was queued).
+    public static func setting(_ location: ImportLocation?, for id: SourceID, in items: [ImportSnapshot]) -> [ImportSnapshot] {
+        items.map { item in
+            guard item.id == id else { return item }
+            var copy = item
+            copy.location = location
+            return copy
+        }
+    }
+
+    /// Changes when a queued entry becomes the recorded import, so a lookup keyed on it runs again for the source row.
+    public static func locationKey(_ item: ImportSnapshot) -> String { "\(item.id.rawValue)|\(isQueued(item))" }
+
+    /// Why the start waits: a transfer is running (the engine yields between files), or the current sync pass.
+    public static func waitReason(uploading: Bool) -> String {
+        uploading
+            ? tr(vi: "đang chờ app upload xong file đang chạy", en: "waiting for the upload in progress to finish")
+            : tr(vi: "đang chờ lượt đồng bộ hiện tại", en: "waiting for the current sync turn")
+    }
+
+    /// A Cancel on a running import is also a command that waits for the engine.
+    public static var cancellingText: String { tr(vi: "Đang huỷ · chờ đến lượt", en: "Cancelling · waiting for its turn") }
+
+    static func ordinal(_ n: Int) -> String {
+        let suffix: String
+        switch (n % 100, n % 10) {
+        case (11...13, _): suffix = "th"
+        case (_, 1): suffix = "st"
+        case (_, 2): suffix = "nd"
+        case (_, 3): suffix = "rd"
+        default: suffix = "th"
+        }
+        return "\(n)\(suffix)"
     }
 
     public static func isQueued(_ item: ImportSnapshot) -> Bool { item.status == .scanning && item.statusReason == reason }

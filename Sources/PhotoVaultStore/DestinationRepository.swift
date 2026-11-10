@@ -96,6 +96,9 @@ public enum DestinationRepository {
             try db.execute(sql: "DELETE FROM \(table) WHERE destination_id = ?", arguments: [id.rawValue])
         }
         try ActivityRepository.dropKeys(db, id: id)
+        // Sidecar answers recovery kept while reading a destination back (`RemoteInventoryLoader`).
+        let head = "readback:\(id.rawValue):"
+        try db.execute(sql: "DELETE FROM kv WHERE substr(key, 1, ?) = ?", arguments: [head.count, head])
     }
 
     static func decode(_ row: Row) throws -> DestinationRecord {

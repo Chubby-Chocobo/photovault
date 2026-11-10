@@ -53,6 +53,8 @@ actor ExportWorker {
         var needing: [DestinationRecord]
         var isPrimary: Bool
         var settings: GlobalSettings
+        /// Every job waiting for this file is a backfill job.
+        var isBackfill = false
     }
 
     private enum Outcome: Sendable {
@@ -175,7 +177,8 @@ actor ExportWorker {
                 }
                 return .started(Started(
                     id: candidate.id, permit: permit, asset: asset, resource: resource, needing: needing,
-                    isPrimary: candidate.isPrimary, settings: settings))
+                    isPrimary: candidate.isPrimary, settings: settings,
+                    isBackfill: !candidate.row.origins.isEmpty && candidate.row.origins.allSatisfy { $0 == .backfill || $0 == .destinationBackfill }))
             }
         }
         return .none

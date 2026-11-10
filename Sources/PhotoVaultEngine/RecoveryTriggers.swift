@@ -167,7 +167,7 @@ struct RecoveryTriggers: Sendable {
                      IntegrityChecker.resultMissingKey, IntegrityChecker.resultMismatchKey, IntegrityChecker.resultAtKey,
                      IntegrityChecker.mismatchDismissedKey]
         for prefix in exact { try KeyValueRepository.set(db, prefix + id.rawValue, nil) }
-        for prefix in ["desc:", "viewhold:"] {
+        for prefix in ["desc:", "viewhold:", "readback:"] {
             let head = prefix + id.rawValue + ":"
             try db.execute(sql: "DELETE FROM kv WHERE substr(key, 1, ?) = ?", arguments: [head.count, head])
         }

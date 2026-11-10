@@ -102,10 +102,12 @@ public struct UploadRequest: Hashable, Sendable {
     public var description: String?
     /// Hash the app last wrote at this destination, if any (FR-73 overwrite rule).
     public var expectedPriorHash: String?
+    /// Receives the cumulative bytes written or sent, for the status line. Destinations call it as chunks go out.
+    public var progress: TransferSink?
 
     public init(job: JobIdentity, jobId: Int64?, kind: ResourceKind, reservedRemoteId: String?, parent: RemoteFolderRef,
                 fileName: String, content: StagedContent, appProperties: [String: String] = [:],
-                description: String? = nil, expectedPriorHash: String? = nil) {
+                description: String? = nil, expectedPriorHash: String? = nil, progress: TransferSink? = nil) {
         self.job = job
         self.jobId = jobId
         self.kind = kind
@@ -116,6 +118,7 @@ public struct UploadRequest: Hashable, Sendable {
         self.appProperties = appProperties
         self.description = description
         self.expectedPriorHash = expectedPriorHash
+        self.progress = progress
     }
 }
 
@@ -244,6 +247,14 @@ public struct ShortcutRequest: Hashable, Sendable {
         self.name = name
         self.appProperties = appProperties
     }
+}
+
+/// A destination that can hand back the bytes of a small file it holds, by remote id. Recovery reads the
+/// JSON sidecars through it; nothing else does.
+public protocol SmallFileReading: Destination {
+    /// The file's bytes; nil when it is gone, not readable by this app, or larger than `maxBytes`.
+    /// Transient failures (network, throttling) are thrown.
+    func readSmallFile(remoteId: String, maxBytes: Int) async throws -> Data?
 }
 
 /// Shortcut views (Drive only, FR-100..103).

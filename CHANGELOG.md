@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.0] - 2026-11-10
+
+### Upgrade notes
+
+- The database gains two empty columns on `import_item` (`fail_count`, `first_failed_at`; migration `v7-import-retry`), so the one-day give-up for an unreadable import file now holds across relaunches. As with every earlier migration, 0.4.x refuses a database this version has opened.
+- If you downgrade to 0.4.x and press "Đăng nhập lại" on a Google Drive import there, that import's settings are saved again without the stored folder location. After upgrading again, that Drive row shows only the folder name. Mac folder imports find their path again from the bookmark, and Dropbox rows are not affected.
+- A folder import that is still waiting for its turn is forgotten if the app quits before it starts; pick the folder again.
+- After a database loss, recovery reads back each Drive sidecar once (one small download per photo) instead of rewriting them all.
+
+### Features
+
+- **import:** import from the Google Drive or Dropbox folder synced on this Mac (#49) (faf8ad5)
+- **import:** show where each import came from, with long paths shortened by folder (#48) (5ee44b7)
+- **app:** show the file being transferred, its progress and account on the status line (#47) (fec52d3)
+
+### Bug fixes
+
+- **import:** make Cancel stop an import within seconds (#67) (8429cdc)
+- **engine:** do not write sidecars again after a database recovery (#58) (d583b6a)
+- **app:** show every waiting import as a queued row and list the import queue on its own (#61) (a85aebf)
+- **app:** keep Dropbox sign-out reachable and put the ellipsis last in import item titles (#63) (ebd85d1)
+- **app:** show the file being transferred on the Backfill and import cards (#59) (878d0fa)
+- **engine:** queue the day's current name when a folder rename fails for good (#57) (1277188)
+- **app:** offer "trên máy này" and "qua trình duyệt" as separate import choices (#60) (1beeb03)
+- **import:** keep the retry count and first failure time across relaunches (#51) (71c42a9)
+- **app:** name the Settings tab Địa danh instead of Địa danh & riêng tư (#56) (5387767)
+
 ## [0.4.2] - 2026-11-10
 
 ### Bug fixes
