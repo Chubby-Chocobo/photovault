@@ -247,7 +247,7 @@ public enum ImportQueue {
     /// A Cancel on a running import is also a command that waits for the engine.
     public static var cancellingText: String { tr(vi: "Đang huỷ · chờ đến lượt", en: "Cancelling · waiting for its turn") }
 
-    private static func ordinal(_ n: Int) -> String {
+    static func ordinal(_ n: Int) -> String {
         let suffix: String
         switch (n % 100, n % 10) {
         case (11...13, _): suffix = "th"

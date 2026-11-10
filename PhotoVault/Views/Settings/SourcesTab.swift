@@ -16,6 +16,8 @@ struct SourcesTab: View {
         VStack(alignment: .leading, spacing: 14) {
             ongoingSection
             importsSection
+            queueSection
+            finishedSection
             SettingsNote(tr(
                 vi: "Giữ thư mục và ổ đĩa chứa nó kết nối cho tới khi nhập xong. PhotoVault chỉ đọc, không sửa hay xoá gì trong thư mục.",
                 en: "Keep the folder and the disk it is on connected until the import is done. PhotoVault only reads; it never changes or deletes anything in the folder."))
@@ -146,18 +148,44 @@ struct SourcesTab: View {
                 Text(tr(vi: "Nhập từ Dropbox cần khoá ứng dụng Dropbox trong bản build này.", en: "Importing from Dropbox needs a Dropbox app key in this build."))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            let running = model.runningImports
-            if running.isEmpty && model.finishedImports.isEmpty {
-                Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Running and waiting imports as a numbered list, apart from the "Nhập một lần" actions.
+    private var queueSection: some View {
+        let rows = model.queueRows
+        return SettingsSection(ImportQueueLayout.queueTitle) {
+            if rows.isEmpty {
+                Text(ImportQueueLayout.emptyText).font(.callout).foregroundStyle(.secondary)
+            } else {
+                ImportListBox {
+                    ForEach(rows) { row in
+                        ImportListRow(first: row.number == 1) {
+                            ImportRunningRow(
+                                row: row,
+                                waitingReason: ImportProgressText.waitingForPhotos(row.item, photosAllowsReading: model.photosAuthorization.allowsReading),
+                                signedInWaiting: model.resumingImports.contains(row.id), cancelling: model.cancellingImports.contains(row.id),
+                                queueWait: model.queueWait(for: row.item), waitReason: model.engineWaitReason,
+                                onCancel: { confirmCancel = row.id }, onSignInAgain: { model.reconnectImport(row.item) })
+                        }
+                    }
+                }
             }
-            ForEach(running) { item in
-                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), signedInWaiting: model.resumingImports.contains(item.id), cancelling: model.cancellingImports.contains(item.id), queueWait: model.queueWait(for: item), waitReason: model.engineWaitReason, onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
-            }
-            let finished = model.finishedImports
-            if !finished.isEmpty {
-                Divider()
-                Text(tr(vi: "Đã xong", en: "Finished")).font(.subheadline.weight(.semibold))
-                ForEach(finished) { item in ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), waitReason: model.engineWaitReason, onSignInAgain: { model.reconnectImport(item) }) }
+        }
+    }
+
+    /// Finished and cancelled imports, newest first.
+    @ViewBuilder private var finishedSection: some View {
+        let finished = model.finishedImports
+        if !finished.isEmpty {
+            SettingsSection(ImportQueueLayout.finishedTitle) {
+                ImportListBox {
+                    ForEach(Array(finished.enumerated()), id: \.element.id) { index, item in
+                        ImportListRow(first: index == 0) {
+                            ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), waitReason: model.engineWaitReason, onSignInAgain: { model.reconnectImport(item) })
+                        }
+                    }
+                }
             }
         }
     }

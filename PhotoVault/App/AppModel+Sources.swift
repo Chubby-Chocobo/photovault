@@ -10,7 +10,9 @@ import PhotoVaultStore
 extension AppModel {
     var imports: [ImportSnapshot] { ImportQueue.merged(queued: queuedImports, running: snapshot?.imports ?? []) }
     var runningImports: [ImportSnapshot] { ImportProgressText.running(imports) }
-    var finishedImports: [ImportSnapshot] { ImportProgressText.finished(imports) }
+    var finishedImports: [ImportSnapshot] { ImportQueueLayout.finishedRows(imports) }
+    /// Running imports first, then the ones waiting for the engine, numbered.
+    var queueRows: [ImportQueueRow] { ImportQueueLayout.queueRows(imports) }
 
     /// Import needs the first baseline, because the same cycle that scans Photos runs it.
     var canStartImport: Bool { phase == .running }

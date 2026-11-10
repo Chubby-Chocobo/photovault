@@ -4,16 +4,37 @@ import PhotoVaultEngine
 import SwiftUI
 
 enum ImportProviderIcon {
-    static func name(_ kind: SourceKind) -> String {
-        switch kind {
-        case .googleDrive, .dropbox: "icloud.and.arrow.down"
-        case .localFolder, .photos: "folder"
+    static func name(_ item: ImportSnapshot) -> String { ImportProviderSymbol.name(kind: item.kind, synced: item.syncedProvider) }
+}
+
+/// The list box of the import sections: rows with a divider between them, inside a thin border.
+struct ImportListBox<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) { content() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.35)))
+    }
+}
+
+/// A row of the import lists: padding, and a divider above every row but the first.
+struct ImportListRow<Content: View>: View {
+    var first: Bool
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !first { Divider() }
+            content().padding(.horizontal, 10).padding(.vertical, 8)
         }
     }
 }
 
 struct ImportRunningRow: View {
-    var item: ImportSnapshot
+    var row: ImportQueueRow
+    var item: ImportSnapshot { row.item }
     var waitingReason: String?
     /// Signed in again; the resume waits for the engine.
     var signedInWaiting = false
@@ -25,15 +46,26 @@ struct ImportRunningRow: View {
     var onSignInAgain: () -> Void
 
     var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(row.number)").font(.caption.weight(.semibold)).monospacedDigit()
+                .frame(width: 22, height: 22).background(Circle().fill(Color.secondary.opacity(0.18)))
+                .accessibilityLabel(tr(vi: "Số thứ tự \(row.number)", en: "Number \(row.number)"))
+            Image(systemName: ImportProviderIcon.name(item)).frame(width: 20).foregroundStyle(.secondary).accessibilityHidden(true)
+            details
+            Button(action: onCancel) { Image(systemName: "xmark.circle") }
+                .buttonStyle(.borderless).foregroundStyle(.secondary).disabled(cancelling)
+                .help(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
+                .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
+        }
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Image(systemName: ImportProviderIcon.name(item.kind)).foregroundStyle(.secondary).accessibilityHidden(true)
+            HStack(spacing: 8) {
                 Text(item.displayName).font(.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 8)
-                if CloudImportText.needsSignIn(item), !signedInWaiting {
-                    Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
-                }
-                Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small).disabled(cancelling)
+                Text(row.badge).font(.caption2.weight(.semibold)).foregroundStyle(row.isQueued ? Color.secondary : Color.accentColor)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(Capsule().fill((row.isQueued ? Color.secondary : Color.accentColor).opacity(0.15)))
             }
             Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
             ImportLocationLine(item: item)
@@ -65,6 +97,9 @@ struct ImportRunningRow: View {
                 item.failed > 0 ? tr(vi: "\(VietnameseFormat.integer(item.failed)) lỗi", en: "\(VietnameseFormat.integer(item.failed)) failed") : nil,
             ].compactMap { $0 }
             if !rest.isEmpty { Text(rest.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
+            if CloudImportText.needsSignIn(item), !signedInWaiting {
+                Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
+            }
         }
     }
 }
@@ -85,6 +120,7 @@ struct ImportFinishedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
+                Image(systemName: ImportProviderIcon.name(item)).foregroundStyle(.secondary).accessibilityHidden(true)
                 Image(systemName: item.status == .completed ? "checkmark.circle.fill" : "xmark.circle")
                     .foregroundStyle(item.status == .completed ? Color.green : Color.secondary).accessibilityHidden(true)
                 Text(item.displayName).lineLimit(1).truncationMode(.middle)

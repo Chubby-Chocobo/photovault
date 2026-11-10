@@ -10,8 +10,8 @@ struct ImportsCard: View {
     @State private var confirming = false
 
     var body: some View {
-        let running = model.runningImports
-        if let item = running.first {
+        if let summary = ImportQueueLayout.popoverSummary(model.queueRows) {
+            let item = summary.head.item
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(ImportProgressText.menuTitle(folderName: item.displayName)).font(.subheadline.weight(.semibold))
@@ -53,8 +53,8 @@ struct ImportsCard: View {
                     }
                     .controlSize(.small)
                 }
-                if let more = ImportProgressText.moreImports(running.count - 1) {
-                    Text(more).font(.caption2).foregroundStyle(.tertiary)
+                if let waiting = summary.waitingLine {
+                    Text(waiting).font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail)
                 }
             }
         }
