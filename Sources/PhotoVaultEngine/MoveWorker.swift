@@ -54,7 +54,8 @@ actor MoveWorker {
     private func runDestination(_ id: DestinationID) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
-        let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending) }
+        let cap = env.tuning.maxMovesPerPass
+        let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending) }.prefix(cap)
         let ensurer = await uploader.ensurer(for: record, destination: destination)
         var finished = 0
         var activity = MovePassActivity()
@@ -102,6 +103,7 @@ actor MoveWorker {
                          change: inout Change) async throws -> Outcome {
         guard let id = move.id, try await env.store.write({ db in try MoveJobRepository.start(db, id: id) }) else { return .retry }
         do {
+            try env.reach(.afterMoveStarted)
             switch move.operation {
             case .moveFile: change = try await moveFile(move, record: record, destination: destination, ensurer: ensurer)
             case .renameFolder: change = try await renameFolder(move, record: record, destination: destination)
@@ -136,6 +138,7 @@ actor MoveWorker {
             try FolderRefResolver.ref(db, destinationId: record.id, logicalPath: from, rootId: rootId)
         }
         let item = try await destination.move(remoteId: remoteId, name: name, from: fromRef, to: toRef)
+        try env.reach(.afterMoveBeforeCommit)
         try await env.store.write { db in try MoveCommit.file(db, move: move, identity: identity, parent: target, remoteId: item.remoteId) }
         env.log.log(.info, category: "move", "moved file job=\(identity.resType.rawValue) dest=\(record.id)")
         return loaded.chain.last.map { .moved(into: $0.displayName) } ?? .none
@@ -155,6 +158,7 @@ actor MoveWorker {
         }
         let ref = try await env.store.read { db in try FolderRefResolver.ref(db, destinationId: id, logicalPath: path, rootId: rootId) }
         let renamed = try await destination.renameFolder(ref, newName: move.toValue)
+        try env.reach(.afterMoveBeforeCommit)
         try await env.store.write { db in try MoveCommit.rename(db, move: move, folder: folder, newRemoteId: renamed.remoteId) }
         env.log.log(.info, category: "move", "renamed folder dest=\(id)")
         return .renamed(from: folder.displayName, to: move.toValue)

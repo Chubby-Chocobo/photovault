@@ -57,7 +57,7 @@ Camera Uploads/
 | 03 | [Core: DaySlotPolicy and slot-aware layout](phase-03-core-day-slot-policy-and-layout.md) | Completed | M | 02 |
 | 04 | [Engine: slot-aware LayoutResolver plumbing](phase-04-engine-layout-plumbing.md) | Completed | M | 01, 03 |
 | 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Completed | L | 04 |
-| 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Pending | M | 05 |
+| 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Completed | M | 05 |
 | 07 | [Engine: recovery of split days](phase-07-engine-recovery.md) | Pending | L | 05 |
 | 08 | [App text and docs](phase-08-app-text-and-docs.md) | Pending | S | 06, 07 |
 

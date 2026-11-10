@@ -106,6 +106,9 @@ public enum PlaceNamingPolicy {
         var key: String { "\(iso)|\(area)" }
     }
 
+    /// `<ISO>|<administrativeArea>` of a geocode, the key `day_stat.place_key` carries; nil without both.
+    public static func identityKey(_ place: GeoPlace) -> String? { identity(place)?.key }
+
     static func identity(_ place: GeoPlace) -> PlaceIdentity? {
         guard let iso = place.isoCountryCode?.trimmingCharacters(in: .whitespaces), !iso.isEmpty,
               let area = place.administrativeArea?.trimmingCharacters(in: .whitespaces), !area.isEmpty else { return nil }
