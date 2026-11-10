@@ -76,7 +76,7 @@ struct SettingsFormTests {
             { $0.includeHidden = true }, { $0.chatAppAlbumNames.append("Kakao") },
             { $0.photosWithoutCameraExifAreSaved = false }, { $0.placeNamesEnabled = false },
             { $0.homeCountryCode = "JP" }, { $0.sidecarJsonEnabled = false }, { $0.sidecarXmpEnabled = false },
-            { $0.viewByDeviceEnabled = false }, { $0.viewByPlaceEnabled = false }, { $0.viewFavoritesEnabled = false },
+            { $0.viewByDeviceEnabled = false }, { $0.viewByPlaceEnabled = false }, { $0.viewFavoritesEnabled = false }, { $0.viewByLensEnabled = true },
         ]
         for edit in edits {
             var changed = base

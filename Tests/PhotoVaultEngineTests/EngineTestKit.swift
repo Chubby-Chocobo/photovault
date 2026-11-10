@@ -108,6 +108,9 @@ struct StubMetadataReader: MetadataReading {
         // Staged files have no extension: without the resource's UTI a real reader finds nothing.
         guard !uti.isEmpty else { return .empty }
         let head = (try? Data(contentsOf: file)).map { String(decoding: $0.prefix(8), as: UTF8.self) } ?? ""
+        if head.hasPrefix("l:sonylow") || head.hasPrefix("sonylow") {
+            return CaptureMetadata(make: "SONY", model: "ILCE-7M4", lensModel: "fe 24-70")
+        }
         if head.hasPrefix("l:sony") || head.hasPrefix("sony") {
             return CaptureMetadata(make: "SONY", model: "ILCE-7M4", lensModel: "FE 24-70")
         }

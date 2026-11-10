@@ -30,12 +30,14 @@ public enum ViewPath: Hashable, Sendable {
     case byDevice(groupKey: String, groupName: String, day: ArchiveDay)
     case byPlace(countryKey: String, countryName: String, areaKey: String, areaName: String, day: ArchiveDay)
     case favorites(day: ArchiveDay)
+    case byLens(groupKey: String, lensName: String, day: ArchiveDay)
 
     public var view: ViewKind {
         switch self {
         case .byDevice: .byDevice
         case .byPlace: .byPlace
         case .favorites: .favorites
+        case .byLens: .byLens
         }
     }
 }
@@ -50,6 +52,7 @@ public struct DynamicLayout: LayoutPolicy {
     public static let byDeviceName = "By device"
     public static let byPlaceName = "By place"
     public static let favoritesName = "Favorites"
+    public static let byLensName = "By lens"
 
     public init() {}
 
@@ -122,6 +125,14 @@ public struct DynamicLayout: LayoutPolicy {
                 FolderLevel(logicalPath: country, displayName: NameSanitizer.sanitize(countryName)),
                 FolderLevel(logicalPath: area, displayName: NameSanitizer.sanitize(areaName)),
                 FolderLevel(logicalPath: "\(area)/\(day.description)", displayName: day.description),
+            ]
+        case let .byLens(groupKey, lensName, day):
+            let root = "view/byLens"
+            let group = "\(root)/\(groupKey)"
+            return [
+                FolderLevel(logicalPath: root, displayName: Self.byLensName),
+                FolderLevel(logicalPath: group, displayName: NameSanitizer.sanitize(lensName)),
+                FolderLevel(logicalPath: "\(group)/\(day.description)", displayName: day.description),
             ]
         case let .favorites(day):
             let root = "view/favorites"

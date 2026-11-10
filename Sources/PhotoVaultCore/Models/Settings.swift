@@ -24,6 +24,8 @@ public struct GlobalSettings: Hashable, Codable, Sendable {
     public var viewByDeviceEnabled = true
     public var viewByPlaceEnabled = true
     public var viewFavoritesEnabled = true
+    /// Off by default: turning it on adds one shortcut per photo that has a lens.
+    public var viewByLensEnabled = false
     public var integrityCheckIntervalDays = 7
 
     public init() {}

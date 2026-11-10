@@ -184,7 +184,10 @@ struct ViewExecutor: Sendable {
 
     /// A view level whose display name changed is renamed in place; shortcuts inside keep pointing
     /// at the same folder because paths are logical keys.
+    /// Lens folders keep the name they were created with: spellings that differ only in case share
+    /// one folder and must not rename it back and forth.
     private func queueRenames(_ chain: [FolderLevel]) async throws {
+        guard chain.first?.logicalPath != "view/byLens" else { return }
         let id = record.id
         let now = env.clock.now
         try await env.store.write { db in
