@@ -55,7 +55,7 @@ actor MoveWorker {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
         let cap = env.tuning.maxMovesPerPass
-        let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending) }.prefix(cap)
+        let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending, limit: cap) }
         let ensurer = await uploader.ensurer(for: record, destination: destination)
         var finished = 0
         var activity = MovePassActivity()

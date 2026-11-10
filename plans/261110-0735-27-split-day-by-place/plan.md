@@ -205,6 +205,17 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - `move_job` rows are not pruned: finished rows are the only record of what moved, nothing reads them at run time, and the index makes the lookups independent of their number (100k rows: 3000 lookups in 0.05 s).
 - Review later: no
 
+### A Drive backup added after a local recovery (lead addendum)
+- Chosen: Drive's `pvLogical` and folder ids are the truth, and the common case needs no rebinding because Drive recovers first. When a NAS was recovered alone first and a Drive backup root is added later, the Drive folders are bound by display name against the slots the NAS recovery created (`DaySlotBinding` rule 2). No `provisional` flag was added: the name match already puts each Drive folder on the slot of the same-named NAS folder, so no Drive file moves and the folder names agree. Test: `aDriveBackupAddedAfterTheNASWasRecoveredIsBoundByNameAndNothingMoves`.
+- Known limit: if the two destinations' folder names differ (a rename not yet applied at one of them), rule 3 binds a Drive folder by its `pvLogical`, which can disagree with a local guess. Then Drive files would follow the database's slot. Rebinding the local side to Drive's slots is not implemented; revisit if it shows up.
+- Review later: yes
+
+### Engine review fixes (2026-11-10)
+- A main folder assigned an unnamed group loses its name (`update.map(\.name)`); a new unnamed extra slot always gets its `day_place` row; the names of `remote_folder` rows count as reserved, so a rename that failed for good keeps its old name reserved.
+- Later-arrival neighbours come from three indexed queries, the move cap is a SQL `LIMIT`, an extra-slot rename marks only that slot's members dirty, and slug lengthening is salted past 64 hex digits so it always ends.
+- Behaviour change worth knowing (also in ADR 0028): with at most one province known, a result of `unnamed` together with any unanswered cell now waits (`waitingGeocode`) instead of reading as `unnamed`; it converges because the scheduler geocodes every camera cell.
+- Review later: no
+
 ### Decision record number
 - Chosen: `docs/decisions/0028-split-day-by-place.md`.
 - Alternatives: 0027.

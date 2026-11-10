@@ -8,7 +8,7 @@ import Testing
 
 /// Transactions that touch many rows stay short: the split of a big day and the upgrade pass.
 @Suite struct SplitDayPerformanceTests {
-    @Test func splittingA500AssetDayInto3ProvincesTakesUnderTwoSeconds() async throws {
+    @Test func splittingA500AssetDayInto3ProvincesStaysFast() async throws {
         let h = try await Harness.organized()
         try await h.update {
             $0.viewByDeviceEnabled = false
@@ -45,10 +45,11 @@ import Testing
         #expect(outcome.changed)
         #expect(elapsed < .seconds(10), "alone it takes well under a second; the bound allows for a loaded machine")
         let moves = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job WHERE op = 'moveFile'") ?? 0 }
-        #expect(moves == 2 * 500 / 3 + 1 || moves > 300)
+        let outside = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM asset WHERE place_slot IS NOT NULL") ?? 0 }
+        #expect(outside > 300 && moves == outside, "one move for each file of an asset outside the main folder")
     }
 
-    @Test func theUpgradePassOver300PromotedDaysTakesUnderTwoSeconds() async throws {
+    @Test func theUpgradePassOver300PromotedDaysStaysFast() async throws {
         let h = try await Harness.organized()
         try await h.update { $0.placeNamesEnabled = true }
         try h.addDrive(scope: .full)

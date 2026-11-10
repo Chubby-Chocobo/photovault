@@ -228,4 +228,87 @@ import Testing
         let nasNames = await h.nas.folders.map(\.name).filter { $0.hasPrefix(day.description) }
         #expect(nasNames.count == Set(nasNames.map { $0.lowercased() }).count, "no two folders with one name: \(nasNames)")
     }
+
+    // MARK: Review fixes
+
+    @Test func aNamedDayThatBecomesUnnamedLosesItsNameEverywhere() async throws {
+        let h = try await harness(hanoiCount: 0, daLatCount: 6, nas: false)
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        #expect(try h.dayStat(day)?.placeName == "Đà Lạt")
+        #expect(await folderNames(h.drive) == [daLatFolder])
+
+        // A photo about 500 km away in a cell without a province: the box is over 300 km, so the day is unnamed.
+        let sea = GeoPoint(latitude: 15.5, longitude: 112.0)
+        await h.geocoder.seed(sea, en: GeoPlace(), local: GeoPlace())
+        await h.add(h.snapshot("sea", daysAgo: 3, location: sea))
+        await h.settle(rounds: 6)
+        let stat = try #require(try h.dayStat(day))
+        #expect(stat.placeState == .unnamed && stat.placeName == nil && stat.placeKey == nil, "\(stat)")
+        #expect(await folderNames(h.drive) == [day.description], "renamed to the bare date")
+
+        try h.addNAS(scope: .full)
+        await h.env.destinations.add(h.nas)
+        try await h.coordinator.destinationAdded(h.nasId)
+        await h.settle(rounds: 6)
+        #expect(await folderNames(h.nas) == [day.description], "a destination added later agrees")
+    }
+
+    @Test func anUnnamedExtraGroupGetsItsRowAndTheCountryOnlyFreezeHoldsIt() async throws {
+        let h = try await harness(hanoiCount: 0, daLatCount: 6)
+        // Two far-apart photos in one other province: a group whose box is over 300 km, so it has no name.
+        let west = GeoPoint(latitude: 22.3, longitude: 103.8)
+        let east = GeoPoint(latitude: 22.3, longitude: 107.2)
+        let laoCai = GeoPlace(isoCountryCode: "VN", country: "Vietnam", administrativeArea: "Lao Cai", locality: nil)
+        try await h.baseline(.googleDrive, h.nasId)
+        await h.settle(rounds: 6)
+        #expect(try h.dayStat(day)?.placeName == "Đà Lạt")
+        for (id, point) in [("w", west), ("e", east)] {
+            await h.geocoder.seed(point, en: laoCai, local: laoCai)
+            await h.add(h.snapshot(id, daysAgo: 3, location: point))
+        }
+        await h.settle(rounds: 8)
+        let rows = try h.read { db in try DayPlaceRepository.fetchAll(db, day: self.day) }
+        #expect(rows.count == 1 && rows[0].placeName == nil, "\(rows)")
+        #expect(try slots(h)["w"] ?? nil == rows.first?.slot)
+        #expect(await folderNames(h.drive) == [daLatFolder, day.description])
+
+        let moves = try moveFiles(h)
+        let names = try renames(h)
+        for enter in [true, false] {
+            try h.write { db in
+                try KeyValueRepository.set(db, "place_country_only", enter ? 1 : nil)
+                for day in try OrganizationQueries.promotedDays(db) { try DirtyQueue.mark(db, [.place], id: day.description) }
+            }
+            await h.settle(rounds: 4)
+            #expect(try moveFiles(h) == moves && renames(h) == names, "country-only \(enter ? "entered" : "left")")
+        }
+    }
+
+    @Test func aRenameThatFailedForGoodStillReservesTheNameOnDisk() async throws {
+        let h = try await harness()
+        try await h.baseline(.googleDrive, h.nasId)
+        await h.settle()
+        let snapshot = await h.env.settingsSnapshot()
+        let outcome = try h.write { db -> DaySplitWriter.Outcome in
+            let now = h.clock.now
+            // Hà Nội was renamed: done on Drive, failed for good on the NAS, whose folder keeps the old name.
+            try DayStatRepository.setPlace(db, day: self.day, state: .named, key: "VN|Hanoi", name: "Hanoi City")
+            try db.execute(sql: "UPDATE remote_folder SET display_name = ? WHERE destination_id = 'gdrive' AND logical_path = ?",
+                           arguments: ["\(self.day) Hanoi City", "camera/\(self.day)"])
+            var failed = try MoveJobRepository.insert(db, MoveJob(
+                destinationId: h.nasId, operation: .renameFolder, subject: "camera/\(self.day)",
+                fromValue: self.hanoiFolder, toValue: "\(self.day) Hanoi City", createdAt: now))
+            try db.execute(sql: "UPDATE move_job SET state = 'failed' WHERE id = ?", arguments: [failed.id!])
+            failed.id = nil
+            // Đà Lạt's cell now answers "Hà Nội", the name the NAS folder still carries.
+            let renamed = GeoPlace(isoCountryCode: "VN", country: "Việt Nam", administrativeArea: "Hà Nội", locality: "Hanoi City")
+            let reused = GeoPlace(isoCountryCode: "VN", country: "Việt Nam", administrativeArea: "Lâm Đồng", locality: "Hà Nội")
+            try GeoCacheRepository.save(db, GeoCacheEntry(cell: GeoCell(hanoi), locale: "local", place: renamed, fetchedAt: now))
+            try GeoCacheRepository.save(db, GeoCacheEntry(cell: GeoCell(daLat), locale: "local", place: reused, fetchedAt: now))
+            return try PlaceNamer.evaluateDay(db, day: self.day, context: try h.env.context(db, snapshot))
+        }
+        #expect(outcome.needsRetry, "the group waits: its name is still the NAS folder's name")
+        #expect(try h.read { db in try DayPlaceRepository.fetchAll(db, day: self.day) }.compactMap(\.placeName) == ["Đà Lạt"])
+    }
 }

@@ -94,10 +94,13 @@ public enum DaySlotPolicy {
         }
         for g in groups.indices where chosen[g] == nil && !placeByName(g) {
             var digits = 12
+            var salt = 0
             var slug = slug(forKey: groups[g].key, digits: digits)
             while existing.contains(slug) {
                 digits += 4
-                slug = Self.slug(forKey: groups[g].key, digits: digits)
+                // A SHA-256 has 64 hex digits; past them the key is salted so the search always ends.
+                if digits > 64 { digits = 12; salt += 1 }
+                slug = Self.slug(forKey: salt == 0 ? groups[g].key : "\(groups[g].key ?? "")#\(salt)", digits: digits)
             }
             existing.insert(slug)
             take(g, Ref(slot: slug))

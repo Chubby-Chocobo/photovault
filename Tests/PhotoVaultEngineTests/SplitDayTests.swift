@@ -106,17 +106,33 @@ import Testing
 
     @Test func aOneProvinceDayNeverMovesAFileOrWritesAPlaceRow() async throws {
         let h = try await harness()
-        let near = GeoPoint(latitude: 11.9500, longitude: 108.4400)
-        await h.geocoder.seed(near, en: daLatEnglish, local: daLatVietnamese)
-        for index in 0..<6 { await h.add(h.snapshot("p\(index)", daysAgo: 3, location: index.isMultiple(of: 2) ? daLat : near), recordChange: false) }
+        // 40 cells in one province, one of them not a representative cell and not geocoded yet.
+        var points: [GeoPoint] = []
+        for index in 0..<40 { points.append(GeoPoint(latitude: 11.0 + Double(index) * 0.02, longitude: 108.4)) }
+        let cells = Set(points.map { GeoCell($0) })
+        let representatives = Set(PlaceNamingPolicy.representativeCells(cells))
+        let held = try #require(points.first { !representatives.contains(GeoCell($0)) })
+        // Every answer is cached except the held cell's, which the throttled geocoder has not reached yet.
+        try h.write { db in
+            for point in points where point != held {
+                for locale in ["en", "local"] {
+                    try GeoCacheRepository.save(db, GeoCacheEntry(
+                        cell: GeoCell(point), locale: locale, place: locale == "en" ? daLatEnglish : daLatVietnamese, fetchedAt: h.clock.now))
+                }
+            }
+        }
+        for point in points { await h.add(h.snapshot("p\(point.latitude)", daysAgo: 3, location: point), recordChange: false) }
         await h.add(h.snapshot("nogps", daysAgo: 3), recordChange: false)
         try await h.baseline(.googleDrive, h.nasId)
-        await h.settle()
+        await h.settle(rounds: 4)
         #expect(try moveCount(h, "moveFile") == 0)
         #expect(try h.read { db in try DayPlaceRepository.days(db) }.isEmpty)
         #expect(try slots(h).values.allSatisfy { $0 == nil })
-        #expect(try h.dayStat(day)?.placeState == .named)
+        #expect(try h.dayStat(day)?.placeState == .named, "named without waiting for the uncached cell")
         #expect(await folderNames(h.drive) == [daLatFolder])
+        let rows = try h.read { db in try Row.fetchAll(db, sql: "SELECT destination_id, logical_path, remote_id, display_name FROM remote_folder ORDER BY 1, 2").map { "\($0)" } }
+        await h.settle()
+        #expect(try h.read { db in try Row.fetchAll(db, sql: "SELECT destination_id, logical_path, remote_id, display_name FROM remote_folder ORDER BY 1, 2").map { "\($0)" } } == rows)
     }
 
     @Test func aDayUploadedBeforeItEndedSplitsAfterwardsAndMovesOnlyTheSmallGroup() async throws {

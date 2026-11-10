@@ -35,12 +35,18 @@ enum PlacementAllocator {
             if let row = try DayPlaceRepository.fetchAll(db, day: day).first(where: { $0.placeKey == key }) { return row.slot }
         }
         guard let created = asset.creationDate else { return nil }
-        let rows = try Row.fetchAll(db, sql: """
+        // Only the photos just before, at and just after the new one can be nearest.
+        let base = """
             SELECT place_slot, creation_date, asset_key FROM asset
-            WHERE placement_category = 'camera' AND placement_day = ? AND deleted_at IS NULL
-              AND asset_key != ? AND creation_date IS NOT NULL
-            """, arguments: [day.description, asset.assetKey.rawValue])
-        let nearest = rows.min { a, b in
+            WHERE placement_category = 'camera' AND placement_day = ? AND deleted_at IS NULL AND asset_key != ?
+            """
+        let arguments: [any DatabaseValueConvertible] = [day.description, asset.assetKey.rawValue]
+        let candidates = try [
+            Row.fetchOne(db, sql: base + " AND creation_date < ? ORDER BY creation_date DESC, asset_key LIMIT 1", arguments: StatementArguments(arguments + [created])),
+            Row.fetchOne(db, sql: base + " AND creation_date = ? ORDER BY asset_key LIMIT 1", arguments: StatementArguments(arguments + [created])),
+            Row.fetchOne(db, sql: base + " AND creation_date > ? ORDER BY creation_date, asset_key LIMIT 1", arguments: StatementArguments(arguments + [created])),
+        ].compactMap { $0 }
+        let nearest = candidates.min { a, b in
             let da = abs((a["creation_date"] as Date).timeIntervalSince(created))
             let db = abs((b["creation_date"] as Date).timeIntervalSince(created))
             if da != db { return da < db }

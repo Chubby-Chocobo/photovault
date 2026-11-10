@@ -132,6 +132,28 @@ import Testing
 
     // MARK: Intact database, owner-requested
 
+    @Test func aDriveBackupAddedAfterTheNASWasRecoveredIsBoundByNameAndNothingMoves() async throws {
+        let w = try await world(drive: true, local: true)
+        let before = await listing(w)
+        try await w.h.loseDatabase(localContent: w.reader)
+        try w.h.addNAS(scope: .full)
+        try await w.h.coordinator.beginBaseline(destinations: [w.h.nasId])
+        await w.h.settle(rounds: 10)
+        // The NAS alone guessed its main folder (the first by name); Drive's slots are the truth.
+        try w.h.addDrive(scope: .full)
+        try await w.h.coordinator.beginBaseline(destinations: [.googleDrive])
+        await w.h.settle(rounds: 10)
+        try await expectNothingMoved(w, listing: before, places: ["Đà Lạt"])
+        var drive: [String] = []
+        for folder in await w.h.drive.folders {
+            let path = await w.h.drive.path(of: folder.id)
+            if path.hasPrefix("Camera Uploads/") { drive.append(folder.name) }
+        }
+        drive.sort()
+        let local = folderListing(w.root!).filter { $0.hasPrefix("Camera Uploads/") }.map { String($0.dropFirst("Camera Uploads/".count)) }.sorted()
+        #expect(drive == local, "both destinations carry the same folder names")
+    }
+
     @Test func r5OwnerRequestedRecoveryWithAnIntactDatabaseChangesNothing() async throws {
         let w = try await world(drive: true, local: true)
         let before = await listing(w)

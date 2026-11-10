@@ -107,6 +107,16 @@ import Testing
         #expect(slot.hasPrefix(taken))
     }
 
+    @Test func lengtheningASlugAlwaysEndsEvenPastTheHashLength() {
+        let key = "VN|Crowded"
+        var slots = [main("HN", "Hà Nội")]
+        for digits in stride(from: 12, through: 64, by: 4) { slots.append(extra(DaySlotPolicy.slug(forKey: key, digits: digits), "OTHER\(digits)", "Name \(digits)")) }
+        let p = plan(slots, [group("HN", "Hà Nội"), group(key, "Ninh Bình")])
+        let created = p.slotOfGroup[1]
+        #expect(created != nil && !slots.compactMap(\.slot).contains(created!))
+        #expect(DynamicLayout.isValidSlot(created ?? ""))
+    }
+
     @Test func slugsAreStableAndWellFormed() {
         #expect(DaySlotPolicy.slug(forKey: "VN|Hanoi") == DaySlotPolicy.slug(forKey: "VN|Hanoi"))
         #expect(DaySlotPolicy.slug(forKey: "VN|Hanoi") != DaySlotPolicy.slug(forKey: "VN|Ninh Binh"))
@@ -181,8 +191,10 @@ import Testing
             #expect(finals[plan.slotOfGroup[index]] == ck(group.name), "group not in a folder of its own name", sourceLocation: sourceLocation)
         }
         let existing = Set(slots.compactMap(\.slot))
-        let created = plan.slotOfGroup.compactMap { $0 }.filter { !existing.contains($0) }
-        #expect(Set(created).count == Set(plan.updated.compactMap(\.slot).filter { !existing.contains($0) }).count, sourceLocation: sourceLocation)
+        let created = plan.updated.compactMap(\.slot).filter { !existing.contains($0) }
+        #expect(Set(created).count == created.count, "new slugs are distinct", sourceLocation: sourceLocation)
+        #expect(Set(created).isDisjoint(with: existing), "a new slug never equals an existing one", sourceLocation: sourceLocation)
+        #expect(plan.slotOfGroup.compactMap { $0 }.allSatisfy { existing.contains($0) || created.contains($0) }, sourceLocation: sourceLocation)
         #expect(plan.assetSlots.count == groups.flatMap(\.members).count, sourceLocation: sourceLocation)
     }
 }

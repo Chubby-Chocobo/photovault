@@ -29,12 +29,14 @@ enum DaySplitWriter {
         for update in plan.updated {
             guard let slot = update.slot else { continue }
             let previous = rows.first { $0.slot == slot }
-            if previous?.placeKey == update.key && previous?.placeName == update.name { continue }
+            if let previous, previous.placeKey == update.key, previous.placeName == update.name { continue }
             try DayPlaceRepository.save(db, DayPlace(day: day, slot: slot, placeKey: update.key, placeName: update.name))
             outcome.changed = true
             if let previous, previous.placeName != update.name {
                 try rename(db, day: day, slot: slot, name: update.name, context: context)
-                for member in groups.flatMap(\.members) { if let key = AssetKey(rawValue: member) { try DirtyQueue.mark(db, asset: key) } }
+                for index in groups.indices where plan.slotOfGroup[index] == slot {
+                    for member in groups[index].members { if let key = AssetKey(rawValue: member) { try DirtyQueue.mark(db, asset: key) } }
+                }
             }
         }
 
@@ -54,7 +56,7 @@ enum DaySplitWriter {
     private static func writeMain(
         _ db: Database, day: ArchiveDay, stat: DayStat, update: DaySlotUpdate?, context: PipelineContext
     ) throws -> Bool {
-        let name = update?.name ?? stat.placeName
+        let name = update.map(\.name) ?? stat.placeName
         let key = update.map(\.key) ?? stat.placeKey
         let state = update?.state ?? (name == nil ? .unnamed : .named)
         let renamed = name != stat.placeName
@@ -77,16 +79,20 @@ enum DaySplitWriter {
         }
     }
 
-    /// The destination filter lets SQLite use `move_job_subject(destination_id, subject)`; finished moves are kept, so the table only grows.
-    /// Names a folder may still carry on disk at some destination: the old names of its open renames.
+    /// Names a folder may still carry on disk at some destination: the old names of its open renames, and the
+    /// display name of its `remote_folder` rows, which also covers a rename that failed for good.
+    /// The destination filter lets SQLite use `move_job_subject(destination_id, subject)`; finished moves are
+    /// kept, so that table only grows.
     static func reserved(_ db: Database, day: ArchiveDay, slot: String?) throws -> [String?] {
         let path = slot.map { DynamicLayout.slotLogicalPath(day: day, slot: $0) } ?? "camera/\(day)"
-        let prefix = day.description + " "
-        return try String.fetchAll(db, sql: """
+        let folders = try String.fetchAll(db, sql: """
             SELECT from_value FROM move_job
             WHERE destination_id IN (SELECT id FROM destination) AND subject = ? AND op = 'renameFolder'
               AND state IN ('pending', 'inProgress')
-            """, arguments: [path]).compactMap { folder in
+            """, arguments: [path])
+            + String.fetchAll(db, sql: "SELECT display_name FROM remote_folder WHERE logical_path = ?", arguments: [path])
+        let prefix = day.description + " "
+        return folders.compactMap { folder in
             if folder == day.description { return .some(nil) }
             return folder.hasPrefix(prefix) ? .some(String(folder.dropFirst(prefix.count))) : nil
         }
