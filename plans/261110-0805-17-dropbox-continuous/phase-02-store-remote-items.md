@@ -38,6 +38,8 @@ This phase stores remote ids, hashes, path keys, folded paths, first-seen times 
    ALTER TABLE import_item ADD COLUMN path_fold TEXT;
    ALTER TABLE import_item ADD COLUMN seen_at DATETIME;
    ALTER TABLE source ADD COLUMN cursor TEXT;
+   ALTER TABLE source ADD COLUMN blocked_removals INTEGER;
+   ALTER TABLE source ADD COLUMN removal_allowance INTEGER;
    CREATE INDEX import_item_remote_id ON import_item(source_id, remote_id);
    CREATE INDEX import_item_remote_path ON import_item(source_id, remote_path);
    CREATE INDEX import_item_path_fold ON import_item(source_id, path_fold);
@@ -63,7 +65,7 @@ This phase stores remote ids, hashes, path keys, folded paths, first-seen times 
    - Hand-over: `holders(db, assetKey, excluding: Set<ItemRef>)` returns the `imported` and `duplicate` rows with that asset in sources whose status is open. `ItemRef { sourceId, relativePath }` is a small `Hashable` struct (a tuple is not `Hashable`). `requeue(db, rows, groupSuffix:)` sets them to `pending` with `seen_at = NULL`, clears `asset_key`, and in the same transaction sets every affected one-time source that is `importing` back to `scanning`. It returns the affected source ids.
    - `markFailedAt(db, sourceId, relativePath, now)`: for a continuous row marked `failed`, `seen_at` records the failure time.
    - `requeueFailed(db, sourceId, failedBefore: Date?)` (`failed` → `pending`, `seen_at = NULL`; nil means every failed row) and `counts` including `removed`. `pendingReadyCount(db, sourceId, readyBefore:)` counts at the group level.
-4. `SourceRepository`: `cursor(db, id)` and `setCursor(db, id, String?)`. The cursor is not a `SourceRecord` field.
+4. `SourceRepository`: `cursor(db, id)` and `setCursor(db, id, String?)`; `blockedRemovals` / `setBlockedRemovals` (the removal count seen at a brake trip); `removalAllowance` / `setRemovalAllowance` (copied from `blocked_removals` by the owner's confirm, cleared only when a feed uses it or the source is removed). None of these is a `SourceRecord` field, so snapshots and equality do not change on every poll.
 
 ## Implementation steps
 1. Write the tests first (`ContinuousSourcesStoreTests`):
@@ -74,7 +76,7 @@ This phase stores remote ids, hashes, path keys, folded paths, first-seen times 
    - Compare-and-set refuses a stale `remote_id`.
    - `markRemoved` keeps the asset.
    - `holders` skips closed sources and the excluded rows; `requeue` moves an `importing` one-time source to `scanning` and leaves a `scanning` or continuous one alone.
-   - `remotePaths` lookup; `requeueFailed(failedBefore:)` picks only rows failed long enough ago; cursor get/set.
+   - `remotePaths` lookup; `requeueFailed(failedBefore:)` picks only rows failed long enough ago; cursor get/set; blocked-removal count and allowance get/set, and both survive a reopen of the database.
 2. Write the migration file and its registration, then the repository code.
 
 ## Risks and rollback

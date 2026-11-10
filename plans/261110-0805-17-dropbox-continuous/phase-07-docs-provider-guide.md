@@ -1,6 +1,6 @@
 ---
 phase: 07
-title: "Docs: spec, next free decision, extension doc, roadmap"
+title: "Docs: spec, decision 0031 or later, extension doc, roadmap"
 status: pending
 priority: P3
 size: S
@@ -20,7 +20,7 @@ acceptance:
   - ls docs/decisions | grep -q "continuous-dropbox-source"
   - grep -q "continuous-dropbox-source" docs/decisions/README.md
   - grep -q "continuous-dropbox-source" docs/architecture/continuous-source-extension.md
-  - test ! -e docs/architecture/adding-a-source-provider.md
+  - grep -q "Dropbox" docs/requirements/roadmap.md
 ---
 
 # Phase 07: Docs
@@ -34,7 +34,7 @@ This phase makes `docs/` true again. It updates the docs that branch `docs/futur
   - 0029: Photos-only continuous source (docs branch);
   - 0030: Drive import with `drive.readonly`.
 
-  The new record takes the **next free number at resume time**. Check `docs/decisions/README.md` then; do not assume 0031.
+  The new record takes the **next free number at resume time (0031 or later)**. Check `docs/decisions/README.md` then.
 - Spec §2 (in `docs/requirements/photovault-spec-v1.md`):
   - item 9 (line 32) says continuous sources other than Photos "sẽ thêm sau";
   - line 35 lists S3 and OneDrive under "Không làm", and continuous Dropbox as "để sau".
@@ -70,8 +70,8 @@ This phase makes `docs/` true again. It updates the docs that branch `docs/futur
      - Thư mục gốc đổi id, bị xoá hay đổi tên → `rootChanged`, không xoá gì.
      - Một lần đọc mà xoá quá max(50, 20 %) → `largeRemoval`:
        - nguồn chờ 10 phút giữa các lần thử;
-       - xác nhận cho phép đúng một lần, tối đa số đã báo cộng 10 %;
-       - mất xác nhận khi mở lại app hay đăng nhập lại thì hỏi lại.
+       - xác nhận cho phép đúng một lần, tối đa đúng số file bị xoá đã thấy lúc chặn;
+       - quyền xác nhận lưu trong cơ sở dữ liệu, chỉ mất khi đã dùng hoặc khi gỡ nguồn (đăng nhập lại, mở lại app hay chính lần xác nhận không xoá nó).
    - **FR-129 Chờ ổn định:**
      - Nhóm file mới hoặc vừa sửa sau lần liệt kê đầu được đọc khi file mới nhất của nhóm đã thấy ≥ 1 giờ.
      - File lỗi được thử lại 24 giờ sau lần lỗi, và ngay sau listing đầy đủ hoặc khi đăng nhập lại.
@@ -93,8 +93,8 @@ This phase makes `docs/` true again. It updates the docs that branch `docs/futur
    - §8.1 key line (`photovault-spec-v1.md:424`): continuous non-Photos sources also use `x:`; drop the `s:` sentence.
    - §2 item 9 and the "Không làm" line: continuous Dropbox moves from "để sau" to done. S3 and OneDrive stay out of 1.0 as sources, with a pointer to the roadmap.
    - §15: point to the roadmap instead of repeating it.
-2. New decision `docs/decisions/<next free number>-continuous-dropbox-source.md`, copied from the plan.md Decisions: context, decision, consequences, review trigger. It says it supersedes 0029 (Photos-only continuous source) for Dropbox and supersedes part of 0024 (`x:` keys for continuous sources). Add a row to the decisions README, and a "superseded" line in 0029 and in 0024.
-3. `docs/architecture/continuous-source-extension.md` (from the docs branch), updated in place:
+2. New decision `docs/decisions/<next free number, 0031 or later>-continuous-dropbox-source.md`, copied from the plan.md Decisions: context, decision, consequences, review trigger. It says it supersedes 0029 (Photos-only continuous source) for Dropbox and supersedes part of 0024 (`x:` keys for continuous sources). Add a row to the decisions README, and a "superseded" line in 0029 and in 0024.
+3. `docs/architecture/continuous-source-extension.md` (from the docs branch), updated in place. Its section "Hướng dẫn thêm nhà cung cấp" is the provider guide; no other guide file is created:
    - Status: Dropbox implemented, with a link to the new decision.
    - The rules match the shipped behaviour:
      - R5: base-group batches and the per-group `stem (n)`;
@@ -103,12 +103,12 @@ This phase makes `docs/` true again. It updates the docs that branch `docs/futur
      - R12: the owner's removal answer;
      - R14: a `deleted` entry is always kept;
      - a new rule for "another id at this path";
-     - the brake allowance and cooldown in R3;
+     - the brake in R3: the allowance equals the count seen at the trip, is used at most once, is stored in the database and is cleared only by use or by removing the source; the 10-minute cooldown;
      - hand-over into an `importing` import and from `cancelImport` in R4.
    - The provider table keeps OneDrive, S3 and Flickr `[UNVERIFIED]`, with one paragraph on what a provider gets for free (brake, hand-over, settle window, daily retry, transfer gate).
    - Registration points: the `SourceKind` case, the `CloudImportServices` factory, `AppEnvironment.openContinuousSources`, the "Thêm nguồn" menu item, the Keychain item `import-<sourceId>`, the orphan sweep and factory reset.
    - Tests: a stub-transport adapter suite like `DropboxContinuousSourceTests`; engine behaviour is already covered by `FakeContinuousSource`.
-4. `docs/requirements/roadmap.md` (from the docs branch): Dropbox moves from "Tương lai xa" to the release that ships it. OneDrive, S3 and Flickr stay there, each pointing to the extension doc.
+4. `docs/requirements/roadmap.md` (from the docs branch; the owner's roadmap list, kept): Dropbox moves from "Tương lai xa" to the release that ships it. OneDrive, S3 and Flickr stay there, each pointing to the extension doc.
 5. `system-architecture.md`:
    - the feed stage at step 2, the brake and hand-over, and the reader seam and transfer gate in steps 3–4;
    - migration `continuous-sources`;

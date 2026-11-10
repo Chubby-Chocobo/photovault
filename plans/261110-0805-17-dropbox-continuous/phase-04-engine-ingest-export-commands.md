@@ -71,7 +71,7 @@ This phase feeds the ready rows of continuous sources through the existing impor
        2. Each live asset of the source with a pending, uploading or deferred job goes through `AssetHandover.retire`, with the source's own rows excluded.
        3. Each remaining live asset of the source goes through `AssetHandover.handOver`, excluding the source's own rows (they were cancelled in step 1 and must not come back to `pending`; re-audit M-9).
        4. Camera days are recounted.
-       5. The status becomes `cancelled` and the cursor NULL.
+       5. The status becomes `cancelled`; cursor, `blocked_removals` and `removal_allowance` become NULL.
 
        The adapter is then unregistered and the holds cleared. Uploads in flight finish.
 8. **Snapshot.** Add `ContinuousSourceSnapshot` with `id, kind, account, displayName, status, statusReason, checkedAt (= listed_at), found, pending, ready, imported, duplicates, failed`; `removed` rows are not counted. `EngineSnapshot.continuousSources` lists open sources only, oldest first.

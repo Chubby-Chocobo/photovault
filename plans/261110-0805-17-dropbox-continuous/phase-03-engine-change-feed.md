@@ -46,14 +46,13 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
 ## Requirements
 1. `SourceAvailability` (new): the helpers above, moved out of `ImportStage` with unchanged behaviour. One addition: `rootChanged` holds with reason `rootChanged` (other `SourceError`s keep `unavailable`). The import suites stay unchanged and green.
    - `ImportStage.run` filters its rows by `mode == .oneTime` here, not in phase 04. Without it, the import stage finds no folder adapter for a continuous row and holds it for sign-in on every cycle (`ImportStage.swift:24-36`, `SourceRegistry.swift:15`), so the feed tests below could not pass (re-audit I-4). Phase 04 adds the continuous ingest branch next to this filter.
-2. `SourceRegistry.continuous(for:)`. New `SyncCoordinator+ContinuousSources.swift` with `registerContinuousSources(_:)` and `confirmLargeRemoval(_ id)`. The confirm command runs in the lane and acts only while the source is `offline` with reason `largeRemoval`: it records a one-shot allowance bounded by the tripped count, sets `watching` and calls `clearCooldown` (never `clear`, which would also drop the allowance; re-audit I-6). Phase 04 adds the other commands to the same file.
+2. `SourceRegistry.continuous(for:)`. New `SyncCoordinator+ContinuousSources.swift` with `registerContinuousSources(_:)` and `confirmLargeRemoval(_ id)`. The confirm command runs in the lane and acts only while the source is `offline` with reason `largeRemoval`. In one transaction it copies `blocked_removals` into `removal_allowance` and sets `watching`; then it calls `ImportHolds.clearCooldown` (re-audit I-6). The allowance lives in the database, so sign-in (`ImportHolds.clear`), a relaunch and the confirm itself never clear it. Phase 04 adds the other commands to the same file.
 3. `ImportHolds` gains:
    - `notePolled` / `polledRecently`;
-   - `noteLargeRemoval(id, count)` (the count at the trip), `allowLargeRemoval(id)` (allowance = that count + 10 %), `consumeLargeRemoval(id, removing:) -> Bool` (true only when an allowance exists and `removing` is within it; consumed either way);
    - `clearCooldown(id)`: forgets only the job-wide hold;
    - `forgetGroups(id)`.
 
-   `clear(id)` forgets all of them. A relaunch or a sign-in (`clear`) loses an allowance; the brake then asks again, which is never a wedge.
+   `clear(id)` forgets all of them. The brake allowance is not held here (see the brake below).
 4. `ContinuousFeedStage` (`.changes`), registered at `SyncCoordinator.swift:78` with the shared holds. It runs for each source with `mode == .continuous` and an open status:
    - With no adapter, it holds for sign-in (as imports, `ImportStage.swift:30-36`). It skips a source that is cooling down, or was polled less than 60 s ago, unless the trigger is `.manual`.
    - It calls `changes(since: cursor)` through `SourceAvailability.adapter`:
@@ -70,7 +69,10 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
      - `remote_path IN` the listed path keys (a row that moved into a path; re-audit I-2).
 
      A complete listing fetches every row. Then `ContinuousChangePlanner.plan` runs.
-   - **Brake:** when the count of `removed` actions is greater than `max(50, 20 % of rows not removed)` and `consumeLargeRemoval` does not allow it, the source holds `offline` with reason `largeRemoval`, `noteLargeRemoval` stores the count, the holds get a 10-minute cooldown (`signInBackoff`, so the delta is not replanned on every poll; re-audit M-1), the log gets counts only, and nothing is committed.
+   - **Brake:** let `n` be the count of `removed` actions and `a` the source's `removal_allowance`.
+     - If `n > max(50, 20 % of rows not removed)` and (`a` is NULL or `n > a`), the feed trips. In one small transaction the source holds `offline` with reason `largeRemoval` and `blocked_removals = n`; `removal_allowance` is left as it is, cursor and rows are untouched. The holds get a 10-minute cooldown (`signInBackoff`), so the delta is not replanned on every poll (re-audit M-1). The log gets counts only.
+     - Otherwise the feed applies. When `a` is not NULL and the feed removed at least one row, its final transaction sets `removal_allowance` and `blocked_removals` to NULL: the allowance equals the count seen at the trip and is used at most once. A feed under the threshold leaves an unused allowance in place.
+     - Removing the source clears both columns (phase 04).
    - Actions are applied in transactions of about `env.tuning.importListBatch`, split only between base groups (folded dir + stem), so every action of a path and every row of a pair commit together (re-audit M-6). The last transaction also sets the cursor, `listed_at = now` and `watching` (clearing an offline reason). An empty feed still runs it. `env.reach(.afterContinuousFeedBatchCommit)` fires after every commit.
    - Failed rows go back to pending after each applied feed: `requeueFailed(failedBefore: now − 24 h)` normally, `requeueFailed(failedBefore: nil)` after a complete listing or when a sign-in cleared the holds; then `forgetGroups`. The failure time is the row's `seen_at`, written when phase 04 marks it failed, so the cadence survives relaunches and FR-124's give-up (re-audit M-3).
    - Logging is counts only.
@@ -123,9 +125,10 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
 - `ContinuousFeedSafetyTests`:
   - `replaceRoot` (rename and recreate `/Camera Uploads`) then `expireCursor`: 0 rows removed, `offline/rootChanged`, cursor unchanged;
   - `deleteRoot`: the same;
-  - deleting 60 of 100 files trips the brake (`largeRemoval`, nothing committed, 10-minute cooldown, no second planning inside it); `confirmLargeRemoval` clears the cooldown and the next feed applies once; a second large removal trips again;
-  - confirm, then a sign-in before the next feed: the brake trips again and confirming again works (never wedged);
-  - confirm 60, then a feed removing 90: trips again (the allowance is bounded);
+  - deleting 60 of 100 files trips the brake (`largeRemoval`, `blocked_removals = 60`, nothing committed, 10-minute cooldown, no second planning inside it); `confirmLargeRemoval` sets the allowance to 60 and clears the cooldown; the next feed applies once and clears the allowance; a second large removal trips again;
+  - confirm, then a sign-in and an engine rebuilt over the same database (relaunch) before the next feed: the allowance is still 60 and the feed applies once;
+  - confirm 60, then a feed removing 61: trips again with `blocked_removals = 61` (no margin) and the allowance stays unused;
+  - removing the source clears the allowance;
   - `confirmLargeRemoval` on a source that is not held for `largeRemoval` does nothing;
   - 40 of 1 000 is applied without a stop.
 - `ContinuousHandoverTests`:
