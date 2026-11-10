@@ -31,6 +31,9 @@ Owner request: show the name and progress of the file being synced on the status
 - Elapsed time (`m:ss`) joins the line after 10 s; the 1 Hz app clock makes it move between 8 MiB chunk acks. Rates are not shown: between acks they would be a stale step.
 - Photos export with 0 bytes received reads "Đang tải … từ iCloud". The assumption (not verified on a device): `PHAssetResourceManager` delivers data only after an iCloud-only original is on this Mac, so no byte callback fires during the download. If bytes do stream during download, the line shows normal export progress, which is also correct.
 
+- Publishing: only the list filling or emptying bypasses the 0.5 s throttle; begin and end of a file among others wait for it, so a big first sync does not send an update per file. A just-ended file may stay in the list until the next publish (the next chunk report or the list emptying).
+- The launch orphan sweep skips `dropbox-account-email` like `dropbox-account`. The lazy e-mail fetch saves only while the same sign-in is in place (`DropboxEmailRefresh`).
+
 ## Unresolved
 
 - Tooltip on the status item is unverified on a real menu bar.
