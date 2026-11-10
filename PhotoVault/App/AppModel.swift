@@ -53,7 +53,15 @@ final class AppModel {
     /// A Dropbox account token is stored (the folder browser needs no new sign-in).
     var dropboxSignedIn = false
     /// A Google or Dropbox sign-in is waiting for the browser; further starts are ignored meanwhile.
-    var cloudFlowBusy = false
+    var cloudFlow = CloudFlowTracker()
+    @ObservationIgnored var cloudFlowID = 0
+    /// Imports signed in and waiting for the engine's turn to be recorded; listed like running imports.
+    var queuedImports: [ImportSnapshot] = []
+    /// Imports signed in again whose resume waits for the engine's turn.
+    var resumingImports: Set<SourceID> = []
+    @ObservationIgnored var queuedStarts: [SourceID: Task<Void, Never>] = [:]
+    var cloudFlowBusy: Bool { cloudFlow.stage != .idle }
+    var cloudFlowStage: CloudFlowStage { cloudFlow.stage }
     /// Cancels the browser sign-in that is running; nil when none is.
     @ObservationIgnored var cloudFlowCancel: (() -> Void)?
     var hardening: (any HardeningCommands)?

@@ -120,7 +120,7 @@ struct SourcesTab: View {
                         .help(tr(vi: "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.", en: "Existing imports keep their own read access."))
                 }
             }
-            if model.cloudFlowBusy { BrowserWaitRow(onCancel: model.cancelCloudFlow) }
+            if model.cloudFlowBusy { BrowserWaitRow(stage: model.cloudFlowStage, onCancel: model.cancelCloudFlow) }
             if !model.dropboxImportAvailable {
                 Text(tr(vi: "Nhập từ Dropbox cần khoá ứng dụng Dropbox trong bản build này.", en: "Importing from Dropbox needs a Dropbox app key in this build."))
                     .font(.caption).foregroundStyle(.secondary)
@@ -130,13 +130,13 @@ struct SourcesTab: View {
                 Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
             }
             ForEach(running) { item in
-                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
+                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), signedInWaiting: model.resumingImports.contains(item.id), onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
             }
             let finished = model.finishedImports
             if !finished.isEmpty {
                 Divider()
                 Text(tr(vi: "Đã xong", en: "Finished")).font(.subheadline.weight(.semibold))
-                ForEach(finished) { item in ImportFinishedRow(item: item, onSignInAgain: { model.reconnectImport(item) }) }
+                ForEach(finished) { item in ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), onSignInAgain: { model.reconnectImport(item) }) }
             }
         }
     }

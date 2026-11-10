@@ -194,6 +194,7 @@ struct AppEnvironment: Sendable {
     private static func openImportSources(store: Store, cloud: CloudImportServices, log: AppLogSink) -> [any FolderImportSource] {
         // Finished imports too: a destination added later still receives their files.
         let rows = (try? store.read { db in try SourceRepository.readableImports(db) }) ?? []
+        sweepOrphanGrants(store: store, cloud: cloud, log: log)
         let readable = CloudImportKeychain.registrable(rows, hasGrant: cloud.hasGrant)
         let skipped = CloudImportKeychain.missingToken(rows, hasGrant: cloud.hasGrant)
         if skipped > 0 { log.log(.notice, category: "launch", "\(skipped) cloud imports have no stored token") }
@@ -209,6 +210,17 @@ struct AppEnvironment: Sendable {
                 nil
             }
         }
+    }
+
+    /// Deletes `import-<id>` items that no import row names: a start that was still waiting for the engine when the app quit.
+    /// Skipped when the rows or the Keychain list cannot be read, so nothing is deleted on a guess.
+    private static func sweepOrphanGrants(store: Store, cloud: CloudImportServices, log: AppLogSink) {
+        guard let rows = try? store.read({ db in try SourceRepository.fetchAll(db) }), let stored = try? cloud.keychain.accounts() else { return }
+        let orphans = CloudImportKeychain.orphanGrants(stored: stored, knownImports: Set(rows.map(\.id)))
+        guard !orphans.isEmpty else { return }
+        let failed = cloud.deleteTokens(accounts: orphans)
+        log.log(.notice, category: "launch", "\(orphans.count - failed) unused import sign-ins removed")
+        if failed > 0 { log.log(.error, category: "launch", "\(failed) unused import sign-ins could not be removed") }
     }
 
     static func makeFolderSource(id: SourceID, bookmark: Data, store: Store, log: AppLogSink) -> LocalFolderSource {

@@ -15,6 +15,8 @@ enum ImportProviderIcon {
 struct ImportRunningRow: View {
     var item: ImportSnapshot
     var waitingReason: String?
+    /// Signed in again; the resume waits for the engine.
+    var signedInWaiting = false
     var onCancel: () -> Void
     var onSignInAgain: () -> Void
 
@@ -24,19 +26,25 @@ struct ImportRunningRow: View {
                 Image(systemName: ImportProviderIcon.name(item.kind)).foregroundStyle(.secondary).accessibilityHidden(true)
                 Text(item.displayName).font(.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
-                if CloudImportText.needsSignIn(item) {
+                if CloudImportText.needsSignIn(item), !signedInWaiting {
                     Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
                 }
                 Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small)
             }
             Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
-            if CloudImportText.needsSignIn(item), item.account != nil {
+            if CloudImportText.needsSignIn(item), item.account != nil, !signedInWaiting {
                 Text(CloudImportText.wrongAccountNotice(expected: item.account))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Text(waitingReason ?? ImportProgressText.statusLabel(item)).font(.caption)
-                .foregroundStyle(item.status == .offline || waitingReason != nil || ImportProgressText.waitsForDisk(item) ? .orange : .secondary)
-            if item.status != .offline || item.found > 0 {
+            if signedInWaiting {
+                waitingLine(Image(systemName: "checkmark.circle.fill").foregroundStyle(.green), CloudImportText.signedInWaiting)
+            } else if ImportQueue.isQueued(item) {
+                waitingLine(ProgressView().controlSize(.mini), ImportProgressText.statusLabel(item))
+            } else {
+                Text(waitingReason ?? ImportProgressText.statusLabel(item)).font(.caption)
+                    .foregroundStyle(item.status == .offline || waitingReason != nil || ImportProgressText.waitsForDisk(item) ? .orange : .secondary)
+            }
+            if !ImportQueue.isQueued(item), item.status != .offline || item.found > 0 {
                 ProgressBar(fraction: ImportProgressText.fraction(item))
                     .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
             }
@@ -51,8 +59,16 @@ struct ImportRunningRow: View {
     }
 }
 
+private func waitingLine(_ icon: some View, _ text: String) -> some View {
+    HStack(spacing: 6) {
+        icon
+        Text(text).font(.caption).foregroundStyle(.secondary)
+    }
+}
+
 struct ImportFinishedRow: View {
     var item: ImportSnapshot
+    var signedInWaiting = false
     var onSignInAgain: () -> Void
 
     var body: some View {
@@ -67,7 +83,9 @@ struct ImportFinishedRow: View {
             }
             Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
             Text(ImportProgressText.summaryLine(item)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            if CloudImportText.needsSignIn(item) {
+            if signedInWaiting {
+                waitingLine(Image(systemName: "checkmark.circle.fill").foregroundStyle(.green), CloudImportText.signedInWaiting)
+            } else if CloudImportText.needsSignIn(item) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(tr(vi: "Cần đăng nhập lại để các ảnh còn chờ được backup. ", en: "Sign in again so the photos still waiting can be backed up. ")
                          + (item.account != nil ? CloudImportText.wrongAccountNotice(expected: item.account) : ""))

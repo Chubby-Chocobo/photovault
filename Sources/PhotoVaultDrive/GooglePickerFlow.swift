@@ -26,14 +26,20 @@ public enum PickerError: Error, Equatable, Sendable {
     case pickAccessDenied
     /// The selection was too large for the redirect to carry.
     case selectionTooLarge
+    /// The read step was signed in with another Google account than the one that picked the folder.
+    case accountMismatch
 }
 
-/// Google's desktop Picker flow: OAuth with `drive.file` (so the Picker's grants work) plus `drive.readonly`
-/// (so the folders picked can be read to their depth) and `trigger_onepick`. Only imports use it; the backup destination stays `drive.file`. The browser
-/// shows the account chooser, consent and the picker; the loopback redirect carries `picked_file_ids`.
+/// Google's desktop Picker flow, in two consents for the same account.
+/// 1. The Picker: OAuth with `drive.file` alone plus `trigger_onepick`. Google's desktop Picker allows no other scope with it.
+///    It returns the picked ids and a token that only identifies the account.
+/// 2. The read: a plain OAuth with `drive.readonly` alone, `login_hint` set to that account, so the folders picked can be listed
+///    to their depth (`drive.file` does not reveal a folder's children). Only this grant is kept; the step 1 token is dropped, not revoked,
+///    because a revoke ends every grant of the client for that account, including a backup destination.
+/// Only imports use it; the backup destination stays `drive.file`. The loopback redirect carries `picked_file_ids` in step 1.
 public struct GooglePickerFlow: Sendable {
     static let readScope = "https://www.googleapis.com/auth/drive.readonly"
-    public static let scope = "https://www.googleapis.com/auth/drive.file " + readScope
+    public static let scope = OAuthClient.fileScope
     /// What the loopback request line can carry with room to spare: an id is at most about 45 bytes and its
     /// comma may arrive as `%2C`, so 48 bytes each, after 4 KiB for the other query items. More than this is refused.
     static let maxPickedIds = (LoopbackRequestParser.maxRequestBytes - 4096) / 48
@@ -45,14 +51,18 @@ public struct GooglePickerFlow: Sendable {
     private let clock: any Clock
     private let openURL: URLOpening
     private let loopbackTimeout: TimeInterval
+    private let onReadStep: @Sendable () -> Void
 
+    /// - Parameter onReadStep: called when the second consent is about to open, so the app can say "step 2 of 2".
     public init(config: OAuthConfig, transport: any HTTPTransport, clock: any Clock = SystemClock(),
-                openURL: @escaping URLOpening, loopbackTimeout: TimeInterval = GooglePickerFlow.pickTimeout) {
+                openURL: @escaping URLOpening, loopbackTimeout: TimeInterval = GooglePickerFlow.pickTimeout,
+                onReadStep: @escaping @Sendable () -> Void = {}) {
         self.config = config
         self.transport = transport
         self.clock = clock
         self.openURL = openURL
         self.loopbackTimeout = loopbackTimeout
+        self.onReadStep = onReadStep
     }
 
     public static func authorizationURL(clientID: String, redirectURI: String, state: String, challenge: String,
@@ -64,25 +74,64 @@ public struct GooglePickerFlow: Sendable {
         ]
         if allowMultiple { fields.append(("allow_multiple", "true")) }
         if allowFolders { fields.append(("allow_folder_selection", "true")) }
+        return url(fields)
+    }
+
+    /// The read step: `drive.readonly` only, no Picker parameters, the account of the pick as `login_hint`.
+    public static func readAuthorizationURL(clientID: String, redirectURI: String, state: String, challenge: String,
+                                            loginHint: String?) -> URL {
+        var fields: [(String, String)] = [
+            ("client_id", clientID), ("redirect_uri", redirectURI), ("response_type", "code"),
+            ("scope", readScope), ("state", state), ("code_challenge", challenge), ("code_challenge_method", "S256"),
+            ("access_type", "offline"), ("prompt", "consent"),
+        ]
+        if let loginHint, !loginHint.isEmpty { fields.append(("login_hint", loginHint)) }
+        return url(fields)
+    }
+
+    private static func url(_ fields: [(String, String)]) -> URL {
         var components = URLComponents(url: OAuthConfig.authEndpoint, resolvingAgainstBaseURL: false)!
         components.percentEncodedQuery = FormEncoding.encode(fields)
         return components.url!
     }
 
     /// Interactive; call only from an explicit user action. Network and token failures are `DestinationError`.
+    /// The result carries the `drive.readonly` grant.
     public func run() async throws -> PickerResult {
+        let oauth = OAuthClient(config: config, transport: transport, clock: clock, openURL: openURL)
+        let (ids, account) = try await pickStep(oauth)
+        onReadStep()
+        let read = try await readStep(oauth, account: account)
+        return PickerResult(pickedIds: ids, refreshToken: read.refresh, accessToken: read.tokens.accessToken,
+                            expiresAt: read.tokens.expiresAt, email: account?.email)
+    }
+
+    // MARK: Steps
+
+    private struct Account: Sendable { var email: String?; var permissionId: String? }
+
+    private struct Authorized {
+        var code: String
+        var verifier: String
+        var redirectURI: String
+        var server: LoopbackRedirectServer
+    }
+
+    /// Opens `makeURL`'s page and waits for the redirect. The caller answers the browser through `server`.
+    private func authorize(_ makeURL: (_ redirectURI: String, _ state: String, _ challenge: String) -> URL) async throws -> Authorized {
         let pkce = try PKCE()
         let state = try PKCE.randomState()
         let server = try LoopbackRedirectServer(expectedState: state, timeout: loopbackTimeout)
         let port = try await server.start()
         let redirectURI = "http://127.0.0.1:\(port)\(LoopbackRequestParser.callbackPath)"
-        let url = Self.authorizationURL(clientID: config.clientID, redirectURI: redirectURI, state: state, challenge: pkce.challenge)
-        guard await openURL(url) else {
+        guard await openURL(makeURL(redirectURI, state, pkce.challenge)) else {
             server.cancel()
             throw PickerError.browserUnavailable
         }
-        let code: String
-        do { code = try await server.awaitCode() } catch let error as LoopbackError {
+        do {
+            let code = try await server.awaitCode()
+            return Authorized(code: code, verifier: pkce.verifier, redirectURI: redirectURI, server: server)
+        } catch let error as LoopbackError {
             switch error {
             case .timeout: throw PickerError.timedOut
             case .cancelled, .authorizationDenied("access_denied"): throw PickerError.cancelled
@@ -90,27 +139,59 @@ public struct GooglePickerFlow: Sendable {
             default: throw DestinationError.itemRejected(reason: "picker redirect \(error)")
             }
         }
+    }
+
+    private func pickStep(_ oauth: OAuthClient) async throws -> (ids: [String], account: Account?) {
+        let step = try await authorize { redirectURI, state, challenge in
+            Self.authorizationURL(clientID: config.clientID, redirectURI: redirectURI, state: state, challenge: challenge)
+        }
         do {
-            let ids = try Self.parseIds(server.receivedCallback?.pickedFileIds)
+            let ids = try Self.parseIds(step.server.receivedCallback?.pickedFileIds)
             guard !ids.isEmpty else { throw PickerError.nothingPicked }
-            let oauth = OAuthClient(config: config, transport: transport, clock: clock, openURL: openURL)
             let tokens: OAuthTokens
             do {
-                tokens = try await oauth.exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
+                tokens = try await oauth.exchange(code: step.code, verifier: step.verifier, redirectURI: step.redirectURI)
             } catch DestinationError.itemRejected(let reason) where reason == OAuthClient.fileScopeMissing {
                 throw PickerError.pickAccessDenied
             }
-            // Google shows the two Drive permissions as separate boxes; without this one a picked folder lists as empty.
-            guard tokens.scopes.contains(Self.readScope) else { throw PickerError.readAccessDenied }
-            guard let refresh = tokens.refreshToken else { throw PickerError.tokenMissing }
-            let email = await Self.email(transport: transport, accessToken: tokens.accessToken)
-            server.respond(success: true)
-            return PickerResult(pickedIds: ids, refreshToken: refresh, accessToken: tokens.accessToken,
-                                expiresAt: tokens.expiresAt, email: email)
+            let account = await Self.account(transport: transport, accessToken: tokens.accessToken)
+            step.server.respond(success: true)
+            return (ids, account)
         } catch {
-            if let picker = error as? PickerError, picker == .selectionTooLarge { server.respondSelectionTooLarge() } else { server.respond(success: false) }
+            if let picker = error as? PickerError, picker == .selectionTooLarge { step.server.respondSelectionTooLarge() } else { step.server.respond(success: false) }
             throw error
         }
+    }
+
+    private func readStep(_ oauth: OAuthClient, account: Account?) async throws -> (tokens: OAuthTokens, refresh: String) {
+        let step = try await authorize { redirectURI, state, challenge in
+            Self.readAuthorizationURL(clientID: config.clientID, redirectURI: redirectURI, state: state, challenge: challenge,
+                                      loginHint: account?.email)
+        }
+        do {
+            let tokens = try await oauth.exchange(code: step.code, verifier: step.verifier, redirectURI: step.redirectURI, requiredScope: nil)
+            // Google shows the permission as a box that can be cleared; without it a picked folder lists as empty.
+            guard tokens.scopes.contains(Self.readScope) else { throw PickerError.readAccessDenied }
+            guard let refresh = tokens.refreshToken else { throw PickerError.tokenMissing }
+            if let account {
+                let signedIn = await Self.account(transport: transport, accessToken: tokens.accessToken)
+                guard Self.sameAccount(account, signedIn) else { throw PickerError.accountMismatch }
+            }
+            step.server.respond(success: true)
+            return (tokens, refresh)
+        } catch {
+            step.server.respond(success: false)
+            throw error
+        }
+    }
+
+    /// The Drive permission id is stable and always present; the e-mail is the fallback when either side lacks it.
+    /// An account that cannot be read now counts as different.
+    private static func sameAccount(_ expected: Account, _ actual: Account?) -> Bool {
+        guard let actual else { return false }
+        if let a = expected.permissionId, let b = actual.permissionId { return a == b }
+        if let a = expected.email?.lowercased(), let b = actual.email?.lowercased() { return a == b }
+        return false
     }
 
     /// Ids are opaque Drive ids: letters, digits, `-` and `_`. Anything else is dropped, duplicates collapse.
@@ -129,11 +210,13 @@ public struct GooglePickerFlow: Sendable {
         return ids
     }
 
-    private static func email(transport: any HTTPTransport, accessToken: String) async -> String? {
-        struct About: Decodable { struct User: Decodable { var emailAddress: String? }; var user: User? }
+    private static func account(transport: any HTTPTransport, accessToken: String) async -> Account? {
+        struct About: Decodable { struct User: Decodable { var emailAddress: String?; var permissionId: String? }; var user: User? }
         let http = DriveHTTP(transport: transport, auth: FixedTokenAuth(token: accessToken))
-        let url = DriveURL.make(DriveURL.api, "/about", [("fields", "user(emailAddress)")])
-        return try? await http.sendJSON(About.self, url, method: "GET").user?.emailAddress
+        let url = DriveURL.make(DriveURL.api, "/about", [("fields", "user(emailAddress,permissionId)")])
+        guard let user = try? await http.sendJSON(About.self, url, method: "GET").user,
+              user.emailAddress != nil || user.permissionId != nil else { return nil }
+        return Account(email: user.emailAddress, permissionId: user.permissionId)
     }
 }
 

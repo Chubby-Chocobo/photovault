@@ -61,6 +61,16 @@ private func client(_ transport: StubTransport, opener: @escaping URLOpening = {
         }
     }
 
+    @Test func aReadOnlyGrantIsAcceptedWhenTheCallerDoesNotRequireDriveFile() async throws {
+        let readOnly = "https://www.googleapis.com/auth/drive.readonly"
+        let transport = StubTransport { _ in tokenJSON(scope: readOnly) }
+        let exchanged = try await client(transport).exchange(code: "c", verifier: "v", redirectURI: "r", requiredScope: nil)
+        #expect(exchanged.scopes == [readOnly])
+        let refreshed = try await client(transport).refresh(refreshToken: "r", requiredScope: nil)
+        #expect(refreshed.scopes == [readOnly])
+        await #expect(throws: DestinationError.reauthRequired) { try await client(transport).refresh(refreshToken: "r") }
+    }
+
     @Test func revokeSendsToken() async throws {
         let transport = StubTransport { _ in StubResponse(status: 200) }
         try await client(transport).revoke(token: "refresh-1")
@@ -124,5 +134,20 @@ final class OpenedURL: @unchecked Sendable {
         let payload = try JSONSerialization.data(withJSONObject: ["aud": ["x", "client-1"], "iss": "accounts.google.com",
                                                                    "exp": clock.now.timeIntervalSince1970 + 60, "sub": "s"])
         #expect(try identity("e30.\(Base64URL.encode(payload)).sig").sub == "s")
+    }
+}
+
+@Suite struct ImportGrantRefreshTests {
+    @Test func aReadOnlyImportGrantRefreshes() async throws {
+        let clock = FixedClock()
+        let keychain = InMemoryKeychainStore()
+        try DriveImportAuth.store(refreshToken: "r-read", for: importSourceId, in: keychain)
+        let transport = StubTransport { _ in
+            .json(200, ["access_token": "at-2", "expires_in": 3600, "scope": "https://www.googleapis.com/auth/drive.readonly"])
+        }
+        let oauth = OAuthClient(config: OAuthConfig(clientID: "c"), transport: transport, clock: clock, openURL: { _ in true })
+        let auth = DriveImportAuth(sourceId: importSourceId, oauth: oauth, keychain: keychain, clock: clock)
+        #expect(try await auth.accessToken() == "at-2")
+        #expect(transport.requests.first?.form["refresh_token"] == "r-read")
     }
 }

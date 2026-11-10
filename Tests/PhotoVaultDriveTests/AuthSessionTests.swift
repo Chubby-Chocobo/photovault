@@ -29,6 +29,14 @@ private let okToken: @Sendable (RecordedRequest) throws -> StubResponse = { r in
         #expect(transport.requests.count == 2)
     }
 
+    @Test func theDestinationRefreshStillRequiresDriveFile() async throws {
+        let keychain = InMemoryKeychainStore(refreshToken: "r1")
+        let (auth, _) = session(keychain: keychain) { _ in
+            .json(200, ["access_token": "a", "expires_in": 3600, "scope": "openid email https://www.googleapis.com/auth/drive.readonly"])
+        }
+        await #expect(throws: DestinationError.reauthRequired) { try await auth.accessToken() }
+    }
+
     @Test func missingKeychainItemMeansReauth() async throws {
         let (auth, transport) = session(keychain: InMemoryKeychainStore(), okToken)
         await #expect(throws: DestinationError.reauthRequired) { try await auth.accessToken() }

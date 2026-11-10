@@ -17,7 +17,7 @@ extension AppModel {
     func importFromGoogleDrive() {
         guard let env, canStartImport, !cloudFlowBusy else { return }
         runCloudFlow { [self] in
-            let picked = try await env.cloud.pickerFlow().run()
+            let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
             // The account guard needs to know who signed in; without it nothing is stored and nothing starts.
             guard let email = picked.email?.trimmingCharacters(in: .whitespaces), !email.isEmpty else {
                 env.log.log(.info, category: "import", "google import not started: account unknown")
@@ -28,19 +28,18 @@ extension AppModel {
             let id = SourceID.folder()
             try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
-            do {
-                let folderName = await source.singlePickedFolderName()
-                let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
-                let config = SourceConfig(
-                    account: email, remoteItems: picked.pickedIds,
-                    sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
-                try Task.checkCancellation()
-                try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
-            } catch {
-                try? DriveImportAuth.removeGrant(for: id, from: env.cloud.keychain)
-                throw error
+            let folderName = await source.singlePickedFolderName()
+            let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
+            let config = SourceConfig(
+                account: email, remoteItems: picked.pickedIds,
+                sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
+            if Task.isCancelled {
+                _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
+                throw CancellationError()
             }
-            didStartCloudImport("google drive")
+            enqueueImport(id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") {
+                try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
+            }
         }
     }
 
@@ -89,23 +88,18 @@ extension AppModel {
         do {
             try Task.checkCancellation()
             try env.cloud.copyDropboxAccountToken(to: id)
-            do {
-                // The owner may have closed the sheet meanwhile; then nothing starts and the copy goes.
-                try Task.checkCancellation()
-                try await env.coordinator.startImport(
-                    source: env.cloud.dropboxSource(id: id, rootPath: path), kind: .dropbox,
-                    displayName: CloudImportText.dropboxDisplayName(path: path),
-                    config: SourceConfig(account: email, remoteItems: [path], sidecarName: CloudImportText.dropboxSidecarName(path: path)))
-            } catch {
-                _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
-                throw error
-            }
-            didStartCloudImport("dropbox")
-            return true
         } catch {
+            _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
             reportCloudFlowError(error)
             return false
         }
+        let name = CloudImportText.dropboxDisplayName(path: path)
+        let source = env.cloud.dropboxSource(id: id, rootPath: path)
+        let config = SourceConfig(account: email, remoteItems: [path], sidecarName: CloudImportText.dropboxSidecarName(path: path))
+        enqueueImport(id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox") {
+            try await env.coordinator.startImport(source: source, kind: .dropbox, displayName: name, config: config)
+        }
+        return true
     }
 
     /// Removes the Dropbox account token. Imports keep their own tokens.
@@ -153,7 +147,7 @@ extension AppModel {
         switch item.kind {
         case .googleDrive:
             runCloudFlow { [self] in
-                let picked = try await env.cloud.pickerFlow().run()
+                let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
@@ -167,7 +161,7 @@ extension AppModel {
                 try await env.store.write { db in try SourceRepository.setConfig(db, id: id, stored) }
                 await env.coordinator.registerSources([
                     env.cloud.driveSource(id: id, pickedIds: merged, initial: (picked.accessToken, picked.expiresAt))])
-                await didReconnectCloudImport(id)
+                resumeInBackground(id)
             }
         case .dropbox:
             runCloudFlow { [self] in
@@ -179,7 +173,7 @@ extension AppModel {
                 // A job whose token was missing at launch has no adapter yet.
                 let root = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config.remoteItems?.first } ?? ""
                 await env.coordinator.registerSources([env.cloud.dropboxSource(id: id, rootPath: root)])
-                await didReconnectCloudImport(id)
+                resumeInBackground(id)
             }
         case .localFolder, .photos:
             break
@@ -193,19 +187,66 @@ extension AppModel {
 
     // MARK: Shared
 
+    /// Tells the row that Google's second consent opened. A notice that lands after the flow moved on is ignored.
+    private var readStepNotifier: @Sendable () -> Void {
+        let flow = cloudFlowID
+        return { [weak self] in Task { @MainActor in self?.cloudFlow.reachReadStep(flow) } }
+    }
+
+    /// Lists the import as "waiting for its turn" and records it in a task of its own: the engine runs the start
+    /// between sync passes, which can take long, and the owner may close the window meanwhile. Cancelling the
+    /// queued entry cancels the start and deletes the stored sign-in; so does a start that fails.
+    private func enqueueImport(id: SourceID, kind: SourceKind, account: String, displayName: String, provider: String,
+                               start: @escaping @MainActor () async throws -> SourceID) {
+        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date()))
+        queuedStarts[id] = Task { @MainActor [self] in
+            defer {
+                queuedImports.removeAll { $0.id == id }
+                queuedStarts[id] = nil
+            }
+            do {
+                try Task.checkCancellation()
+                _ = try await start()
+                // Recorded: a Cancel from here on must reach the engine, not this finished task.
+                queuedStarts[id] = nil
+                if Task.isCancelled {
+                    try await env?.coordinator.cancelImport(id)
+                    return
+                }
+            } catch {
+                _ = env?.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
+                reportCloudFlowError(error)
+                return
+            }
+            didStartCloudImport(provider)
+            await refreshSnapshot()
+        }
+    }
+
+    /// Resumes a signed-in-again import in a task of its own; its row says "Signed in" while it waits for the engine.
+    private func resumeInBackground(_ id: SourceID) {
+        resumingImports.insert(id)
+        Task { @MainActor [self] in
+            await didReconnectCloudImport(id)
+            resumingImports.remove(id)
+        }
+    }
+
     /// Runs a browser flow as a task the owner can cancel while it waits for the browser.
     private func runCloudFlow(_ body: @escaping @MainActor () async throws -> Void) {
-        cloudFlowBusy = true
-        Task { _ = await trackedFlow(body) }
+        cloudFlowID = cloudFlow.begin()
+        let flow = cloudFlowID
+        Task { _ = await trackedFlow(flow: flow, body) }
     }
 
     /// Marks the flow busy, keeps a way to cancel it, and reports its failure. Nil when it failed or was cancelled.
-    private func trackedFlow<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async -> T? {
-        cloudFlowBusy = true
+    private func trackedFlow<T: Sendable>(flow: Int? = nil, _ body: @escaping @MainActor () async throws -> T) async -> T? {
+        let flow = flow ?? cloudFlow.begin()
+        cloudFlowID = flow
         let task = Task { @MainActor in try await body() }
         cloudFlowCancel = { task.cancel() }
         defer {
-            cloudFlowBusy = false
+            cloudFlow.end(flow)
             cloudFlowCancel = nil
         }
         do { return try await task.value } catch {
@@ -248,12 +289,16 @@ extension AppModel {
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
             case .readAccessDenied:
                 showNotice(tr(
-                    vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục. Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
-                    en: "PhotoVault needs permission to see your Drive files to import a folder. Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
+                    vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục (bước 2). Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
+                    en: "PhotoVault needs permission to see your Drive files to import a folder (step 2). Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
             case .pickAccessDenied:
                 showNotice(tr(
                     vi: "Bạn cần cho phép PhotoVault truy cập các file bạn chọn trong Drive. Hãy thử lại và giữ ô “Xem, chỉnh sửa, tạo và xóa các file cụ thể trong Google Drive” được chọn.",
                     en: "PhotoVault needs permission for the Drive files you pick. Try again and keep “See, edit, create, and delete only the specific Google Drive files you use with this app” ticked."), isError: true)
+            case .accountMismatch:
+                showNotice(tr(
+                    vi: "Bước 2 dùng khác tài khoản Google. Hãy thử lại và chọn đúng tài khoản đã dùng để chọn thư mục.",
+                    en: "Step 2 used a different Google account. Try again and choose the same account you used to pick the folder."), isError: true)
             case .tokenMissing: showNotice(tr(vi: "Google không trả quyền truy cập. Hãy thử lại.", en: "Google did not grant access. Try again."), isError: true)
             }
         } else if let dropbox = error as? DropboxAuthError {

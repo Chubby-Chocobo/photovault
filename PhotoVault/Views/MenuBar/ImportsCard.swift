@@ -23,10 +23,17 @@ struct ImportsCard: View {
                         .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                 }
                 Text(CloudImportText.providerLabel(kind: item.kind, account: item.account)).font(.caption).foregroundStyle(.secondary)
-                ProgressBar(fraction: ImportProgressText.fraction(item))
-                    .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
-                Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if ImportQueue.isQueued(item) {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(statusText(item)).font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    ProgressBar(fraction: ImportProgressText.fraction(item))
+                        .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
+                }
+                if !ImportQueue.isQueued(item) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
+                    .fixedSize(horizontal: false, vertical: true) }
                 if confirming {
                     HStack {
                         Text(tr(vi: "Huỷ nhập? File đã upload vẫn giữ.", en: "Cancel the import? Uploaded files stay.")).font(.caption)

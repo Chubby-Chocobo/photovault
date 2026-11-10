@@ -3,6 +3,7 @@ import PhotoVaultCore
 
 /// Authorizes one import. Its refresh token lives in the Keychain under `import-<sourceId>`, so an
 /// import keeps working whatever account the app's own Drive destination uses.
+/// The grant is `drive.readonly` (imports made before 0.4.1 hold both Drive scopes), so the refresh does not require `drive.file`.
 /// A dead grant (`invalid_grant`, or no token in the Keychain) surfaces as `DestinationError.reauthRequired`.
 public actor DriveImportAuth: DriveAuthorizing {
     private static let expirySkew: TimeInterval = 60
@@ -52,7 +53,7 @@ public actor DriveImportAuth: DriveAuthorizing {
             guard let data = try keychain.read(account: account), let refreshToken = String(data: data, encoding: .utf8) else {
                 throw DestinationError.reauthRequired
             }
-            task = Task { [oauth] in try await oauth.refresh(refreshToken: refreshToken) }
+            task = Task { [oauth] in try await oauth.refresh(refreshToken: refreshToken, requiredScope: nil) }
             refreshing = task
         }
         defer { if refreshing == task { refreshing = nil } }

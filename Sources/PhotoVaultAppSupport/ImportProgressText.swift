@@ -17,6 +17,7 @@ public enum ImportProgressText {
 
     /// Status line of one import: a cloud import that waits says so in its own words.
     public static func statusLabel(_ item: ImportSnapshot) -> String {
+        if ImportQueue.isQueued(item) { return tr(vi: "Chờ đến lượt", en: "Waiting for its turn") }
         if waitsForDisk(item) {
             return tr(
                 vi: "Một số file đang chờ ổ Mac có chỗ trống; sẽ được đọc khi đủ chỗ",
