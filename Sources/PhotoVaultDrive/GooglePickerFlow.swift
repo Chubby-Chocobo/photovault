@@ -22,6 +22,8 @@ public enum PickerError: Error, Equatable, Sendable {
     case tokenMissing
     /// Google's consent was given without the permission to read Drive files (the owner cleared that box).
     case readAccessDenied
+    /// Consent was given without the permission for the files the owner picks (the owner cleared that box).
+    case pickAccessDenied
     /// The selection was too large for the redirect to carry.
     case selectionTooLarge
 }
@@ -92,7 +94,12 @@ public struct GooglePickerFlow: Sendable {
             let ids = try Self.parseIds(server.receivedCallback?.pickedFileIds)
             guard !ids.isEmpty else { throw PickerError.nothingPicked }
             let oauth = OAuthClient(config: config, transport: transport, clock: clock, openURL: openURL)
-            let tokens = try await oauth.exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
+            let tokens: OAuthTokens
+            do {
+                tokens = try await oauth.exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
+            } catch DestinationError.itemRejected(let reason) where reason == OAuthClient.fileScopeMissing {
+                throw PickerError.pickAccessDenied
+            }
             // Google shows the two Drive permissions as separate boxes; without this one a picked folder lists as empty.
             guard tokens.scopes.contains(Self.readScope) else { throw PickerError.readAccessDenied }
             guard let refresh = tokens.refreshToken else { throw PickerError.tokenMissing }

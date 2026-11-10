@@ -54,6 +54,7 @@ actor MoveWorker {
     private func runDestination(_ id: DestinationID) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
+        if await uploader.isBackedOff(id) { return 0 }
         let cap = env.tuning.maxMovesPerPass
         let pending = try await env.store.read { db in try MoveJobRepository.fetch(db, destinationId: id, state: .pending, limit: cap) }
         let ensurer = await uploader.ensurer(for: record, destination: destination)
@@ -114,6 +115,7 @@ actor MoveWorker {
             case .moveFile: change = try await moveFile(move, record: record, destination: destination, ensurer: ensurer)
             case .renameFolder: change = try await renameFolder(move, record: record, destination: destination)
             }
+            await uploader.noteSuccess(move.destinationId)
             return .done
         } catch {
             if error is EngineAbort || error is CancellationError { throw error }
@@ -187,7 +189,7 @@ actor MoveWorker {
     private func fail(_ move: MoveJob, error: any Error, ensurer: FolderEnsurer) async throws -> Outcome {
         guard let id = move.id else { return .retry }
         let failure = error as? DestinationError
-        if let failure, case .destinationLevel(let status) = ErrorClassifier.classify(failure) {
+        if let failure, let status = try await destinationLevel(failure, destination: move.destinationId) {
             let destinationId = move.destinationId
             let now = env.clock.now
             try await env.store.write { db in
@@ -201,5 +203,21 @@ actor MoveWorker {
         env.log.log(.notice, category: "move", "move failed op=\(move.operation.rawValue) error=\(message)")
         try await env.store.write { db in _ = try MoveJobRepository.fail(db, id: id, message: message) }
         return .retry
+    }
+
+    /// Throttling, server errors and transient failures are the destination's, like for uploads: they
+    /// never count against a move. Returns the status change (nil inside: back off only), or nil when
+    /// the failure belongs to the move itself.
+    private func destinationLevel(_ failure: DestinationError, destination id: DestinationID) async throws -> DestinationStatus?? {
+        let consecutive = await uploader.consecutive(id)
+        let status: DestinationStatus?
+        switch ErrorClassifier.classify(failure, consecutiveFailures: consecutive) {
+        case .destinationLevel(let level): status = level
+        case .transient: status = nil
+        default: return nil
+        }
+        await uploader.noteFailure(id)
+        if status == nil { await uploader.backOff(id) }
+        return .some(status)
     }
 }
