@@ -87,14 +87,24 @@ extension SyncCoordinator {
         await env.sources.remove(id)
     }
 
+    /// Finishes the cancels the owner asked for before a quit. Runs in the lane at launch.
+    func finishStoredImportCancels() async throws {
+        let pending = try await env.store.read { db in
+            try SourceRepository.fetchAll(db).filter { $0.kind.isImport && $0.status.isOpen && $0.config.cancelRequested == true }.map(\.id)
+        }
+        for id in pending { try await ImportCancellation.apply(id, env: env, extensions: planningExtensions) }
+        if !pending.isEmpty { await publish() }
+    }
+
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled
     /// and what already reached a destination stays. Running the same import again brings them back.
     public func cancelImport(_ id: SourceID) async throws {
-        // At once, without the lane: the import stops reading and the intent survives a quit. The bookkeeping follows
-        // when the lane is free (here, or in the cycle's next import stage, whichever comes first).
-        importInterrupts.requestCancel(id)
+        // At once, without the lane: the intent is stored first (when that fails the import keeps running and the error
+        // reaches the owner), then the import stops reading. The bookkeeping follows when the lane is free (here, or in the
+        // cycle's next import stage, whichever comes first).
         let env = env
         try await env.store.write { db in try SourceRepository.requestCancel(db, id: id) }
+        importInterrupts.requestCancel(id)
         await publish()
         let extensions = planningExtensions
         try await exclusive {

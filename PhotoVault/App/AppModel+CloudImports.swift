@@ -160,14 +160,19 @@ extension AppModel {
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
-                var config = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.config } ?? SourceConfig()
-                let merged = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: picked.pickedIds)
                 try Task.checkCancellation()
                 try DriveImportAuth.store(refreshToken: picked.refreshToken, for: id, in: env.cloud.keychain)
-                config.remoteItems = merged
-                config.account = config.account ?? picked.email
-                let stored = config
-                try await env.store.write { db in try SourceRepository.setConfig(db, id: id, stored) }
+                // Read and written in one transaction, so a cancel stored meanwhile is kept.
+                let pickedIds = picked.pickedIds, email = picked.email
+                let merged = try await env.store.write { db -> [String] in
+                    var result: [String] = []
+                    try SourceRepository.updateConfig(db, id: id) { config in
+                        result = CloudImportText.mergedPicks(existing: config.remoteItems ?? [], picked: pickedIds)
+                        config.remoteItems = result
+                        config.account = config.account ?? email
+                    }
+                    return result
+                }
                 await env.coordinator.registerSources([
                     env.cloud.driveSource(id: id, pickedIds: merged, initial: (picked.accessToken, picked.expiresAt))])
                 resumeInBackground(id)

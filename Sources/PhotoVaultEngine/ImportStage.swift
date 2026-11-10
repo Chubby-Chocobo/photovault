@@ -54,6 +54,12 @@ struct ImportStage: CycleStage {
                 continue
             }
             if try await advance(source, folder) { changed = true }
+            // A cancel that came during the pass: end it here, before the exporter reads the groups this pass committed.
+            if interrupts.isCancelRequested(source.id) {
+                try await ImportCancellation.apply(source.id, env: env, extensions: extensions)
+                interrupts.clearCancel(source.id)
+                changed = true
+            }
         }
         return changed
     }

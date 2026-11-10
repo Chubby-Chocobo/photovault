@@ -26,6 +26,7 @@ extension ImportStage {
             try await hold(source.id)
             return true
         }
+        if interrupts.isCancelRequested(id) { return true }
         let items = entries.map { entry in
             let ignored = FolderItemGrouper.isIgnored(relativePath: entry.relativePath)
             return ImportItem(

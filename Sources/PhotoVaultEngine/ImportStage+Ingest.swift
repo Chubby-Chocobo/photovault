@@ -108,11 +108,17 @@ extension ImportStage {
             let control = ExportControl()
             control.setProgress(transfer.sink)
             do {
-                inspected[item.relativePath] = try await interrupts.whileReading(source.id, onCancel: { control.cancel() }) {
+                // The read is told to stop, and the stage stops waiting for it: a download that cannot be interrupted (a synced
+                // online-only file) finishes in the background and its result is dropped.
+                let read = try await interrupts.whileReading(source.id, onCancel: { control.cancel() }) {
                     try await adapter {
-                        try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
+                        try await interrupts.untilCancelled(source.id) {
+                            try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
+                        }
                     }
                 }
+                guard let read else { return .stop }
+                inspected[item.relativePath] = read
             } catch is AdapterFault {
                 try await hold(source.id)
                 return .stop
@@ -152,6 +158,8 @@ extension ImportStage {
                 }
             }
         }
+        // A read that finished after the cancel is not committed (it would be exported, and so downloaded again).
+        if interrupts.isCancelRequested(source.id) { return .stop }
         try env.reach(.afterImportInspectBeforeCommit)
         if givenUp, !failed.isEmpty { env.log.log(.notice, category: "import", "import group unreadable for a day; marked failed") }
         try await commitGroup(group, inspected: inspected, failed: failed, source: source, settings: settings)

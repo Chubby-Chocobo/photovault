@@ -1,11 +1,29 @@
 import Foundation
 import PhotoVaultCore
 
-/// True for the first caller only.
-private final class Once: @unchecked Sendable {
+/// Hands one result to a continuation exactly once, whichever side (the work, a cancel, the caller's cancellation) comes first.
+private final class Race<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private var done = false
-    func first() -> Bool { lock.withLock { let was = done; done = true; return !was } }
+    private var continuation: CheckedContinuation<T?, any Error>?
+    private var finished: Result<T?, any Error>?
+
+    func attach(_ continuation: CheckedContinuation<T?, any Error>) {
+        let ready = lock.withLock { () -> Result<T?, any Error>? in
+            if finished == nil { self.continuation = continuation }
+            return finished
+        }
+        if let ready { continuation.resume(with: ready) }
+    }
+
+    func finish(_ result: Result<T?, any Error>) {
+        let waiting = lock.withLock { () -> CheckedContinuation<T?, any Error>? in
+            guard finished == nil else { return nil }
+            finished = result
+            defer { continuation = nil }
+            return continuation
+        }
+        waiting?.resume(with: result)
+    }
 }
 
 /// What the owner asked of the running import stage, in memory and available at once: a cancel that must not wait for the
@@ -43,29 +61,37 @@ final class ImportInterrupts: @unchecked Sendable {
             actions[id, default: [:]][token] = action
             return cancelled.contains(id)
         }
-        defer { lock.withLock { _ = actions[id]?.removeValue(forKey: token) } }
+        defer {
+            lock.withLock {
+                actions[id]?[token] = nil
+                if actions[id]?.isEmpty == true { actions[id] = nil }
+            }
+        }
         if alreadyAsked { action() }
         return try await body()
     }
 
     /// Runs `work` and returns its result, or nil as soon as a cancel of `id` is asked, without waiting for `work`
-    /// (an adapter that ignores cancellation finishes in the background and its result is dropped).
+    /// (an adapter that ignores cancellation finishes in the background and its result is dropped). When the calling task
+    /// is cancelled, the wait ends with `CancellationError` and `work` is cancelled too.
     func untilCancelled<T: Sendable>(_ id: SourceID, _ work: @escaping @Sendable () async throws -> T) async throws -> T? {
-        let once = Once()
+        let race = Race<T>()
         let task = Task { try await work() }
-        return try await withCheckedThrowingContinuation { continuation in
-            Task {
-                await self.whileReading(id, onCancel: {
-                    if once.first() { task.cancel(); continuation.resume(returning: nil) }
-                }) {
-                    do {
-                        let value = try await task.value
-                        if once.first() { continuation.resume(returning: value) }
-                    } catch {
-                        if once.first() { continuation.resume(throwing: error) }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T?, any Error>) in
+                race.attach(continuation)
+                Task {
+                    await self.whileReading(id, onCancel: {
+                        task.cancel()
+                        race.finish(.success(nil))
+                    }) {
+                        do { race.finish(.success(try await task.value)) } catch { race.finish(.failure(error)) }
                     }
                 }
             }
+        } onCancel: {
+            task.cancel()
+            race.finish(.failure(CancellationError()))
         }
     }
 }

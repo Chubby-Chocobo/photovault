@@ -18,7 +18,7 @@ public actor SyncCoordinator {
     /// When each import job was last held; the sign-in command clears it so a job resumes at once.
     let importHolds: ImportHolds
     /// A cancel or pause the owner asked for, visible to the import stage while the cycle holds the lane.
-    let importInterrupts: ImportInterrupts
+    nonisolated let importInterrupts: ImportInterrupts
     let resourceGuard: ResourceGuard
     let baseline: Baseline
     let scanner: Scanner
@@ -107,7 +107,10 @@ public actor SyncCoordinator {
     public func start() async throws -> RecoverySummary {
         try await exclusive {
             if try await isLegacyLayoutBlocked() { return RecoverySummary() }
-            return try await recovery.run()
+            let summary = try await recovery.run()
+            // A cancel stored before the app quit is finished now, so it does not wait for a cycle that may be blocked.
+            try await finishStoredImportCancels()
+            return summary
         }
     }
 
