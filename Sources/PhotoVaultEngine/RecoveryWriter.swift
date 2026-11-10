@@ -244,9 +244,6 @@ struct RecoveryWriter: Sendable {
                     en: "A recovered file has a different size from its sidecar; confirmation is needed before uploading again")))
         }
         try JobRepository.save(db, &job)
-        if file.resType.isSidecar, job.state == .done, record.kind == .googleDrive {
-            try RecoveredSidecar.remember(db, identity: identity)
-        }
         if !file.resType.isSidecar {
             try restoreLostInputs(db, file, size: item.size)
         }

@@ -68,22 +68,77 @@ import Testing
         #expect(try sidecarJobGenerations(h).allSatisfy { $0 == 1 })
     }
 
-    @Test func aDriveSidecarIsWrittenOnceWhenAnInputChangesAfterRecovery() async throws {
+    private func driveFileMd5s(_ h: Harness) async -> [String: String] {
+        await Dictionary(uniqueKeysWithValues: h.drive.files.map { ($0.name, $0.content?.md5 ?? "") })
+    }
+
+    @Test func aDriveSidecarChangedWhileTheDatabaseWasLostIsWrittenOnce() async throws {
         let h = try await driveLife()
+        let before = await driveSidecarWrites(h)
+        let md5s = await driveFileMd5s(h)
+        try await h.loseDatabase()
+        var favorite = h.snapshot("d0", daysAgo: 3, location: daLat)
+        favorite.isFavorite = true
+        await h.fakePhotos.update(favorite)
+        try h.addDrive(scope: .full)
+        try await h.baseline(.googleDrive)
+        await h.settle(rounds: 8)
+        #expect(await driveSidecarWrites(h) == before + 2, "json and xmp of the changed asset, once")
+        let changed = await h.drive.files.filter { md5s[$0.name] != $0.content?.md5 }.map(\.name).sorted()
+        #expect(changed.count == 2 && changed.allSatisfy { $0.contains("IMG_d0.") && ($0.hasSuffix(".json") || $0.hasSuffix(".xmp")) }, "\(changed)")
+        await h.settle(rounds: 4)
+        #expect(await driveSidecarWrites(h) == before + 2)
+    }
+
+    @Test func aDriveSidecarThatCannotBeReadIsWrittenOnce() async throws {
+        let h = try await driveLife()
+        let before = await driveSidecarWrites(h)
+        let victim = try #require(await h.drive.files.first { $0.name.hasSuffix("IMG_d1.json") })
+        var damaged = victim
+        damaged.data = Data("not a sidecar".utf8)
+        await h.drive.put(damaged)
         try await h.loseDatabase()
         try h.addDrive(scope: .full)
         try await h.baseline(.googleDrive)
         await h.settle(rounds: 8)
-        let recovered = await driveSidecarWrites(h)
-
-        var favorite = h.snapshot("d0", daysAgo: 3)
-        favorite.isFavorite = true
-        favorite.location = daLat
-        await h.fakePhotos.update(favorite)
-        await h.settle(rounds: 8)
-        #expect(await driveSidecarWrites(h) == recovered + 2, "json and xmp of the changed asset are replaced once")
+        let writes = await driveSidecarWrites(h) - before
+        #expect(writes >= 1 && writes <= 2, "only the unreadable sidecar (and its xmp) is written, once: \(writes)")
         await h.settle(rounds: 4)
-        #expect(await driveSidecarWrites(h) == recovered + 2)
+        #expect(await driveSidecarWrites(h) - before == writes)
+        #expect(try sidecarJobGenerations(h).filter { $0 > 1 }.count == writes)
+    }
+
+    @Test func recoveryFillsCameraFieldsAndHashesOnlyWhereTheyAreEmpty() async throws {
+        let h = try await driveLife()
+        try h.write { db in
+            try db.execute(sql: "UPDATE asset SET lens_model = NULL, camera_model = NULL WHERE asset_key = 'l:d1'")
+            try db.execute(sql: "UPDATE resource SET md5 = NULL, sha256 = NULL WHERE asset_key = 'l:d1'")
+        }
+        let record = try h.destinationRecord(.googleDrive)
+        let writer = RecoveryWriter(env: h.env, record: record, timeZone: .gmt)
+        var files: [RecoveredFile] = []
+        for key in ["l:d0", "l:d1"] {
+            let assetKey = try #require(AssetKey(rawValue: key))
+            let job = try #require(try h.jobs().first { $0.assetKey == assetKey && !$0.resType.isSidecar })
+            var entry = RemoteFileEntry(
+                item: RemoteItem(remoteId: job.remoteId ?? "", name: job.remoteName ?? "", parentIds: [], kind: .file),
+                parentLogical: job.remoteLogicalParent)
+            entry.contentMd5 = "md5-from-sidecar"
+            entry.contentSha256 = "sha-from-sidecar"
+            entry.camera = SidecarDocument.Camera(make: "Other", model: "Other model", lens: "Other lens")
+            files.append(RecoveredFile(entry: entry, assetKey: assetKey, resType: job.resType, alias: nil))
+        }
+        _ = try await writer.writeFiles(files)
+        let rows = try h.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT a.asset_key, a.camera_model, a.lens_model, r.md5 FROM asset a JOIN resource r ON r.asset_key = a.asset_key
+                WHERE a.asset_key IN ('l:d0', 'l:d1') ORDER BY a.asset_key
+                """)
+        }
+        #expect(rows[0]["lens_model"] as String? == "Wide" && rows[0]["camera_model"] as String? == "iPhone 15", "values already there stay")
+        #expect(rows[0]["md5"] as String? != "md5-from-sidecar")
+        #expect(rows[1]["lens_model"] as String? == "Other lens" && rows[1]["camera_model"] as String? == "Other model")
+        #expect(rows[1]["md5"] as String? == "md5-from-sidecar")
     }
 
     @Test func localRecoveryWritesNoSidecarAgain() async throws {

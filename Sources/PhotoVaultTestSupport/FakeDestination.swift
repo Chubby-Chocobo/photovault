@@ -4,9 +4,9 @@ import PhotoVaultCore
 /// In-memory destination. With `reservesIds` it behaves like Drive (IDs must be reserved first,
 /// duplicate IDs are rejected); without, like a local folder (files identified by path, same name
 /// + same hash is success, different content gets a conflict name or `foreignFile`).
-public actor FakeDestination: ViewDestination, RootManaging {
+public actor FakeDestination: ViewDestination, RootManaging, SmallFileReading {
     public enum Operation: String, Hashable, Sendable {
-        case reserve, ensureFolder, upload, resume, probe, replace, move, rename, list, shortcut, availability
+        case reserve, ensureFolder, upload, resume, probe, replace, move, rename, list, shortcut, availability, read
     }
 
     /// Simulates a crash after the remote side effect but before the caller sees the result.
@@ -22,6 +22,8 @@ public actor FakeDestination: ViewDestination, RootManaging {
         public var description: String?
         public var targetId: String?
         public var trashed: Bool
+        /// Bytes of a small file, kept so a read-back works after staging removed the source.
+        public var data: Data?
 
         public init(
             id: String, name: String, parentId: String, kind: RemoteItemKind, content: StagedContent? = nil,
@@ -36,6 +38,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
             self.description = description
             self.targetId = targetId
             self.trashed = trashed
+            self.data = content.flatMap { $0.size <= 1 << 20 ? try? Data(contentsOf: $0.file) : nil }
         }
     }
 
@@ -286,6 +289,12 @@ public actor FakeDestination: ViewDestination, RootManaging {
     /// Drops all open sessions (expiry, long sleep).
     public func expireSessions() { sessions.removeAll() }
 
+    public func readSmallFile(remoteId: String, maxBytes: Int) async throws -> Data? {
+        try step(.read)
+        guard let item = items[remoteId], item.kind == .file, let data = item.data, data.count <= maxBytes else { return nil }
+        return data
+    }
+
     public func probe(remoteId: String) async throws -> RemoteItem? {
         try step(.probe)
         return items[remoteId].map(remote)
@@ -298,6 +307,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
             throw DestinationError.foreignModified
         }
         item.content = request.content
+        item.data = request.content.size <= 1 << 20 ? try? Data(contentsOf: request.content.file) : nil
         item.description = request.description ?? item.description
         items[remoteId] = item
         try crashIfRequested(.replace)

@@ -148,7 +148,35 @@ struct RemoteInventoryLoader: Sendable {
             }
         }
         inventory.files.sort { $0.item.remoteId < $1.item.remoteId }
+        try await restoreFromSidecars(&inventory.files)
         return inventory
+    }
+
+    /// The database loss took the hashes and camera fields the sidecars list, and Drive does not report
+    /// them. The JSON sidecars this app wrote are read back (one small download each, in order) and
+    /// give them to the files they describe. A sidecar that cannot be read is skipped: it is written
+    /// again once, because what the app builds then differs from it. A transient failure is thrown, so
+    /// recovery runs again later; nothing has been written by then.
+    private func restoreFromSidecars(_ files: inout [RemoteFileEntry]) async throws {
+        guard let reader = destination as? any SmallFileReading else { return }
+        var documents: [String: [SidecarDocument]] = [:]
+        for entry in files where entry.resType == .sidecarJson && !entry.item.trashed {
+            try Task.checkCancellation()
+            guard (entry.item.size ?? 0) <= Self.maxSidecarBytes,
+                  let data = try await reader.readSmallFile(remoteId: entry.item.remoteId, maxBytes: Int(Self.maxSidecarBytes)),
+                  let document = SidecarDocument.parse(data) else { continue }
+            documents[entry.parentFolderId ?? "", default: []].append(document)
+        }
+        guard !documents.isEmpty else { return }
+        for index in files.indices where files[index].resType?.isSidecar == false {
+            let name = files[index].item.name
+            guard let hit = (documents[files[index].parentFolderId ?? ""] ?? []).lazy.compactMap({ document in
+                document.resources.first { $0.backupName == name }.map { (document, $0) }
+            }).first else { continue }
+            files[index].contentMd5 = files[index].contentMd5 ?? hit.1.md5
+            files[index].contentSha256 = files[index].contentSha256 ?? hit.1.sha256
+            files[index].camera = hit.0.camera
+        }
     }
 
     private static func plainLogical(_ value: String?) -> String? {

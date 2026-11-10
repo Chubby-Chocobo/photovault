@@ -88,15 +88,10 @@ struct SidecarPlanner: JobPlanningExtension {
             guard let file = try SidecarFactory.build(
                 db, asset: asset, destinationId: destination.id, type: type, settings: context.settings, timeZone: context.timeZone,
                 nameBuilder: context.nameBuilder) else { return }
-            let built = SidecarFactory.hash(file, kind: destination.kind)
-            guard existing.uploadedHash != built else {
-                try RecoveredSidecar.forget(db, identity: identity)
-                return
-            }
+            guard existing.uploadedHash != SidecarFactory.hash(file, kind: destination.kind) else { return }
             // The place is still being looked up (a database loss empties the geocode cache): the sidecar is
             // refreshed once the answer arrives, which marks the asset again, instead of twice.
             if context.geocodingAvailable, try OrganizationLookups.placeIsPending(db, asset: asset, settings: context.settings) { return }
-            if try RecoveredSidecar.isStillCurrent(db, identity: identity, builtHash: built) { return }
             try JobRepository.upsert(db, desired: .init(identity: identity, origin: .refresh, targetGen: existing.targetGen + 1), now: context.now)
         case .pending, .deferred, .skipped, .missingRemote:
             return
@@ -132,36 +127,5 @@ struct SidecarStage: CycleStage {
             if !more { break }
         }
         return try await env.store.read { db in try OrganizationQueries.sidecarVersion(db) } != before
-    }
-}
-
-/// A sidecar that recovery found at a destination whose files cannot be read back (Drive). The hashes
-/// and camera fields it lists were lost with the database and cannot be restored, so what the app builds
-/// next never equals it byte for byte. The first build after recovery is remembered; the sidecar is
-/// written again only when a later build differs from that one, that is, when an input really changed.
-enum RecoveredSidecar {
-    private static func key(_ identity: JobIdentity) -> String {
-        "sidecar-recovered:\(identity.destinationId.rawValue):\(identity.assetKey.rawValue):\(identity.resType.rawValue)"
-    }
-
-    static func remember(_ db: Database, identity: JobIdentity) throws {
-        try KeyValueRepository.set(db, key(identity), "")
-    }
-
-    /// The build equals the file at the destination: nothing to remember any more.
-    static func forget(_ db: Database, identity: JobIdentity) throws {
-        try KeyValueRepository.set(db, key(identity), nil)
-    }
-
-    /// True while the sidecar at the destination stands. A changed build ends the memory, so the caller writes.
-    static func isStillCurrent(_ db: Database, identity: JobIdentity, builtHash: String) throws -> Bool {
-        guard let baseline = try KeyValueRepository.string(db, key(identity)) else { return false }
-        if baseline.isEmpty {
-            try KeyValueRepository.set(db, key(identity), builtHash)
-            return true
-        }
-        if baseline == builtHash { return true }
-        try KeyValueRepository.set(db, key(identity), nil)
-        return false
     }
 }
