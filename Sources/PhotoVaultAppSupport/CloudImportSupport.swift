@@ -130,10 +130,12 @@ public enum CloudImportKeychain {
     }
 
     /// `import-<id>` items with no import row. A start that was still waiting for its turn when the app quit leaves one;
-    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account item is not one.
+    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account token and its e-mail are not.
     public static func orphanGrants(stored: [String], knownImports: Set<SourceID>) -> [String] {
         let known = Set(knownImports.map(CloudTokenAccount.importGrant))
-        return stored.filter { $0 != CloudTokenAccount.dropbox && CloudTokenAccount.isCloudItem($0) && !known.contains($0) }
+        return stored.filter {
+            $0 != CloudTokenAccount.dropbox && $0 != CloudTokenAccount.dropboxEmail && CloudTokenAccount.isCloudItem($0) && !known.contains($0)
+        }
     }
 
     /// Open cloud imports that have no stored sign-in. Finished imports let their sign-in go on purpose.

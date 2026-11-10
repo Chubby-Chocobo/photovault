@@ -68,6 +68,35 @@ private final class Published: @unchecked Sendable {
         #expect(published.all.last?.isEmpty == true)
     }
 
+    @Test func manyShortOverlappingTransfersPublishOnlyWhenTheListFillsAndEmpties() {
+        let (tracker, clock, published) = make(interval: 0.5)
+        var handles: [TransferTracker.Handle] = []
+        for index in 0..<100 {
+            clock.advance(by: 0.001)
+            handles.append(tracker.begin(kind: .upload, fileName: "f\(index)", destinationName: "Drive", bytesTotal: 10))
+        }
+        #expect(tracker.current.count == 100)
+        for handle in handles.dropLast() {
+            clock.advance(by: 0.001)
+            handle.end()
+        }
+        // Filling the empty list published once; the others were inside the throttle window.
+        #expect(published.all.count == 1)
+        #expect(tracker.current.count == 1)
+        handles.last?.end()
+        #expect(published.all.count == 2 && published.all.last?.isEmpty == true)
+    }
+
+    @Test func aTransferThatBeginsWhileOthersRunIsPublishedOnceTheWindowHasPassed() {
+        let (tracker, clock, published) = make(interval: 0.5)
+        let first = tracker.begin(kind: .upload, fileName: "first", bytesTotal: 10)
+        clock.advance(by: 0.6)
+        let second = tracker.begin(kind: .copy, fileName: "second", bytesTotal: 10)
+        #expect(published.all.count == 2 && published.all.last?.count == 2)
+        first.end()
+        second.end()
+    }
+
     @Test func endIsIdempotentAndLateReportsAreIgnored() {
         let (tracker, clock, published) = make()
         let handle = tracker.begin(kind: .upload, fileName: "a", bytesTotal: nil)

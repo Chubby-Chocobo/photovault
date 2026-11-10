@@ -99,5 +99,7 @@ import Testing
         let stored = [CloudTokenAccount.importGrant(kept), CloudTokenAccount.importGrant(lost), CloudTokenAccount.dropbox, "google-refresh-token"]
         #expect(CloudImportKeychain.orphanGrants(stored: stored, knownImports: [kept]) == [CloudTokenAccount.importGrant(lost)])
         #expect(CloudImportKeychain.orphanGrants(stored: stored, knownImports: [kept, lost]).isEmpty)
+        // The Dropbox account's token and its e-mail are not import grants.
+        #expect(CloudImportKeychain.orphanGrants(stored: [CloudTokenAccount.dropbox, CloudTokenAccount.dropboxEmail], knownImports: []).isEmpty)
     }
 }

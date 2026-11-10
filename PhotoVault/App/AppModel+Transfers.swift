@@ -12,18 +12,19 @@ extension AppModel {
     func show(transfers list: [TransferProgress]) {
         transfers = list
         transferNow = Date()
-        guard !list.isEmpty else {
-            transferClockTask?.cancel()
-            transferClockTask = nil
-            return
-        }
-        guard transferClockTask == nil else { return }
+        // The clock stops itself at its next tick once the list is empty, so a stream of short files does not
+        // start and cancel a task for each.
+        guard !list.isEmpty, transferClockTask == nil else { return }
         // A transfer appears once it has run a second even when no bytes arrive meanwhile (a long upload chunk).
         transferClockTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self, !Task.isCancelled else { return }
                 self.transferNow = Date()
+                if self.transfers.isEmpty {
+                    self.transferClockTask = nil
+                    return
+                }
             }
         }
     }

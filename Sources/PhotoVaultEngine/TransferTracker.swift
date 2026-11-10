@@ -4,7 +4,8 @@ import PhotoVaultCore
 /// The files being transferred right now, for the status line (export, download, upload, copy).
 /// In memory only; nothing is written to the database, logs or files. Transports call the sink of
 /// a `Handle` for every chunk, which costs a lock and a clock read; the list is published to
-/// subscribers at most once per `minInterval`, and a finished transfer clears it at once.
+/// subscribers at most once per `minInterval`; the list filling and emptying are published at once, so a
+/// finished last transfer clears the line immediately.
 public final class TransferTracker: @unchecked Sendable {
     /// One running transfer. Call `end()` when it finishes or fails; calling it again does nothing.
     public struct Handle: Sendable {
@@ -47,7 +48,7 @@ public final class TransferTracker: @unchecked Sendable {
             items.append(TransferProgress(
                 id: id, kind: kind, fileName: fileName, destinationName: destinationName, accountEmail: accountEmail,
                 bytesTotal: bytesTotal, startedAt: now))
-            publishLocked(at: now)
+            publishLocked(at: now, force: items.count == 1)
         }
         return Handle(id: id, tracker: self, sink: TransferSink { [weak self] bytes in self?.report(id, bytes) })
     }
@@ -69,7 +70,6 @@ public final class TransferTracker: @unchecked Sendable {
         lock.withLock {
             guard let index = items.firstIndex(where: { $0.id == id }) else { return }
             items[index].bytesDone = max(0, bytes)
-            if let last = lastPublishedAt, now.timeIntervalSince(last) < minInterval { return }
             publishLocked(at: now)
         }
     }
@@ -78,11 +78,14 @@ public final class TransferTracker: @unchecked Sendable {
         lock.withLock {
             guard let index = items.firstIndex(where: { $0.id == id }) else { return }
             items.remove(at: index)
-            publishLocked(at: clock.now)
+            publishLocked(at: clock.now, force: items.isEmpty)
         }
     }
 
-    private func publishLocked(at now: Date) {
+    /// `force` is for the list filling or emptying; every other change waits for the throttle window, so many
+    /// short files do not each cost the main thread two updates.
+    private func publishLocked(at now: Date, force: Bool = false) {
+        if !force, let last = lastPublishedAt, now.timeIntervalSince(last) < minInterval { return }
         lastPublishedAt = now
         lastPublished = items
         for continuation in subscribers.values { continuation.yield(items) }

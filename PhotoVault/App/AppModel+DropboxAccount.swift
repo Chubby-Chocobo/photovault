@@ -8,21 +8,13 @@ extension AppModel {
     /// Reads the stored e-mail of the Dropbox browsing account. A token from an older version has none: it
     /// is asked from Dropbox once and kept. Offline, the line shows "signed in" without it until next time.
     func refreshDropboxEmail() async {
-        guard dropboxSignedIn, let cloud = env?.cloud else {
+        guard dropboxSignedIn, let cloud = env?.cloud, let client = dropboxBrowserClient() else {
             dropboxEmail = nil
             return
         }
-        if let stored = cloud.storedDropboxEmail() {
-            dropboxEmail = stored
-            return
-        }
-        guard let client = dropboxBrowserClient() else { return }
-        do {
-            let email = try await client.currentAccountEmail()
-            try cloud.storeDropboxEmail(email)
-            if dropboxSignedIn { dropboxEmail = email }
-        } catch {
-            dropboxEmail = nil
-        }
+        let email = await DropboxEmailRefresh.resolve(
+            signedIn: { self.dropboxSignedIn }, tokenPresent: { cloud.hasDropboxAccount() }, stored: { cloud.storedDropboxEmail() },
+            fetch: { try await client.currentAccountEmail() }, save: { try cloud.storeDropboxEmail($0) })
+        dropboxEmail = dropboxSignedIn ? email : nil
     }
 }
