@@ -58,7 +58,7 @@ Camera Uploads/
 | 04 | [Engine: slot-aware LayoutResolver plumbing](phase-04-engine-layout-plumbing.md) | Completed | M | 01, 03 |
 | 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Completed | L | 04 |
 | 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Completed | M | 05 |
-| 07 | [Engine: recovery of split days](phase-07-engine-recovery.md) | Pending | L | 05 |
+| 07 | [Engine: recovery of split days](phase-07-engine-recovery.md) | Completed | L | 05 |
 | 08 | [App text and docs](phase-08-app-text-and-docs.md) | Pending | S | 06, 07 |
 
 Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} → 08`. File ownership: phases 01 and 02 touch disjoint files, and so do phases 06 and 07. The `touches` lists in the phase files are authoritative.
@@ -185,6 +185,17 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 ### Deferred groups keep their slot and the day stays dirty
 - Chosen: a group in `DaySlotPlan.deferredGroups` keeps its members' current slots for this run; `PlaceNamer` marks the day dirty again so the next evaluation (after the renames ran) places it. Tested: it converges with no file moving back and forth.
 - Why: lead decision, 2026-11-10. `LegacyRootProbe` is in the Engine module, so its slot-path check lives in `SplitDayLayoutResolverTests`, not in the Core layout tests.
+- Review later: no
+
+### Scenarios replaced by a different set-up
+- E15 / R7 (rules exclude the main group at one destination): destination rules cannot exclude by province, so the large group is made of videos and the NAS is added afterwards with `includeVideos = false`. The NAS then holds only the `@p…` folder; recovery of it (lost database, Drive first) moves nothing. The intact-database variant is covered by R5, which has the same binding path.
+- R8 (forced conflict): a corrupted row set cannot be built through the public flow, so the writer is called directly with an entry that would share a remote id; the binder's conflict (two listed folders for one known path) has its own unit test.
+- E19 (rename pending at one destination): the NAS rename fails four times while a new group takes the old name; the test asserts one folder per name at the NAS. The deferred-group test covers the reserved-name decision itself.
+- The 500-asset and 300-day timings are asserted below 10 s, not 2 s: measured alone they take about 0.2 s, but under the parallel suite they reach 4 s.
+
+### Far-apart cells wait for their geocodes
+- Chosen: with at most one province known and a bounding box over 300 km, `PlaceSplitPolicy` returns `waitingGeocode` for the cells without an `en` answer instead of the delegate's `unnamed`.
+- Why: the new test E8 found that a named day plus one far, un-geocoded photo became `unnamed` (its folder lost its name) and was renamed again after the geocode.
 - Review later: no
 
 ### Decision record number

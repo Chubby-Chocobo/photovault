@@ -7,6 +7,8 @@ struct RemoteFileEntry: Sendable {
     var item: RemoteItem
     /// Logical path of the folder it sits in; nil when that folder is not one of ours.
     var parentLogical: String?
+    /// Id of the folder it sits in: the Drive parent id, or the directory path of a local destination.
+    var parentFolderId: String?
     var resType: ResourceType?
     /// `pvAssetId` (Drive) or the sidecar's `assetKey`: a key or its `h:` form.
     var claimedKey: String?
@@ -27,6 +29,8 @@ struct RemoteFolderEntry: Sendable {
     var remoteId: String
     var displayName: String
     var day: ArchiveDay?
+    /// Extra folder of a split day (`camera/<day>@<slot>`); nil for the main folder.
+    var slot: String?
     var placeName: String?
 }
 
@@ -104,9 +108,9 @@ struct RemoteInventoryLoader: Sendable {
             }
             logicalById[item.remoteId] = value
             if LegacyRootProbe.isLegacyLogicalPath(value) { inventory.legacyFolders += 1 }
-            let (day, place) = Self.dayFolder(logical: value, name: item.name)
+            let (day, slot, place) = Self.dayFolder(logical: value, name: item.name)
             inventory.folders.append(RemoteFolderEntry(
-                logicalPath: value, remoteId: item.remoteId, displayName: item.name, day: day, placeName: place))
+                logicalPath: value, remoteId: item.remoteId, displayName: item.name, day: day, slot: slot, placeName: place))
         }
         func parentLogical(_ item: RemoteItem) -> String? {
             guard let parent = item.parentIds.first else { return nil }
@@ -120,7 +124,7 @@ struct RemoteInventoryLoader: Sendable {
             switch item.kind {
             case .file:
                 inventory.files.append(RemoteFileEntry(
-                    item: item, parentLogical: parentLogical(item),
+                    item: item, parentLogical: parentLogical(item), parentFolderId: item.parentIds.first,
                     resType: item.appProperties[AppPropertyKey.resType].flatMap(AppPropertyCodec.decodeResourceType),
                     claimedKey: item.appProperties[AppPropertyKey.assetId], name: NameFingerprint.parse(item.name),
                     uploadedHash: item.md5, expectedSize: item.size))
@@ -146,13 +150,12 @@ struct RemoteInventoryLoader: Sendable {
         return value
     }
 
-    /// `camera/2026-11-08` named `2026-11-08 Đà Lạt`.
-    static func dayFolder(logical: String, name: String) -> (ArchiveDay?, String?) {
-        let parts = logical.split(separator: "/").map(String.init)
-        guard parts.count == 2, parts[0] == "camera", let day = ArchiveDay(string: parts[1]), name.hasPrefix(parts[1]) else { return (nil, nil) }
-        guard name.count == 10 || name.dropFirst(10).hasPrefix(" ") else { return (day, nil) }
+    /// `camera/2026-11-08` named `2026-11-08 Đà Lạt`, or the extra folder `camera/2026-11-08@p…`.
+    static func dayFolder(logical: String, name: String) -> (ArchiveDay?, String?, String?) {
+        guard let (day, slot) = DynamicLayout.parseCameraDay(logical), name.hasPrefix(day.description) else { return (nil, nil, nil) }
+        guard name.count == 10 || name.dropFirst(10).hasPrefix(" ") else { return (day, slot, nil) }
         let place = name.dropFirst(10).trimmingCharacters(in: .whitespaces)
-        return (day, place.isEmpty ? nil : place)
+        return (day, slot, place.isEmpty ? nil : place)
     }
 
     // MARK: Local
@@ -160,6 +163,7 @@ struct RemoteInventoryLoader: Sendable {
     private func local(_ items: [RemoteItem]) async throws -> RemoteInventory {
         var inventory = RemoteInventory()
         var folderByPath: [String: LocalFolderInfo] = [:]
+        var folderIdByPath: [String: String] = [:]
         for item in items where item.kind == .folder {
             let path = item.relativePath ?? item.remoteId
             guard let info = LocalTreeInterpreter.folder(displayPath: path) else {
@@ -168,6 +172,7 @@ struct RemoteInventoryLoader: Sendable {
                 continue
             }
             folderByPath[path] = info
+            folderIdByPath[path] = item.remoteId
             inventory.folders.append(RemoteFolderEntry(
                 logicalPath: info.logicalPath, remoteId: item.remoteId, displayName: info.displayName, day: info.day, placeName: info.placeName))
         }
@@ -189,7 +194,8 @@ struct RemoteInventoryLoader: Sendable {
                 inventory.ignored += 1
                 continue
             }
-            var entry = RemoteFileEntry(item: file, parentLogical: folder.logicalPath, name: name, expectedSize: file.size)
+            var entry = RemoteFileEntry(
+                item: file, parentLogical: folder.logicalPath, parentFolderId: folderIdByPath[directory], name: name, expectedSize: file.size)
             let siblings = documents[directory] ?? []
             let lowered = file.name.lowercased()
             if lowered.hasSuffix(".json"), let own = siblings.first(where: { $0.file.remoteId == file.remoteId }) {

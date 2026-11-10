@@ -117,12 +117,15 @@ actor RecoveryService {
     }
 
     private func run(record: DestinationRecord, destination: any Destination) async throws -> RecoveryOutcome {
-        let inventory = try await RemoteInventoryLoader(env: env, record: record, destination: destination).load()
+        var inventory = try await RemoteInventoryLoader(env: env, record: record, destination: destination).load()
         if inventory.legacyFolders > 0 {
             env.log.log(.notice, category: "recovery", "root holds the old folder layout; recovery refused")
             return .notReady(.legacyLayout)
         }
         let zone = try await restoreTimezone(inventory.archiveTimezone)
+        let (known, rows) = try await knownSlots(for: inventory, destinationId: record.id)
+        let bound = DaySlotBinding.bind(inventory, known: known, rows: rows, isDrive: destination.capabilities.supportsAppProperties)
+        inventory = bound.inventory
         var stats = RecoveryStats()
         stats.found = try await walkedFileCount(record: record, destination: destination)
         let matches = try await RecoveryMatcher(env: env, record: record, timeZone: zone).match(inventory)
@@ -136,8 +139,12 @@ actor RecoveryService {
         }
         let writer = RecoveryWriter(env: env, record: record, timeZone: zone)
         try await writer.releaseUnconfirmedPlacements()
-        stats.folders = try await writer.writeFolders(inventory.folders)
-        let written = try await writer.writeFiles(matches.files)
+        let daysWithRows = try await env.store.read { db in try DayPlaceRepository.days(db) }
+        let folders = try await writer.writeFolders(inventory.folders, listedIds: Set(inventory.folders.map(\.remoteId)))
+        stats.folders = folders.written
+        stats.folderConflicts = bound.conflicts + folders.conflicts
+        if stats.folderConflicts > 0 { try await reportFolderConflicts(record.id, count: stats.folderConflicts) }
+        let written = try await writer.writeFiles(matches.files, daysWithRows: daysWithRows)
         stats.suspect = written.suspect
         stats.shortcuts = try await writer.writeShortcuts(matches.shortcuts)
         env.log.log(.info, category: "recovery", "destination=\(record.id) matched=\(stats.matched) unmatched=\(stats.unmatched) folders=\(stats.folders)")
@@ -146,6 +153,35 @@ actor RecoveryService {
     }
 
     // MARK: Pieces
+
+    /// Day state tied to the old archive timezone is worthless in the restored one.
+    static func clearDayState(env: EngineEnvironment) async throws {
+        try await env.store.write { db in
+            try db.execute(sql: "DELETE FROM day_stat")
+            try DayPlaceRepository.deleteAll(db)
+            try AssetPlacementRepository.clearPlaceSlots(db)
+        }
+    }
+
+    /// What the database knows about the camera days listed at a destination, for `DaySlotBinding`.
+    private func knownSlots(for inventory: RemoteInventory, destinationId id: DestinationID) async throws -> (known: [ArchiveDay: [DaySlot]], rows: [RemoteFolder]) {
+        let days = Set(inventory.folders.compactMap(\.day))
+        return try await env.store.read { db in
+            var known: [ArchiveDay: [DaySlot]] = [:]
+            for day in days {
+                var slots: [DaySlot] = []
+                if let stat = try DayStatRepository.fetch(db, day: day) {
+                    slots.append(DaySlot(slot: nil, key: stat.placeKey, name: stat.placeName, reservedNames: try DaySplitWriter.reserved(db, day: day, slot: nil)))
+                }
+                for row in try DayPlaceRepository.fetchAll(db, day: day) {
+                    slots.append(DaySlot(slot: row.slot, key: row.placeKey, name: row.placeName, reservedNames: try DaySplitWriter.reserved(db, day: day, slot: row.slot)))
+                }
+                known[day] = slots
+            }
+            return (known, try RemoteFolderRepository.fetchAll(db, destinationId: id))
+        }
+    }
+
 
     /// The archive timezone the destination remembers wins while nothing of the database is
     /// confirmed by a file: names are fingerprinted in that zone (8.15 step 4.3).
@@ -160,7 +196,7 @@ actor RecoveryService {
         guard !history else { return current }
         try await env.settings.setArchiveTimeZone(zone)
         // Day counts made with the other zone are worthless; they are recounted as assets are placed.
-        try await env.store.write { db in try db.execute(sql: "DELETE FROM day_stat") }
+        try await Self.clearDayState(env: env)
         return zone
     }
 
@@ -191,6 +227,20 @@ actor RecoveryService {
         try await env.store.read { db in
             if try KeyValueRepository.int(db, Self.expectsKey + id.rawValue) == 1 { return true }
             return try JobRepository.count(db, destinationId: id, state: .done) > 0
+        }
+    }
+
+    /// Two folders claimed one logical path, or a write would have made two paths share a folder:
+    /// the extra folders are left out of the database and their files are not adopted.
+    private func reportFolderConflicts(_ id: DestinationID, count: Int) async throws {
+        let now = env.clock.now
+        env.log.log(.notice, category: "recovery", "destination=\(id) folder conflicts=\(count)")
+        try await env.store.write { db in
+            try ActivityRepository.record(db, ActivityEvent(
+                at: now, kind: .notice, destinationId: id,
+                message: tr(
+                    vi: "Khôi phục: \(count) thư mục trùng đường dẫn nên không được ghép; các file trong đó không bị đụng tới",
+                    en: "Recovery: \(count) \(L10n.plural(count, one: "folder", other: "folders")) claimed a path already in use and was left out; its files are untouched")))
         }
     }
 

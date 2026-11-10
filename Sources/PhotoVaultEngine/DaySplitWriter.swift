@@ -78,7 +78,7 @@ enum DaySplitWriter {
     }
 
     /// Names a folder may still carry on disk at some destination: the old names of its open renames.
-    private static func reserved(_ db: Database, day: ArchiveDay, slot: String?) throws -> [String?] {
+    static func reserved(_ db: Database, day: ArchiveDay, slot: String?) throws -> [String?] {
         let path = slot.map { DynamicLayout.slotLogicalPath(day: day, slot: $0) } ?? "camera/\(day)"
         let prefix = day.description + " "
         return try String.fetchAll(db, sql: """

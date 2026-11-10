@@ -1,7 +1,7 @@
 ---
 phase: "07"
 title: "Engine: recovery of split days"
-status: pending
+status: completed
 priority: P1
 size: L
 human_effort: 3-5h

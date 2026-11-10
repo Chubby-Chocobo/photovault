@@ -29,6 +29,8 @@ public struct RecoveryStats: Sendable, Equatable {
     public var shortcuts = 0
     /// Matched local files whose size differs from the sidecar: marked `missingRemote`.
     public var suspect = 0
+    /// Folder bindings or writes refused because two logical paths would have shared one folder.
+    public var folderConflicts = 0
 
     public init() {}
 }
