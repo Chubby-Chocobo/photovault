@@ -56,8 +56,8 @@ enum FolderPicker {
     }
 
     /// Opens at the provider's synced folder on this Mac. Read-only like `chooseImportFolder`; the panel offers the
-    /// browser sign-in as a second way. Throws `BookmarkFailed` when the pick cannot be kept.
-    static func chooseSyncedFolder(provider: SyncedCloudProvider, startAt: URL) throws -> SyncedChoice {
+    /// browser sign-in as a second way when `offerBrowser`. Throws `BookmarkFailed` when the pick cannot be kept.
+    static func chooseSyncedFolder(provider: SyncedCloudProvider, startAt: URL, offerBrowser: Bool) throws -> SyncedChoice {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -67,9 +67,12 @@ enum FolderPicker {
         panel.message = SyncedCloudText.panelTitle(provider)
         panel.prompt = tr(vi: "Nhập", en: "Import")
         let handler = BrowserInsteadHandler(panel: panel)
-        let button = NSButton(title: SyncedCloudText.useBrowserInstead, target: handler, action: #selector(BrowserInsteadHandler.choose))
-        button.bezelStyle = .rounded
-        panel.accessoryView = button
+        // The browser flow needs the build's Google client id or Dropbox key; without them the button would only fail.
+        if offerBrowser {
+            let button = NSButton(title: SyncedCloudText.useBrowserInstead, target: handler, action: #selector(BrowserInsteadHandler.choose))
+            button.bezelStyle = .rounded
+            panel.accessoryView = button
+        }
         NSApp.activate(ignoringOtherApps: true)
         let response = panel.runModal()
         if handler.chose { return .useBrowser }

@@ -26,13 +26,32 @@ extension AppModel {
         }
     }
 
-    /// The provider's desktop app is installed (or its folder was seen). The sandbox cannot list
-    /// `~/Library/CloudStorage`, so this asks Launch Services for the app; the listing only refines it.
+    /// For views: true when the provider's desktop app was found at the last refresh. Reads only, so it is safe in `body`.
+    func syncedAvailable(_ provider: SyncedCloudProvider) -> Bool { syncedFolders[provider]?.isAvailable == true }
+
+    /// The provider's desktop app is installed (or its folder was seen), as of the last `refreshSyncedFolders()`.
     func syncedFolderDetection(_ provider: SyncedCloudProvider) -> SyncedCloudFolders.Detection {
-        SyncedCloudFolders.detect(
-            provider, home: Self.realHome,
-            appInstalled: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil },
-            list: { try? FileManager.default.contentsOfDirectory(atPath: $0.path) })
+        if let known = syncedFolders[provider] { return known }
+        refreshSyncedFolders()
+        return syncedFolders[provider] ?? SyncedCloudFolders.detect(provider, home: Self.realHome, appInstalled: { _ in false }, list: { _ in nil })
+    }
+
+    /// Asks Launch Services for the desktop apps. The sandbox cannot list `~/Library/CloudStorage`: that is tried
+    /// until it is refused once, then never again in this launch, so there is no violation per redraw.
+    func refreshSyncedFolders() {
+        let home = Self.realHome
+        for provider in SyncedCloudProvider.allCases {
+            syncedFolders[provider] = SyncedCloudFolders.detect(
+                provider, home: home,
+                appInstalled: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil },
+                list: { [self] url in
+                    guard !folderListingRefused else { return nil }
+                    do { return try FileManager.default.contentsOfDirectory(atPath: url.path) } catch {
+                        folderListingRefused = true
+                        return nil
+                    }
+                })
+        }
     }
 
     enum SyncedImportOutcome { case started, cancelled, useBrowser }
@@ -42,7 +61,9 @@ extension AppModel {
     func importFromSyncedFolder(_ provider: SyncedCloudProvider) -> SyncedImportOutcome {
         guard canStartImport else { return .cancelled }
         do {
-            switch try FolderPicker.chooseSyncedFolder(provider: provider, startAt: syncedFolderDetection(provider).startDirectory) {
+            switch try FolderPicker.chooseSyncedFolder(
+                provider: provider, startAt: syncedFolderDetection(provider).startDirectory,
+                offerBrowser: provider == .googleDrive ? googleImportAvailable : dropboxImportAvailable) {
             case .cancelled: return .cancelled
             case .useBrowser: return .useBrowser
             case .picked(let pick): beginFolderImport(pick); return .started
@@ -85,7 +106,7 @@ extension AppModel {
         let synced = SyncedCloudFolders.provider(ofPath: pick.url.path, home: Self.realHome)
         let shown = SyncedCloudFolders.displayPath(pick.url.path, home: Self.realHome) ?? ImportLocationPath.mac(pick.url.path)
         let config = SourceConfig(
-            bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path), locationPaths: [shown], syncedProvider: synced)
+            bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path, home: Self.realHome), locationPaths: [shown], syncedProvider: synced)
         Task {
             do {
                 try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)

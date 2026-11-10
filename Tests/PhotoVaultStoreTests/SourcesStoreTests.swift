@@ -88,6 +88,25 @@ extension AssetRepository {
     }
 }
 
+@Suite struct RefreshedBookmarkTests {
+    @Test func aRefreshedBookmarkKeepsTheRestOfTheConfig() async throws {
+        let store = try Store.inMemory()
+        let config = SourceConfig(
+            bookmark: Data([1]), account: "a@b.c", locationPaths: ["Google Drive/My Drive/Trip"], syncedProvider: .googleDrive)
+        let source = SourceRecord(id: .folder(), kind: .localFolder, mode: .oneTime, displayName: "Trip", config: config, status: .scanning, createdAt: t0)
+        try await store.write { db in
+            try SourceRepository.insert(db, source)
+            try SourceRepository.setBookmark(db, id: source.id, Data([7, 7]))
+            let stored = try #require(try SourceRepository.fetch(db, id: source.id)?.config)
+            #expect(stored.bookmark == Data([7, 7]))
+            #expect(stored.account == "a@b.c" && stored.locationPaths == ["Google Drive/My Drive/Trip"] && stored.syncedCloudProvider == .googleDrive)
+            // A row that is gone is not recreated.
+            try SourceRepository.setBookmark(db, id: .folder(), Data([1]))
+            #expect(try SourceRepository.fetchAll(db).count == 1)
+        }
+    }
+}
+
 @Suite struct SidecarNameTests {
     @Test func theSidecarNameIsTheDisplayNameUnlessTheConfigSetsOne() {
         func row(_ config: SourceConfig) -> SourceRecord {

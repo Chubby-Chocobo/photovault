@@ -59,13 +59,14 @@ public enum SyncedCloudFolders {
         return tail.isEmpty ? name : "\(name)/\(tail)"
     }
 
-    /// The Google account in the `GoogleDrive-<email>` folder on the way to `path`; nil for Dropbox.
-    public static func account(ofPath path: String) -> String? {
-        for part in path.split(separator: "/") where part.hasPrefix("GoogleDrive-") {
-            let email = part.dropFirst("GoogleDrive-".count)
-            return email.isEmpty ? nil : String(email)
-        }
-        return nil
+    /// The Google account in the `GoogleDrive-<email>` folder directly under `~/Library/CloudStorage`; nil for
+    /// anything else, so a folder the owner named like a root cannot pass for an account.
+    public static func account(ofPath path: String, home: URL) -> String? {
+        let storage = cloudStorage(home: home).path + "/"
+        guard path.hasPrefix(storage), let root = path.dropFirst(storage.count).split(separator: "/").first,
+              root.hasPrefix("GoogleDrive-") else { return nil }
+        let email = root.dropFirst("GoogleDrive-".count)
+        return email.isEmpty ? nil : String(email)
     }
 
     static func isRootName(_ name: String, of provider: SyncedCloudProvider) -> Bool {

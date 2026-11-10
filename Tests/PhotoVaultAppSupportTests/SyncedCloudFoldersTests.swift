@@ -58,14 +58,24 @@ import Testing
     @Test func providerAndAccountFromPickedPath() {
         let drive = storage + "/GoogleDrive-a@b.c/My Drive/Trip"
         #expect(SyncedCloudFolders.provider(ofPath: drive, home: home) == .googleDrive)
-        #expect(SyncedCloudFolders.account(ofPath: drive) == "a@b.c")
+        #expect(SyncedCloudFolders.account(ofPath: drive, home: home) == "a@b.c")
         #expect(SyncedCloudFolders.provider(ofPath: storage + "/Dropbox/Photos", home: home) == .dropbox)
         #expect(SyncedCloudFolders.provider(ofPath: "/Users/me/Dropbox/Photos", home: home) == .dropbox)
-        #expect(SyncedCloudFolders.account(ofPath: storage + "/Dropbox/Photos") == nil)
+        #expect(SyncedCloudFolders.account(ofPath: storage + "/Dropbox/Photos", home: home) == nil)
         #expect(SyncedCloudFolders.provider(ofPath: "/Users/me/Pictures", home: home) == nil)
         // A folder merely named like a provider elsewhere is not synced.
         #expect(SyncedCloudFolders.provider(ofPath: "/Volumes/Disk/GoogleDrive-a@b.c/x", home: home) == nil)
         #expect(SyncedCloudFolders.provider(ofPath: "/Users/me/Documents/Dropbox/x", home: home) == nil)
+    }
+
+    @Test func theAccountComesOnlyFromTheCloudStorageRootFolder() {
+        // Folders the owner named like a root, deeper in the tree or elsewhere, say nothing about the account.
+        #expect(SyncedCloudFolders.account(ofPath: storage + "/Dropbox/GoogleDrive-boss@corp.com/pics", home: home) == nil)
+        #expect(SyncedCloudFolders.account(ofPath: "/Users/me/Dropbox/GoogleDrive-boss@corp.com", home: home) == nil)
+        #expect(SyncedCloudFolders.account(ofPath: "/Volumes/NAS/GoogleDrive-boss@corp.com/2024", home: home) == nil)
+        #expect(SyncedCloudFolders.account(ofPath: storage + "/GoogleDrive-a@b.c/My Drive/GoogleDrive-x@y.z", home: home) == "a@b.c")
+        #expect(SyncedCloudFolders.account(ofPath: storage + "/GoogleDrive-", home: home) == nil)
+        #expect(SyncedCloudFolders.account(ofPath: "/Users/me/Pictures", home: home) == nil)
     }
 
     @Test func displayPathHidesTheCloudStoragePrefixAndAccount() {

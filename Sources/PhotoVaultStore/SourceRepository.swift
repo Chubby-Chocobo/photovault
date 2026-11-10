@@ -49,6 +49,13 @@ public enum SourceRepository {
         try db.execute(sql: "UPDATE source SET listed_at = ? WHERE id = ?", arguments: [now, id.rawValue])
     }
 
+    /// Stores a re-created security-scoped bookmark and keeps the rest of the stored config. A missing row is left alone.
+    public static func setBookmark(_ db: Database, id: SourceID, _ bookmark: Data) throws {
+        guard var config = try fetch(db, id: id)?.config else { return }
+        config.bookmark = bookmark
+        try setConfig(db, id: id, config)
+    }
+
     public static func setConfig(_ db: Database, id: SourceID, _ config: SourceConfig) throws {
         try db.execute(sql: "UPDATE source SET config_json = ? WHERE id = ?", arguments: [try Json.encode(config), id.rawValue])
     }

@@ -24,4 +24,11 @@ import Testing
         let config = try JSONDecoder().decode(SourceConfig.self, from: future)
         #expect(config.syncedCloudProvider == nil)
     }
+
+    @Test func theInitializerStoresTheProvider() {
+        let config = SourceConfig(bookmark: Data([1]), syncedProvider: .googleDrive)
+        #expect(config.syncedProvider == "googleDrive")
+        #expect(config.syncedCloudProvider == .googleDrive)
+        #expect(SourceConfig(bookmark: Data([1])).syncedProvider == nil)
+    }
 }
