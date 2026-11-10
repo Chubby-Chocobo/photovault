@@ -208,8 +208,20 @@ enum EngineQueries {
     }
 
     /// (assets with backfill jobs, of which finished) for the progress display.
+    ///
+    /// A destination the owner has paused does not hold the backfill open: its jobs wait for the owner,
+    /// not for the app. Other waits (offline, no space, deferred) are live and still count.
     static func backfillProgress(_ db: Database) throws -> (done: Int, total: Int) {
-        try SnapshotCounterRepository.backfillProgress(db)
+        let paused = try DestinationRepository.fetchAll(db).filter { $0.status == .paused(.userPaused) }.map(\.id.rawValue)
+        guard !paused.isEmpty else { return try SnapshotCounterRepository.backfillProgress(db) }
+        let marks = paused.map { _ in "?" }.joined(separator: ", ")
+        let base = "FROM upload_job WHERE origin IN ('backfill', 'destinationBackfill') AND state != 'cancelled' AND destination_id NOT IN (\(marks))"
+        let arguments = StatementArguments(paused)
+        let total = try Int.fetchOne(db, sql: "SELECT COUNT(DISTINCT asset_key) \(base)", arguments: arguments) ?? 0
+        let open = try Int.fetchOne(db, sql: """
+            SELECT COUNT(DISTINCT asset_key) \(base) AND state IN ('pending', 'uploading', 'deferred', 'missingRemote')
+            """, arguments: arguments) ?? 0
+        return (total - open, total)
     }
 
     static func uploadedBytes(_ db: Database) throws -> Int64 {

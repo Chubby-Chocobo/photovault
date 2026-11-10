@@ -74,6 +74,7 @@ final class AppModel {
     @ObservationIgnored var runtime: Runtime?
     /// Status of every import at the last snapshot, to notice the moment one finishes.
     @ObservationIgnored var importStatuses: [SourceID: SourceStatus] = [:]
+    @ObservationIgnored var backfillNoticeInFlight = false
 
     /// Things that run only while the engine is live.
     struct Runtime {
@@ -191,6 +192,7 @@ final class AppModel {
                 guard let self else { return }
                 self.snapshot = value
                 await self.noteImportProgress(value)
+                await self.noteBackfillCompletion(value)
                 await self.refresh()
             }
         }
@@ -260,6 +262,7 @@ final class AppModel {
         let current = await env.coordinator.currentSnapshot()
         snapshot = current
         await noteImportProgress(current)
+        await noteBackfillCompletion(current)
         await refresh()
     }
 

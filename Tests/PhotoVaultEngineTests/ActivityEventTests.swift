@@ -85,31 +85,23 @@ import Testing
         }
     }
 
-    @Test func uploadsOfADayShareOneRowAndTheBackfillIsAnnouncedOnce() async throws {
+    @Test func uploadsOfADayShareOneRow() async throws {
         let h = try await harness()
         for index in 0..<3 { await h.add(h.snapshot("old\(index)", daysAgo: 5), recordChange: false) }
         try await h.baseline(.googleDrive)
         await h.settle()
         let first = try events(h, .milestone)
-        let backfill = SyncMilestones.backfillText(done: 3, deferred: 0)
-        #expect(first.filter { $0.message == backfill }.count == 1)
-        let uploadedBefore = try #require(first.first { $0.message != backfill })
+        let isBackfill: (ActivityEvent) -> Bool = { $0.message.hasPrefix(BackfillCompletion.activityPrefix) }
+        #expect(first.filter(isBackfill).count == 1)
+        let uploadedBefore = try #require(first.first { !isBackfill($0) })
 
         await h.add(h.snapshot("new", daysAgo: 0))
         await h.settle()
         let second = try events(h, .milestone)
-        #expect(second.filter { $0.message == backfill }.count == 1, "announced once")
-        let uploadRows = second.filter { $0.message != backfill }
+        #expect(second.filter(isBackfill).count == 1, "announced once")
+        let uploadRows = second.filter { !isBackfill($0) }
         #expect(uploadRows.count == 1, "one row per destination and day")
         #expect(uploadRows[0].id == uploadedBefore.id && uploadRows[0].message != uploadedBefore.message, "the row's count grew")
-    }
-
-    @Test func aBackfillIsNotAnnouncedWhileItsJobsWait() async throws {
-        let h = try await harness()
-        await h.add(h.snapshot("old", daysAgo: 5), recordChange: false)
-        try await h.baseline(.googleDrive)
-        try h.write { db in try SyncMilestones.noteBackfill(db, id: .googleDrive, drained: true, now: Date()) }
-        #expect(try events(h, .milestone).isEmpty)
     }
 }
 

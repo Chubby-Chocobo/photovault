@@ -14,6 +14,7 @@ struct SnapshotBuilder: Sendable {
         var bytes: Int64
         var totals: EngineQueries.JobCounts
         var imports: [ImportSnapshot]
+        var backfillCompletion: BackfillCompletionSummary?
     }
 
     func read() async throws -> Raw {
@@ -30,7 +31,7 @@ struct SnapshotBuilder: Sendable {
             return Raw(
                 scan: try KeyValueRepository.scanState(db), destinations: list, backfill: try EngineQueries.backfillProgress(db),
                 bytes: try EngineQueries.uploadedBytes(db), totals: byDestination.values.reduce(EngineQueries.JobCounts(), +),
-                imports: try Self.imports(db))
+                imports: try Self.imports(db), backfillCompletion: try BackfillCompletion.summary(db))
         }
     }
 

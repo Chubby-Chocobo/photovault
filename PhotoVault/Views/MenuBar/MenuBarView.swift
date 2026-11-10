@@ -102,7 +102,7 @@ private struct BackfillSection: View {
     var snapshot: EngineSnapshot
 
     var body: some View {
-        if snapshot.backfillTotalAssets > 0 {
+        if BackfillText.isRunning(snapshot) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Backfill").font(.subheadline.weight(.semibold))
@@ -116,7 +116,7 @@ private struct BackfillSection: View {
                 HStack {
                     Text(tr(vi: "Đã upload \(VietnameseFormat.bytes(snapshot.bytesUploaded))", en: "Uploaded \(VietnameseFormat.bytes(snapshot.bytesUploaded))"))
                     Spacer()
-                    if snapshot.backfillDoneAssets < snapshot.backfillTotalAssets { Text(ProgressText.eta(seconds: snapshot.etaSeconds)) }
+                    Text(ProgressText.eta(seconds: snapshot.etaSeconds))
                 }
                 .font(.caption).foregroundStyle(.secondary)
                 if let caption = ProgressText.rateCaption(
