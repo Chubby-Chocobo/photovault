@@ -20,14 +20,18 @@ public enum PickerError: Error, Equatable, Sendable {
     /// Consent was given but nothing was selected.
     case nothingPicked
     case tokenMissing
+    /// Google's consent was given without the permission to read Drive files (the owner cleared that box).
+    case readAccessDenied
     /// The selection was too large for the redirect to carry.
     case selectionTooLarge
 }
 
-/// Google's desktop Picker flow: OAuth with `drive.file` only and `trigger_onepick`. The browser
+/// Google's desktop Picker flow: OAuth with `drive.file` (so the Picker's grants work) plus `drive.readonly`
+/// (so the folders picked can be read to their depth) and `trigger_onepick`. Only imports use it; the backup destination stays `drive.file`. The browser
 /// shows the account chooser, consent and the picker; the loopback redirect carries `picked_file_ids`.
 public struct GooglePickerFlow: Sendable {
-    public static let scope = "https://www.googleapis.com/auth/drive.file"
+    static let readScope = "https://www.googleapis.com/auth/drive.readonly"
+    public static let scope = "https://www.googleapis.com/auth/drive.file " + readScope
     /// What the loopback request line can carry with room to spare: an id is at most about 45 bytes and its
     /// comma may arrive as `%2C`, so 48 bytes each, after 4 KiB for the other query items. More than this is refused.
     static let maxPickedIds = (LoopbackRequestParser.maxRequestBytes - 4096) / 48
@@ -89,6 +93,8 @@ public struct GooglePickerFlow: Sendable {
             guard !ids.isEmpty else { throw PickerError.nothingPicked }
             let oauth = OAuthClient(config: config, transport: transport, clock: clock, openURL: openURL)
             let tokens = try await oauth.exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
+            // Google shows the two Drive permissions as separate boxes; without this one a picked folder lists as empty.
+            guard tokens.scopes.contains(Self.readScope) else { throw PickerError.readAccessDenied }
             guard let refresh = tokens.refreshToken else { throw PickerError.tokenMissing }
             let email = await Self.email(transport: transport, accessToken: tokens.accessToken)
             server.respond(success: true)

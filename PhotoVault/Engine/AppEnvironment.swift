@@ -195,7 +195,7 @@ struct AppEnvironment: Sendable {
         // Finished imports too: a destination added later still receives their files.
         let rows = (try? store.read { db in try SourceRepository.readableImports(db) }) ?? []
         let readable = CloudImportKeychain.registrable(rows, hasGrant: cloud.hasGrant)
-        let skipped = rows.count - readable.count
+        let skipped = CloudImportKeychain.missingToken(rows, hasGrant: cloud.hasGrant)
         if skipped > 0 { log.log(.notice, category: "launch", "\(skipped) cloud imports have no stored token") }
         return readable.compactMap { row -> (any FolderImportSource)? in
             switch row.kind {

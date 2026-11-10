@@ -76,7 +76,7 @@ struct ImportFinishedRow: View {
                     Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
                 }
             }
-            if let hint = CloudImportText.emptyGoogleHint(item) {
+            if let hint = CloudImportText.emptyImportNotice(item) {
                 Text(hint).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }

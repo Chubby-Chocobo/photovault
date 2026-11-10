@@ -107,6 +107,13 @@ public enum ImportProgressText {
 
 /// The notification for a finished import. It may name the folder (it only appears on this Mac).
 public enum ImportNotificationText {
+    /// An import that found nothing the app could read.
+    public static func makeEmpty(folderName: String) -> (title: String, body: String) {
+        (tr(vi: "Nhập ảnh xong", en: "Import finished"),
+         tr(vi: "“\(folderName)”: không có ảnh hay video nào mà app đọc được",
+            en: "“\(folderName)”: no photos or videos the app could read"))
+    }
+
     public static func make(folderName: String, imported: Int, known: Int) -> (title: String, body: String) {
         let new = VietnameseFormat.integer(imported)
         let have = VietnameseFormat.integer(known)

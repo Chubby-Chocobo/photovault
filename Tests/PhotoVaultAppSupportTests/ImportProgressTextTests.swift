@@ -90,6 +90,15 @@ import Testing
         }
     }
 
+    @Test func theNotificationOfAnEmptyImportSaysNothingWasReadable() {
+        vi {
+            let text = ImportNotificationText.makeEmpty(folderName: "Trip")
+            #expect(text.body == "“Trip”: không có ảnh hay video nào mà app đọc được")
+            #expect(!text.title.isEmpty)
+        }
+        en { #expect(ImportNotificationText.makeEmpty(folderName: "Trip").body == "“Trip”: no photos or videos the app could read") }
+    }
+
     @Test func theOverallHeaderSaysImportingWhenAnImportIsTheOnlyWork() {
         var snapshot = EngineSnapshot(
             overall: .syncing, scanState: .complete, destinations: [], backfillDoneAssets: 0, backfillTotalAssets: 0,

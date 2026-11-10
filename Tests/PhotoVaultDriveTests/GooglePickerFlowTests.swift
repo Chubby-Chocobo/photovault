@@ -24,10 +24,12 @@ private func flow(_ transport: any HTTPTransport, opener: @escaping URLOpening) 
                      openURL: opener, loopbackTimeout: 5)
 }
 
-private func server(email: String? = "me@example.com", refresh: String? = "r-1") -> StubTransport {
+private let bothScopes = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly"
+
+private func server(email: String? = "me@example.com", refresh: String? = "r-1", scope: String = bothScopes) -> StubTransport {
     StubTransport { request in
         if request.url.host == "oauth2.googleapis.com" {
-            var body: [String: Any] = ["access_token": "at-1", "expires_in": 3600, "scope": "https://www.googleapis.com/auth/drive.file"]
+            var body: [String: Any] = ["access_token": "at-1", "expires_in": 3600, "scope": scope]
             if let refresh { body["refresh_token"] = refresh }
             return .json(200, body)
         }
@@ -51,11 +53,17 @@ private final class LockedPage: @unchecked Sendable {
         let url = GooglePickerFlow.authorizationURL(clientID: "c", redirectURI: "http://127.0.0.1:5/oauth2/callback", state: "s", challenge: "ch")
         let q = items(url)
         #expect(url.host == "accounts.google.com" && url.path == "/o/oauth2/v2/auth")
-        #expect(q["scope"] == "https://www.googleapis.com/auth/drive.file")
+        #expect(q["scope"] == "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly")
         #expect(q["trigger_onepick"] == "true" && q["allow_multiple"] == "true" && q["allow_folder_selection"] == "true")
         #expect(q["access_type"] == "offline" && q["prompt"] == "select_account consent" && q["response_type"] == "code")
         #expect(q["code_challenge_method"] == "S256" && q["state"] == "s" && q["client_id"] == "c")
         #expect(q["redirect_uri"] == "http://127.0.0.1:5/oauth2/callback")
+    }
+
+    @Test func destinationSignInStaysDriveFileOnly() {
+        let url = OAuthClient.authorizationURL(clientID: "c", redirectURI: "http://127.0.0.1:5/oauth2/callback", state: "s", challenge: "ch")
+        let scopes = Set((items(url)["scope"] ?? "").split(separator: " ").map(String.init))
+        #expect(scopes == ["https://www.googleapis.com/auth/drive.file", "openid", "email"])
     }
 
     @Test func parserReadsPickedIds() throws {
@@ -137,6 +145,21 @@ private final class LockedPage: @unchecked Sendable {
     @Test func missingRefreshTokenIsReported() async throws {
         await #expect(throws: PickerError.tokenMissing) {
             try await flow(server(refresh: nil), opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
+        }
+    }
+
+    @Test func aGrantWithoutReadAccessIsRefusedAndNothingIsKept() async throws {
+        let transport = server(scope: "https://www.googleapis.com/auth/drive.file")
+        await #expect(throws: PickerError.readAccessDenied) {
+            try await flow(transport, opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
+        }
+        #expect(!transport.requests.contains { $0.url.host == "www.googleapis.com" }, "no Drive call is made with the narrower grant")
+    }
+
+    @Test func aTokenResponseWithoutScopeCountsAsNoReadAccess() async throws {
+        let transport = StubTransport { _ in .json(200, ["access_token": "a", "refresh_token": "r", "expires_in": 3600]) }
+        await #expect(throws: PickerError.readAccessDenied) {
+            try await flow(transport, opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
         }
     }
 

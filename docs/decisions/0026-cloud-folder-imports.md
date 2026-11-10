@@ -1,6 +1,6 @@
 # 0026 One-time import from a Google Drive folder or a Dropbox folder
 
-- **Status:** Accepted
+- **Status:** Accepted; the Google Drive scope and folder-reading parts are superseded by [0030](0030-drive-import-reads-folder-contents.md)
 - **Spec refs:** §2, §9, §15 (amended); new FR-119 to FR-123 (§4.13); FR-110 to FR-116 apply unchanged
 - **Review trigger:** the owner's end-to-end run shows that the Picker loopback or the picked-folder listing does not work as described below, Google or Dropbox changes a scope or redirect rule, a large import makes the double download hurt, or a continuous Dropbox or Google source is requested
 

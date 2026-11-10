@@ -76,7 +76,9 @@ extension AppModel {
         importStatuses = next
         for item in ImportProgressText.newlyCompleted(before: before, imports: snapshot.imports) {
             guard let env, await notificationService.isAuthorized() else { continue }
-            let text = ImportNotificationText.make(folderName: item.displayName, imported: item.imported, known: item.duplicates)
+            let text = item.found == 0
+                ? ImportNotificationText.makeEmpty(folderName: item.displayName)
+                : ImportNotificationText.make(folderName: item.displayName, imported: item.imported, known: item.duplicates)
             do {
                 try await notificationService.postImportFinished(id: item.id, title: text.title, body: text.body)
                 env.log.log(.info, category: "notification", "posted import finished")

@@ -307,6 +307,7 @@ final class AppModel {
             guard let self else { return }
             if case .blocked(.photosUnauthorized) = outcome { self.photosAuthorization = env.photos.authorizationStatus() }
             self.runtime?.photosObserver.startIfAuthorized()
+            await self.releaseFinishedImportGrants()
             await self.refreshSnapshot()
         }
     }

@@ -58,10 +58,10 @@ Do this once, in your own Google account. The app cannot do it for you.
 3. APIs & Services → Library → **Google Picker API** → Enable. It is used only for the one-time import from Google Drive. It needs no API key.
 4. APIs & Services → OAuth consent screen:
    - User type **External**. Fill in the app name and your e-mail address.
-   - Add the scopes `https://www.googleapis.com/auth/drive.file`, `openid` and `email`. `drive.file` gives access only to files the app creates, and to files you pick in the Picker.
+   - Add the scopes `https://www.googleapis.com/auth/drive.file`, `https://www.googleapis.com/auth/drive.readonly`, `openid` and `email` (Data access). The Drive backup destination asks for `drive.file` only: access to files the app creates and files you pick in the Picker. Only the one-time Google Drive import also asks for `drive.readonly`, to read inside the folders you pick. Google describes it as "See and download all your Google Drive files".
    - Branding: home page `https://photovault.annh.dev`, privacy policy `https://photovault.annh.dev/privacy`, terms of service `https://photovault.annh.dev/terms`, authorized domain `annh.dev` (see [Website](#website)).
 5. On the same screen, click **Publish app** so the status shows **In production**. In *Testing* mode, refresh tokens expire after 7 days, and the backups would stop each week.
-6. When you sign in, Google shows an "unverified app" screen. This is expected for a personal app. Click **Advanced**, then continue to the app.
+6. When you sign in, Google shows an "unverified app" screen. This is expected for a personal app (`drive.readonly` is a restricted scope and the app stays unverified). Click **Advanced**, then continue to the app.
 7. APIs & Services → Credentials → **Create credentials** → **OAuth client ID** → application type **Desktop app**. Copy the client ID and the client secret.
 8. In the repo, copy the template and fill in the two Google values:
 
@@ -201,7 +201,7 @@ Keep `privacy.html` true to what the app does: when the app starts using new Goo
 - **No client-side encryption.** Files in Drive and on the NAS are stored as plain files. Google encrypts data at rest on its side; the app adds no encryption of its own.
 - **Hidden photos are not uploaded** by default.
 - **Tokens** are stored only in the macOS Keychain on this Mac, in the data-protection keychain, which is not synced. That includes the Dropbox account and one token per Drive or Dropbox import.
-- **Dropbox and Google Drive imports** read only what you choose: the folder you pick in Dropbox, or the files and folders you pick in Google's Picker (`drive.file`). Nothing is written back to either service.
+- **Dropbox and Google Drive imports** read only what you choose: the folder you pick in Dropbox, or the files and folders you pick in Google's Picker (the import sign-in asks for `drive.file` and `drive.readonly`; the backup destination stays on `drive.file`). Nothing is written back to either service. An import's sign-in is deleted from the Keychain when the import is finished and its files are uploaded.
 - **Permissions:** Photos (read), network, and the folders you pick. Dropbox access is read-only. The app does not ask for Full Disk Access and does not read `Photos Library.photoslibrary` directly.
 
 ## Using the app
@@ -223,7 +223,7 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 - **digiKam** looks for `file.ext.xmp`. The app writes `<stem>.xmp`, so digiKam does not find it by default.
 - **RAW and JPEG share one sidecar pair** (`<stem>.json` and `<stem>.xmp`).
 - **Drive views add shortcuts.** Shortcuts count toward My Drive's item limit (the limit is [VERIFY] in M0-3). The app trashes only shortcuts it created; backup files are never touched.
-- **Drive folder contents may be hidden.** Under `drive.file`, Google may not return what is inside a folder you picked. The import then has only the files you picked. Whether the folder grant reaches its children is still unconfirmed ([decision 0026](docs/decisions/0026-cloud-folder-imports.md)).
+- **Drive imports from 0.3.0 may be empty.** Those imports only had `drive.file` and could not read inside a picked folder. Import the folder again ([decision 0030](docs/decisions/0030-drive-import-reads-folder-contents.md)). Reading inside folders with `drive.readonly` needs a run on a real account to confirm.
 - **The Drive Picker sign-in is not yet confirmed end to end** on a real account ([decision 0026](docs/decisions/0026-cloud-folder-imports.md)).
 - **Cloud imports download each file twice:** once to read its date and hash, and once for the backup. A large Drive or Dropbox import uses twice the download traffic.
 - **Imports use file metadata.** Screenshots are recognised by the EXIF marker iOS and macOS write; screen recordings and screenshots from other tools go to `Camera Uploads`. A Live Photo pair is joined only when both files carry Apple's content identifier.
@@ -234,7 +234,7 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 Settings › **Nguồn** (Sources) › **Nhập ảnh…** (Import photos…) › **Từ thư mục trên Mac…** (From a folder on this Mac…) picks a folder. PhotoVault reads it recursively, groups RAW+JPEG and Live Photo pairs, reads the dates and places inside the files, skips what is already backed up, and then backs the rest up like any other photo. The folder is only read: nothing in it is changed or deleted. Progress shows in Settings and in the menu bar; **Huỷ** (Cancel) stops a job (files already uploaded stay), and a notification and one line in Recent activity report the result.
 
 - **Photos access is still required.** An import runs in the same cycle as Photos, so it waits until setup is done and Photos is allowed.
-- **Continuous sources come later.** Flickr, Dropbox and another Google account cannot be backed up continuously yet. Google Drive and Dropbox folders can be imported once, as described below.
+- **Photos is the only continuous source.** Google Drive and Dropbox folders can be imported once, as described below; more continuous sources are planned, see [the roadmap](docs/requirements/roadmap.md) and [the extension design](docs/architecture/continuous-source-extension.md).
 - **Keep the folder and its disk connected until the job completes.** An unplugged disk pauses that job only and it continues when the disk is back.
 - **Duplicates are matched by content, or by capture second + name + size.** A photo that is already in Photos or already exported is not uploaded twice. A photo added to Photos after it was imported is uploaded again.
 - **Files that only had a file date** (no EXIF or QuickTime date) use the earlier of the file's creation and modification dates for the day folder.
@@ -243,9 +243,11 @@ Settings › **Nguồn** (Sources) › **Nhập ảnh…** (Import photos…) �
 
 Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or **Từ Dropbox…** starts the import. The row and the menu bar card show the account email.
 
-- **Google Drive:** a short sheet explains what to pick. The browser then opens Google's Picker. Sign in with the Google account that holds the photos; it can differ from your backup account. Pick photos, videos and/or folders. The app can read only what you pick (`drive.file`).
-  - Tip: a picked folder may not give access to the photos inside it. To be sure, open the folder in the Picker and select the photos (⌘A).
-  - If the import finds no files, it says so and suggests the same.
+- **Google Drive:** a short sheet explains what to pick. The browser then opens Google's Picker. Sign in with the Google account that holds the photos; it can differ from your backup account. Pick photos, videos and/or folders. Google asks to "see and download all your Google Drive files" (read only) and shows the unverified-app warning for a personal app. The app reads only what you pick and everything below picked folders, subfolders included.
+  - When the import is finished and its files are uploaded, the app deletes this sign-in from this Mac. The permission itself stays in your Google account until you remove it at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Adding a backup destination later, or uploading a file again after the destination lost it, asks you to sign in again ("Đăng nhập lại").
+  - The consent screen shows the Drive permissions as separate boxes. Keep "See and download all your Google Drive files" ticked, or the app refuses the sign-in.
+  - Google Workspace (school or work) accounts may not be able to use the import: an admin can block restricted scopes. Personal accounts are what this was tested for.
+  - If the import finds no photos or videos, it says so (in Settings and in the notification) and, for Google Drive, tells you to import again (Import photos… › From Google Drive…).
 - **Dropbox:** sign in once in the browser, then choose a folder in PhotoVault's folder browser, or the whole Dropbox. Needs the App key ([Dropbox setup](#dropbox-setup)).
 - **Cần đăng nhập lại** (sign in again): Google or Dropbox revoked the access, or the token is missing. An open import shows this and waits; so does a finished import whose files are still needed for a backup. Use the sign-in action on that import to continue. Sign in with the same account the import reads from: another account is refused with a notice and changes nothing. For Google, the new pick is added to the old one.
 - **Signing out of the Google backup destination** also revokes the app's access for that Google account, so imports from the same account then wait and show "Cần đăng nhập lại". Imports from another Google account keep their own grant until you remove the app's access in that account ([myaccount.google.com/permissions](https://myaccount.google.com/permissions)) or use Start over, which deletes the tokens on this Mac. For Dropbox, remove the app at [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps).
