@@ -137,8 +137,15 @@ public actor FakeGeocoder: ReverseGeocoding {
     private var places: [String: GeoPlace] = [:]
     public private(set) var requests: [(cell: GeoCell, locale: String)] = []
     public var failure: (any Error)?
+    private var held: Set<GeoCell> = []
+
+    public struct Held: Error, Hashable {}
 
     public init() {}
+
+    /// Requests for `cell` fail until `release`, as if the geocoder had no answer for it yet.
+    public func hold(_ cell: GeoCell) { held.insert(cell) }
+    public func release(_ cell: GeoCell) { held.remove(cell) }
 
     public func set(_ place: GeoPlace, for cell: GeoCell, locale: String) {
         places["\(cell.key)|\(locale)"] = place
@@ -149,6 +156,7 @@ public actor FakeGeocoder: ReverseGeocoding {
     public func reverseGeocode(cell: GeoCell, locale: String) async throws -> GeoPlace {
         requests.append((cell, locale))
         if let failure { throw failure }
+        if held.contains(cell) { throw Held() }
         return places["\(cell.key)|\(locale)"] ?? GeoPlace()
     }
 
