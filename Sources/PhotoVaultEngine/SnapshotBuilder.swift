@@ -15,10 +15,12 @@ struct SnapshotBuilder: Sendable {
         var totals: EngineQueries.JobCounts
         var imports: [ImportSnapshot]
         var backfillCompletion: BackfillCompletionSummary?
+        var nextRetryAt: Date?
     }
 
     func read() async throws -> Raw {
-        try await env.store.read { db in
+        let now = env.clock.now
+        return try await env.store.read { db in
             var list: [DestinationSnapshot] = []
             let byDestination = try EngineQueries.jobCountsByDestination(db)
             for record in try DestinationRepository.fetchAll(db) {
@@ -31,7 +33,8 @@ struct SnapshotBuilder: Sendable {
             return Raw(
                 scan: try KeyValueRepository.scanState(db), destinations: list, backfill: try EngineQueries.backfillProgress(db),
                 bytes: try EngineQueries.uploadedBytes(db), totals: byDestination.values.reduce(EngineQueries.JobCounts(), +),
-                imports: try Self.imports(db), backfillCompletion: try BackfillCompletion.summary(db))
+                imports: try Self.imports(db), backfillCompletion: try BackfillCompletion.summary(db),
+                nextRetryAt: try EngineQueries.nextRetryAt(db, after: now))
         }
     }
 

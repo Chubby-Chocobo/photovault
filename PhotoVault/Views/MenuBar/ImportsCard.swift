@@ -39,6 +39,10 @@ struct ImportsCard: View {
                     ProgressBar(fraction: ImportProgressText.fraction(item))
                         .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
                 }
+                let _ = model.transferNow
+                if let line = CardActivityText.importJob(item.id, transfers: model.transfers, now: Date()) {
+                    CardActivityLine(text: line, isBusy: true)
+                }
                 if !ImportQueue.isQueued(item), !model.cancellingImports.contains(item.id) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
                     .fixedSize(horizontal: false, vertical: true) }
                 if confirming {
