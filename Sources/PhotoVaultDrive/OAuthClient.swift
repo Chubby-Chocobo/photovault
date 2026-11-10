@@ -21,6 +21,8 @@ public struct OAuthTokens: Sendable, CustomStringConvertible {
     public var refreshToken: String?
     public var expiresAt: Date
     public var idToken: String?
+    /// What Google says was granted (empty when it did not say).
+    public var scopes: [String] = []
     public var description: String { "OAuthTokens(<redacted>)" }
 }
 
@@ -136,7 +138,8 @@ public struct OAuthClient: Sendable {
             throw DestinationError.itemRejected(reason: "drive.file scope not granted")
         }
         return OAuthTokens(accessToken: decoded.access_token, refreshToken: decoded.refresh_token,
-                           expiresAt: clock.now.addingTimeInterval(decoded.expires_in ?? 3600), idToken: decoded.id_token)
+                           expiresAt: clock.now.addingTimeInterval(decoded.expires_in ?? 3600), idToken: decoded.id_token,
+                           scopes: decoded.scope?.split(separator: " ").map(String.init) ?? [])
     }
 
     private func formRequest(_ url: URL) -> URLRequest {

@@ -128,19 +128,18 @@ extension AppModel {
     /// import without a sign-in and asks the owner for one ("Đăng nhập lại").
     func releaseFinishedImportGrants() async {
         guard let env else { return }
+        let cloud = env.cloud
         let ids: [SourceID]
-        do { ids = try await env.coordinator.closedImportsReadyToRelease() } catch {
+        do { ids = try await env.coordinator.closedImportsReadyToRelease(grantExists: { cloud.hasGrant($0) }) } catch {
             env.log.log(.error, category: "import", "could not list finished imports: \(type(of: error))")
             return
         }
-        for id in ids where env.cloud.hasGrant(id) {
-            if env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)]) == 0 {
-                await env.coordinator.releaseImportSource(id)
-                env.log.log(.info, category: "import", "finished import: sign-in removed")
-            } else {
-                env.log.log(.error, category: "import", "finished import: could not remove its sign-in")
-            }
-        }
+        let coordinator = env.coordinator
+        let outcome = await CloudImportKeychain.release(
+            ids: ids, hasGrant: cloud.hasGrant, deleteGrant: { cloud.deleteTokens(accounts: [$0]) == 0 },
+            dropAdapter: { await coordinator.releaseImportSource($0) })
+        if outcome.released > 0 { env.log.log(.info, category: "import", "finished imports: \(outcome.released) sign-ins removed") }
+        if outcome.failed > 0 { env.log.log(.error, category: "import", "finished imports: \(outcome.failed) sign-ins could not be removed") }
     }
 
     // MARK: Sign in again
@@ -247,6 +246,10 @@ extension AppModel {
             case .selectionTooLarge:
                 showNotice(tr(vi: "Đã chọn quá nhiều mục cùng lúc. Hãy chọn ít hơn hoặc chia làm nhiều lần.", en: "Too many items were selected at once. Pick fewer, or import in several rounds."), isError: true)
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
+            case .readAccessDenied:
+                showNotice(tr(
+                    vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục. Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
+                    en: "PhotoVault needs permission to see your Drive files to import a folder. Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
             case .tokenMissing: showNotice(tr(vi: "Google không trả quyền truy cập. Hãy thử lại.", en: "Google did not grant access. Try again."), isError: true)
             }
         } else if let dropbox = error as? DropboxAuthError {

@@ -42,15 +42,15 @@ public enum CloudImportText {
     }
 
     /// Shown for a finished import whose listing found no photo or video the app could read, so it never
-    /// looks like a silent success. A Google Drive import also gets the hint to sign in again and pick the
-    /// folder again: imports made before Drive reading was granted only saw the picked folder itself.
+    /// looks like a silent success. A Google Drive import also gets the way to import again: imports made before
+    /// Drive reading was granted only saw the picked folder itself.
     public static func emptyImportNotice(_ item: ImportSnapshot) -> String? {
         guard item.status == .completed, item.found == 0 else { return nil }
-        let base = tr(vi: "Thư mục này không có ảnh hay video nào mà app đọc được.", en: "This folder had no photos or videos the app could read.")
+        let base = tr(vi: "Mục đã chọn không có ảnh hay video nào mà app đọc được.", en: "The selection had no photos or videos the app could read.")
         guard item.kind == .googleDrive else { return base }
         return base + " " + tr(
-            vi: "Nếu nhập bằng bản cũ, hãy đăng nhập lại và chọn lại thư mục.",
-            en: "If it was imported with an older version, sign in again and pick the folder again.")
+            vi: "Hãy nhập lại: Nhập ảnh… › Từ Google Drive… (bản cũ chỉ có quyền hạn chế).",
+            en: "Import again: Import photos… › From Google Drive… (older versions had limited access).")
     }
 
     /// A cloud import the provider no longer lets in: an open one is held, a finished one waits for its files.
@@ -101,6 +101,29 @@ public enum CloudImportKeychain {
     /// Every item Factory Reset removes, found by listing the Keychain, so a grant whose import row is
     /// missing or unreadable is removed too.
     public static func accountsToDelete(stored: [String]) -> [String] { stored.filter(CloudTokenAccount.isCloudItem) }
+
+    /// Lets go of the sign-in of each import in `ids` that still has one: deletes its `import-<id>` item, and only
+    /// when that worked drops the adapter. Nothing else in the Keychain is touched; ids without a grant are skipped,
+    /// so running it again changes nothing.
+    public static func release(
+        ids: [SourceID], hasGrant: (SourceID) -> Bool, deleteGrant: (String) -> Bool, dropAdapter: (SourceID) async -> Void
+    ) async -> (released: Int, failed: Int) {
+        var released = 0, failed = 0
+        for id in ids where hasGrant(id) {
+            if deleteGrant(CloudTokenAccount.importGrant(id)) {
+                await dropAdapter(id)
+                released += 1
+            } else {
+                failed += 1
+            }
+        }
+        return (released, failed)
+    }
+
+    /// Open cloud imports that have no stored sign-in. Finished imports let their sign-in go on purpose.
+    public static func missingToken(_ rows: [SourceRecord], hasGrant: (SourceID) -> Bool) -> Int {
+        rows.filter { ($0.kind == .googleDrive || $0.kind == .dropbox) && $0.status.isOpen && !hasGrant($0.id) }.count
+    }
 
     /// Imports to register at launch: Mac folders as stored, cloud imports only while their grant exists.
     public static func registrable(_ rows: [SourceRecord], hasGrant: (SourceID) -> Bool) -> [SourceRecord] {

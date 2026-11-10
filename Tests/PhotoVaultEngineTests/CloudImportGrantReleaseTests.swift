@@ -41,7 +41,7 @@ import Testing
         #expect(try await h.coordinator.closedImportsReadyToRelease() == [source.id])
     }
 
-    @Test(arguments: [JobState.pending, .uploading, .deferred])
+    @Test(arguments: [JobState.pending, .uploading, .deferred, .missingRemote])
     func anUploadStillToComeKeepsTheGrant(state: JobState) async throws {
         let h = try await harness()
         _ = try await seed(h, status: .completed)
@@ -50,13 +50,38 @@ import Testing
     }
 
     @Test func anOpenImportKeepsTheGrant() async throws {
-        let h = try await harness()
         for status in [SourceStatus.scanning, .importing, .offline] {
             let h = try await harness()
             _ = try await seed(h, status: status)
             try setJobs(h, .done)
             #expect(try await h.coordinator.closedImportsReadyToRelease().isEmpty, "\(status)")
         }
+    }
+
+    @Test func aDeletedAssetDoesNotKeepTheGrant() async throws {
+        let h = try await harness()
+        let source = try await seed(h, status: .completed)
+        try setJobs(h, .deferred)
+        try h.write { db in try db.execute(sql: "UPDATE asset SET deleted_at = ? WHERE source_id = ?", arguments: [h.clock.now, source.id.rawValue]) }
+        #expect(try await h.coordinator.closedImportsReadyToRelease() == [source.id])
+    }
+
+    @Test func aDeadGrantIsCleanedUpOnceNothingNeedsTheImport() async throws {
+        let h = try await harness()
+        let source = try await seed(h, status: .completed)
+        try h.write { db in try SourceRepository.setStatusReason(db, id: source.id, reason: "signInRequired") }
+        try setJobs(h, .deferred)
+        #expect(try await h.coordinator.closedImportsReadyToRelease().isEmpty, "its files still wait for a sign-in")
+        try setJobs(h, .cancelled)
+        #expect(try await h.coordinator.closedImportsReadyToRelease() == [source.id])
+    }
+
+    @Test func onlyImportsWithAGrantAreChecked() async throws {
+        let h = try await harness()
+        let source = try await seed(h, status: .completed)
+        try setJobs(h, .done)
+        #expect(try await h.coordinator.closedImportsReadyToRelease(grantExists: { _ in false }).isEmpty)
+        #expect(try await h.coordinator.closedImportsReadyToRelease(grantExists: { $0 == source.id }) == [source.id])
     }
 
     @Test func aMacFolderIsNeverListed() async throws {

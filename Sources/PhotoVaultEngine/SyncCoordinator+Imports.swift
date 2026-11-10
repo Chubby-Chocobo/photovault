@@ -52,20 +52,24 @@ extension SyncCoordinator {
         await publish()
     }
 
-    /// Cloud imports that are closed with no upload of their files left to run (nothing pending, uploading or
-    /// deferred), so their sign-in is no longer needed. Safe to ask at any time and to act on twice. An import
-    /// waiting for a new sign-in is left out: its grant is already gone, or is being replaced.
-    public func closedImportsReadyToRelease() async throws -> [SourceID] {
-        try await env.store.read { db in
-            try SourceRepository.fetchAll(db).filter { row in
-                (row.kind == .googleDrive || row.kind == .dropbox) && !row.status.isOpen
-                    && row.statusReason != SourceStatusReason.signInRequired
-            }.filter { row in
+    /// Cloud imports that are closed with no upload of their files left to run (nothing pending, uploading,
+    /// deferred or missing at the destination, where a re-upload would read the source again), so their sign-in
+    /// is no longer needed. Safe to ask at any time and to act on twice.
+    /// - Parameter grantExists: imports without a stored sign-in are skipped before any database work.
+    public func closedImportsReadyToRelease(grantExists: @Sendable (SourceID) -> Bool = { _ in true }) async throws -> [SourceID] {
+        let closed = try await env.store.read { db in
+            try SourceRepository.fetchAll(db).filter { ($0.kind == .googleDrive || $0.kind == .dropbox) && !$0.status.isOpen }.map(\.id)
+        }
+        let candidates = closed.filter(grantExists)
+        guard !candidates.isEmpty else { return [] }
+        return try await env.store.read { db in
+            try candidates.filter { id in
                 try Bool.fetchOne(db, sql: """
                     SELECT NOT EXISTS(SELECT 1 FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
-                                      WHERE a.source_id = ? AND a.deleted_at IS NULL AND j.state IN ('pending', 'uploading', 'deferred'))
-                    """, arguments: [row.id.rawValue]) == true
-            }.map(\.id)
+                                      WHERE a.source_id = ? AND a.deleted_at IS NULL
+                                        AND j.state IN ('pending', 'uploading', 'deferred', 'missingRemote'))
+                    """, arguments: [id.rawValue]) == true
+            }
         }
     }
 

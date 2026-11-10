@@ -24,10 +24,12 @@ private func flow(_ transport: any HTTPTransport, opener: @escaping URLOpening) 
                      openURL: opener, loopbackTimeout: 5)
 }
 
-private func server(email: String? = "me@example.com", refresh: String? = "r-1") -> StubTransport {
+private let bothScopes = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly"
+
+private func server(email: String? = "me@example.com", refresh: String? = "r-1", scope: String = bothScopes) -> StubTransport {
     StubTransport { request in
         if request.url.host == "oauth2.googleapis.com" {
-            var body: [String: Any] = ["access_token": "at-1", "expires_in": 3600, "scope": "https://www.googleapis.com/auth/drive.file"]
+            var body: [String: Any] = ["access_token": "at-1", "expires_in": 3600, "scope": scope]
             if let refresh { body["refresh_token"] = refresh }
             return .json(200, body)
         }
@@ -143,6 +145,21 @@ private final class LockedPage: @unchecked Sendable {
     @Test func missingRefreshTokenIsReported() async throws {
         await #expect(throws: PickerError.tokenMissing) {
             try await flow(server(refresh: nil), opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
+        }
+    }
+
+    @Test func aGrantWithoutReadAccessIsRefusedAndNothingIsKept() async throws {
+        let transport = server(scope: "https://www.googleapis.com/auth/drive.file")
+        await #expect(throws: PickerError.readAccessDenied) {
+            try await flow(transport, opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
+        }
+        #expect(!transport.requests.contains { $0.url.host == "www.googleapis.com" }, "no Drive call is made with the narrower grant")
+    }
+
+    @Test func aTokenResponseWithoutScopeCountsAsNoReadAccess() async throws {
+        let transport = StubTransport { _ in .json(200, ["access_token": "a", "refresh_token": "r", "expires_in": 3600]) }
+        await #expect(throws: PickerError.readAccessDenied) {
+            try await flow(transport, opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
         }
     }
 
