@@ -87,12 +87,13 @@ private final class OpenedFlag: @unchecked Sendable {
                 : .json(["email": "me@example.com"])
         }
         let browser = BrowserRecord()
+        let port = try await freeLoopbackPort()
         let auth = DropboxAuth(appKey: "KEY", transport: transport, openURL: { url in
             browser.set(url)
             let state = components(url)["state"] ?? ""
-            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:53697/oauth2/callback?code=THE-CODE&state=\(state)")!) }
+            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/oauth2/callback?code=THE-CODE&state=\(state)")!) }
             return true
-        }, port: 53_697)
+        }, port: port)
         let result = try await auth.signIn()
         #expect(result.email == "me@example.com")
         #expect(result.refreshToken == "RT")
@@ -110,20 +111,20 @@ private final class OpenedFlag: @unchecked Sendable {
     }
 
     @Test func occupiedPortGivesAClearError() async throws {
-        let squatter = try LoopbackRedirectServer(expectedState: "s", port: 53_699)
-        _ = try await squatter.start()
+        let squatter = try LoopbackRedirectServer(expectedState: "s")
+        let port = try await squatter.start()
         defer { squatter.cancel() }
         let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) }, openURL: { _ in true },
-                               port: 53_699, portWait: 0.3)
+                               port: port, portWait: 0.3)
         await #expect(throws: DropboxAuthError.portInUse) { try await auth.signIn() }
     }
 
     @Test func aPortThatIsFreedAMomentLaterIsStillUsed() async throws {
-        let squatter = try LoopbackRedirectServer(expectedState: "s", port: 53_698)
-        _ = try await squatter.start()
+        let squatter = try LoopbackRedirectServer(expectedState: "s")
+        let port = try await squatter.start()
         let opened = OpenedFlag()
         let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) },
-                               openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: 53_698)
+                               openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: port)
         let task = Task { try await auth.signIn() }
         try await Task.sleep(for: .milliseconds(400))
         #expect(!opened.value, "the port is still taken")
@@ -137,14 +138,16 @@ private final class OpenedFlag: @unchecked Sendable {
 
     @Test func unopenableBrowserIsReported() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
+        let port = try await freeLoopbackPort()
         await #expect(throws: DropboxAuthError.browserUnavailable) {
-            try await DropboxAuth(appKey: "K", transport: transport, openURL: { _ in false }, port: 53_695).signIn()
+            try await DropboxAuth(appKey: "K", transport: transport, openURL: { _ in false }, port: port).signIn()
         }
     }
 
     @Test func cancellingTheTaskStopsWaitingForTheBrowserAtOnce() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
-        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in true }, loopbackTimeout: 60, port: 53_697)
+        let port = try await freeLoopbackPort()
+        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in true }, loopbackTimeout: 60, port: port)
         let task = Task { try await auth.signIn() }
         try await Task.sleep(for: .milliseconds(200))
         let started = ContinuousClock.now
@@ -155,22 +158,24 @@ private final class OpenedFlag: @unchecked Sendable {
 
     @Test func deniedConsentIsReportedBeforeAnyExchange() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
+        let port = try await freeLoopbackPort()
         let denied = DropboxAuth(appKey: "K", transport: transport, openURL: { url in
             let state = components(url)["state"] ?? ""
-            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:53696/oauth2/callback?error=access_denied&state=\(state)")!) }
+            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/oauth2/callback?error=access_denied&state=\(state)")!) }
             return true
-        }, port: 53_696)
+        }, port: port)
         await #expect(throws: DropboxAuthError.denied) { try await denied.signIn() }
         #expect(transport.requests.isEmpty)
     }
 
     @Test func anotherErrorFromDropboxIsNotMistakenForTheOwnersCancel() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
+        let port = try await freeLoopbackPort()
         let failed = DropboxAuth(appKey: "K", transport: transport, openURL: { url in
             let state = components(url)["state"] ?? ""
-            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:53694/oauth2/callback?error=invalid_scope&state=\(state)")!) }
+            Task { _ = try? await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/oauth2/callback?error=invalid_scope&state=\(state)")!) }
             return true
-        }, port: 53_694)
+        }, port: port)
         await #expect(throws: DropboxAuthError.failed) { try await failed.signIn() }
         #expect(transport.requests.isEmpty)
     }
