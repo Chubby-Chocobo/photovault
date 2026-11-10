@@ -107,15 +107,12 @@ extension AppModel {
         let shown = SyncedCloudFolders.displayPath(pick.url.path, home: Self.realHome) ?? ImportLocationPath.mac(pick.url.path)
         let config = SourceConfig(
             bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path, home: Self.realHome), locationPaths: [shown], syncedProvider: synced)
-        Task {
-            do {
-                try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)
-                env.log.log(.info, category: "import", synced == nil ? "import started" : "synced cloud folder import started")
-                requestSync(.manual)
-                await refreshSnapshot()
-            } catch {
-                showError(error)
-            }
+        // Listed at once as "waiting for its turn": the engine records the import between sync passes, which can take
+        // long, and the start must survive the Settings window closing.
+        enqueueImport(
+            id: source.id, kind: .localFolder, account: config.account, syncedProvider: synced, displayName: name,
+            provider: synced == nil ? "folder" : "synced cloud folder", location: ImportLocation.make(kind: .localFolder, config: config)) {
+            try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)
         }
     }
 

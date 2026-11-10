@@ -200,9 +200,9 @@ public struct CloudFlowTracker: Sendable {
 public enum ImportQueue {
     static let reason = "queued"
 
-    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date,
-                                location: ImportLocation? = nil) -> ImportSnapshot {
-        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now,
+    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, syncedProvider: SyncedCloudProvider? = nil,
+                                displayName: String, now: Date, location: ImportLocation? = nil) -> ImportSnapshot {
+        ImportSnapshot(id: id, kind: kind, account: account, syncedProvider: syncedProvider, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now,
                        location: location)
     }
 
