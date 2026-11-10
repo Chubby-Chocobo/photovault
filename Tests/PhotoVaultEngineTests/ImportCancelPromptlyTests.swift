@@ -118,9 +118,9 @@ private actor Gate {
         let source = SlowReadSource(folder, hold: true)
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let cycle = Task { await h.coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 1 })
+        #expect(await pollUntil { source.reads >= 1 })
         let cancel = Task { try await h.coordinator.cancelImport(id) }
-        let cancelled = try await eventually { try h.source(id)?.status == .cancelled }
+        let cancelled = try await pollUntil { try h.source(id)?.status == .cancelled }
         source.release()
         _ = await cycle.value
         try await cancel.value
@@ -135,9 +135,9 @@ private actor Gate {
         let coordinator = h.coordinator
         let gate = Gate()
         let holder = Task { await coordinator.exclusive { await gate.hold() } }
-        #expect(await eventually { await gate.isHeld })
+        #expect(await pollUntil { await gate.isHeld })
         let cancel = Task { try await coordinator.cancelImport(id) }
-        let stored = try await eventually { try h.source(id)?.config.cancelRequested == true }
+        let stored = try await pollUntil { try h.source(id)?.config.cancelRequested == true }
         let stillOpen = try h.source(id)?.status.isOpen == true
         await gate.open()
         await holder.value
@@ -163,7 +163,7 @@ private actor Gate {
         _ = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 2 })
+        #expect(await pollUntil { source.reads >= 2 })
         let readsWhenTheCommandRan = Task { await coordinator.exclusive { source.reads } }
         let seen = await readsWhenTheCommandRan.value
         _ = await cycle.value
@@ -176,7 +176,7 @@ private actor Gate {
         _ = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 2 })
+        #expect(await pollUntil { source.reads >= 2 })
         await coordinator.pauseAll()
         let outcome = await cycle.value
         #expect(source.reads < 10, "pause let \(source.reads) of 20 reads run")
@@ -189,7 +189,7 @@ private actor Gate {
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 6 })
+        #expect(await pollUntil { source.reads >= 6 })
         try await coordinator.cancelImport(id)
         _ = await cycle.value
         #expect(try h.source(id)?.status == .cancelled)
@@ -203,14 +203,14 @@ private actor Gate {
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 1 })
+        #expect(await pollUntil { source.reads >= 1 })
         let cancel = Task { try await coordinator.cancelImport(id) }
-        let cancelled = try await eventually(10) { try h.source(id)?.status == .cancelled }
+        let cancelled = try await pollUntil { try h.source(id)?.status == .cancelled }
         source.release()
         _ = await cycle.value
         try await cancel.value
         #expect(cancelled, "the cancel does not wait for the read")
-        #expect(await eventually(10) { source.finishedReads == 1 }, "the abandoned read runs to its end in the background")
+        #expect(await pollUntil { source.finishedReads == 1 }, "the abandoned read runs to its end in the background")
         #expect(source.exports == 0)
         #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM asset") } == 0, "the dropped read is not committed")
     }
@@ -234,14 +234,14 @@ private actor Gate {
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.listings >= 1 })
+        #expect(await pollUntil { source.listings >= 1 })
         let cancel = Task { try await coordinator.cancelImport(id) }
-        let cancelled = try await eventually(10) { try h.source(id)?.status == .cancelled }
+        let cancelled = try await pollUntil { try h.source(id)?.status == .cancelled }
         source.release()
         _ = await cycle.value
         try await cancel.value
         #expect(cancelled, "the cancel does not wait for the listing")
-        #expect(await eventually(10) { source.finishedListings == 1 }, "the abandoned listing runs to its end in the background")
+        #expect(await pollUntil { source.finishedListings == 1 }, "the abandoned listing runs to its end in the background")
         #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM import_item") } == 0, "nothing is written after the listing ends")
     }
 

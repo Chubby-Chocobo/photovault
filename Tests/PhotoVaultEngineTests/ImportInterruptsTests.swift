@@ -1,5 +1,6 @@
 import Foundation
 import PhotoVaultCore
+import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultEngine
 
@@ -38,7 +39,7 @@ import Testing
             withUnsafeCurrentTask { $0?.cancel() }
             return try await interrupts.untilCancelled(.folder()) { try await Task.sleep(for: .seconds(30)); return 1 }
         }
-        let ended = await eventually(10) { returned.get() }
+        let ended = await pollUntil { returned.get() }
         #expect(ended, "the wait does not hang when it ended before it began")
         guard ended else { return }
         await #expect(throws: CancellationError.self) { _ = try await waiting.value }

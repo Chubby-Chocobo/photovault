@@ -123,13 +123,3 @@ struct FlappingSource: FolderImportSource {
         try await inner.exportResource(l, to: d, control: control)
     }
 }
-
-/// Polls `condition` until it holds or `seconds` pass; the time is a sanity cap, never what a test measures.
-func eventually(_ seconds: Double = 20, _ condition: () async throws -> Bool) async rethrows -> Bool {
-    let deadline = ContinuousClock.now + .seconds(seconds)
-    while ContinuousClock.now < deadline {
-        if try await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return try await condition()
-}

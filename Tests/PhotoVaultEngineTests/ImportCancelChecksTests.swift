@@ -195,7 +195,7 @@ private final class SteppingExecutor: TaskExecutor, @unchecked Sendable {
             withUnsafeCurrentTask { $0?.cancel() }
             _ = try await stage.list(source, folder)
         }
-        let ended = await eventually(10) { returned.get() }
+        let ended = await pollUntil { returned.get() }
         #expect(ended, "the stage does not hang on a wait that ended before it began")
         guard ended else { return }
         await #expect(throws: CancellationError.self) { try await listing.value }
