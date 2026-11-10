@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultDrive
 
@@ -12,7 +13,8 @@ private enum RawSocket {
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = port.bigEndian
         guard inet_pton(AF_INET, host, &address.sin_addr) == 1 else { close(fd); return nil }
-        var timeout = timeval(tv_sec: 3, tv_usec: 0)
+        // Reads wait for the server to close; the timeout only stops a hang, so it is far above a loaded machine's delays.
+        var timeout = timeval(tv_sec: 60, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         let result = withUnsafePointer(to: &address) {
@@ -148,15 +150,13 @@ private enum RawSocket {
     }
 
     @Test func idleConnectionIsClosedAfterTheConnectionTimeout() async throws {
-        let server = try LoopbackRedirectServer(expectedState: "st", connectionTimeout: 1)
+        // The connection is seen as open before the timeout closes it, even when this task runs late on a busy machine.
+        let server = try LoopbackRedirectServer(expectedState: "st", connectionTimeout: 5)
         let port = try await server.start()
         defer { server.cancel() }
         let fd = try #require(RawSocket.connect(host: "127.0.0.1", port: port))
         defer { close(fd) }
-        // A busy machine accepts the connection late: wait for it instead of a fixed pause.
-        let deadline = ContinuousClock.now + .seconds(5)
-        while server.openConnectionCount == 0, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(server.openConnectionCount == 1)
+        #expect(await pollUntil { server.openConnectionCount == 1 })
         let (data, closed) = RawSocket.readAll(fd)
         #expect(closed && data.isEmpty)
         #expect(server.openConnectionCount == 0)

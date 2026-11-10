@@ -1,6 +1,7 @@
 import Foundation
 import PhotoVaultCore
 import PhotoVaultDrive
+import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultDropbox
 
@@ -123,15 +124,16 @@ private final class OpenedFlag: @unchecked Sendable {
         let squatter = try LoopbackRedirectServer(expectedState: "s")
         let port = try await squatter.start()
         let opened = OpenedFlag()
+        // The port wait outlasts the pause below however late this task runs; with the default 2 s a loaded machine
+        // could give up on the port before the test frees it.
         let auth = DropboxAuth(appKey: "KEY", transport: StubTransport { _ in StubResponse(status: 500) },
-                               openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: port)
+                               openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: port, portWait: 300)
         let task = Task { try await auth.signIn() }
         try await Task.sleep(for: .milliseconds(400))
         #expect(!opened.value, "the port is still taken")
         squatter.cancel()
         // The browser opens only once the listener is up on the freed port.
-        for _ in 0..<100 where !opened.value { try await Task.sleep(for: .milliseconds(50)) }
-        #expect(opened.value)
+        #expect(await pollUntil { opened.value })
         task.cancel()
         await #expect(throws: DropboxAuthError.cancelled) { _ = try await task.value }
     }
@@ -147,9 +149,10 @@ private final class OpenedFlag: @unchecked Sendable {
     @Test func cancellingTheTaskStopsWaitingForTheBrowserAtOnce() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
         let port = try await freeLoopbackPort()
-        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in true }, loopbackTimeout: 60, port: port)
+        let opened = OpenedFlag()
+        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: port)
         let task = Task { try await auth.signIn() }
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(await pollUntil { opened.value }, "the sign-in waits for the browser")
         let started = ContinuousClock.now
         task.cancel()
         await #expect(throws: DropboxAuthError.cancelled) { try await task.value }

@@ -130,9 +130,9 @@ private final class SleepGate: @unchecked Sendable {
         second.end()
     }
 
-    /// Polls for a condition that must come true soon after the gate opens; the limit is generous for a loaded runner.
+    /// Polls for a condition that must come true soon after the gate opens; the limit only stops a hang.
     private func eventually(_ condition: () -> Bool) async throws {
-        for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+        _ = await pollUntil(condition)
     }
 
     @Test func aThrottledChangeIsFlushedWhenTheWindowEndsWithoutFurtherReports() async throws {

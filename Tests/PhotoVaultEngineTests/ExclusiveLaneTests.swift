@@ -19,13 +19,9 @@ import Testing
         return (h, wrapper)
     }
 
-    /// Yields until `condition` holds (bounded, so a bug fails the test instead of hanging it).
+    /// Waits until `condition` holds (bounded, so a bug fails the test instead of hanging it).
     private func eventually(_ condition: @Sendable () async -> Bool) async -> Bool {
-        for _ in 0..<2_000 {
-            if await condition() { return true }
-            try? await Task.sleep(nanoseconds: 1_000_000)
-        }
-        return false
+        await pollUntil(condition)
     }
 
     @Test func aCommandIssuedDuringALongCycleRunsBetweenJobsAndNeverSeesAHalfFinishedUpload() async throws {
@@ -118,9 +114,9 @@ import Testing
         try await h.baseline(.googleDrive, h.nasId)
         let entered = Flag()
         wrapper.beforeUpload = { _ in
-            // Only the first transfer hangs; cancelling it ends the sleep at once.
+            // Only the first transfer hangs until it is cancelled; the long sleep only stops a hang.
             guard entered.takeFirst() else { return }
-            try await Task.sleep(nanoseconds: 10_000_000_000)
+            try await Task.sleep(for: .seconds(300))
         }
         let coordinator = h.coordinator
         let cycle = Task { await h.run() }
@@ -160,8 +156,9 @@ import Testing
         try await h.baseline(.googleDrive, h.nasId)
         let entered = Flag()
         wrapper.beforeUpload = {
+            // Only the first transfer hangs until it is cancelled; the long sleep only stops a hang.
             guard entered.takeFirst() else { return }
-            try await Task.sleep(nanoseconds: 10_000_000_000)
+            try await Task.sleep(for: .seconds(300))
         }
         let coordinator = h.coordinator
         let cycle = Task { await h.run() }
