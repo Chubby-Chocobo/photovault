@@ -85,6 +85,10 @@ public enum CloudImportText {
     public static var waitingForReadStep: String {
         tr(vi: "Bước 2/2: cho phép đọc thư mục đã chọn trong trình duyệt…", en: "Step 2 of 2: allow reading the chosen folder in the browser…")
     }
+    /// Row text of an import that was signed in again and waits for the engine.
+    public static var signedInWaiting: String {
+        tr(vi: "Đã đăng nhập · Chờ đến lượt", en: "Signed in · Waiting for its turn")
+    }
     public static var waitingForBrowser: String { tr(vi: "Đang chờ đăng nhập trong trình duyệt…", en: "Waiting for sign-in in the browser…") }
 
     public static var accountUnverifiedNotice: String {
@@ -124,6 +128,13 @@ public enum CloudImportKeychain {
         return (released, failed)
     }
 
+    /// `import-<id>` items with no import row. A start that was still waiting for its turn when the app quit leaves one;
+    /// nothing can ever read it, so it is deleted at launch (before any new start is queued). The Dropbox account item is not one.
+    public static func orphanGrants(stored: [String], knownImports: Set<SourceID>) -> [String] {
+        let known = Set(knownImports.map(CloudTokenAccount.importGrant))
+        return stored.filter { $0 != CloudTokenAccount.dropbox && CloudTokenAccount.isCloudItem($0) && !known.contains($0) }
+    }
+
     /// Open cloud imports that have no stored sign-in. Finished imports let their sign-in go on purpose.
     public static func missingToken(_ rows: [SourceRecord], hasGrant: (SourceID) -> Bool) -> Int {
         rows.filter { ($0.kind == .googleDrive || $0.kind == .dropbox) && $0.status.isOpen && !hasGrant($0.id) }.count
@@ -148,16 +159,10 @@ public enum CloudFlowStage: Sendable, Equatable {
     case browser
     /// The browser is open on Google's second consent (reading the chosen folder).
     case readStep
-    /// The browser is done; the app waits for the running sync to reach a safe point before it records the import.
-    case starting
-
     public var text: String {
         switch self {
         case .idle, .browser: return CloudImportText.waitingForBrowser
         case .readStep: return CloudImportText.waitingForReadStep
-        case .starting:
-            return tr(vi: "Đã cho phép. Đang chờ việc đồng bộ hiện tại dừng ở chỗ an toàn để bắt đầu nhập…",
-                      en: "Access granted. Waiting for the current sync to reach a safe point to start the import…")
         }
     }
 }
@@ -180,11 +185,26 @@ public struct CloudFlowTracker: Sendable {
         if flow == current, stage == .browser { stage = .readStep }
     }
 
-    public mutating func startingImport(_ flow: Int) {
-        if flow == current, stage == .browser || stage == .readStep { stage = .starting }
-    }
-
     public mutating func end(_ flow: Int) {
         if flow == current { stage = .idle }
+    }
+}
+
+/// An import whose sign-in is done but whose start still waits for the engine's exclusive turn (a long sync pass
+/// is running). The app lists it like any import, with the status "Waiting for its turn", until the engine
+/// records the real one under the same id.
+public enum ImportQueue {
+    static let reason = "queued"
+
+    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date) -> ImportSnapshot {
+        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now)
+    }
+
+    public static func isQueued(_ item: ImportSnapshot) -> Bool { item.status == .scanning && item.statusReason == reason }
+
+    /// Queued entries first, in the order they were added (they are the newest). An entry whose real import exists is dropped.
+    public static func merged(queued: [ImportSnapshot], running: [ImportSnapshot]) -> [ImportSnapshot] {
+        let recorded = Set(running.map(\.id))
+        return queued.filter { !recorded.contains($0.id) } + running
     }
 }

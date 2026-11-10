@@ -7,7 +7,7 @@ import PhotoVaultStore
 
 /// One-time imports from a folder on this Mac (Settings › Nguồn, menu bar card).
 extension AppModel {
-    var imports: [ImportSnapshot] { snapshot?.imports ?? [] }
+    var imports: [ImportSnapshot] { ImportQueue.merged(queued: queuedImports, running: snapshot?.imports ?? []) }
     var runningImports: [ImportSnapshot] { ImportProgressText.running(imports) }
     var finishedImports: [ImportSnapshot] { ImportProgressText.finished(imports) }
 
@@ -55,6 +55,12 @@ extension AppModel {
 
     func cancelImport(_ id: SourceID) {
         guard let env else { return }
+        // Still waiting for its turn: stop the start; its task deletes the stored sign-in.
+        if let start = queuedStarts[id] {
+            start.cancel()
+            queuedImports.removeAll { $0.id == id }
+            return
+        }
         Task {
             do {
                 try await env.coordinator.cancelImport(id)
