@@ -12,7 +12,8 @@ extension SyncCoordinator {
     /// version is marked as completed without announcing it.
     func markEarlierBackfillOnce() async throws {
         guard !earlierBackfillMarked else { return }
-        try await env.store.write { db in try BackfillCompletion.markEarlierBackfill(db) }
+        let settings = await env.settingsSnapshot()
+        try await env.store.write { db in try BackfillCompletion.markEarlierBackfill(db, settings: settings) }
         earlierBackfillMarked = true
     }
 }

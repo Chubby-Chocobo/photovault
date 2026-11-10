@@ -17,12 +17,13 @@ public struct BackfillCompletionSummary: Sendable, Equatable {
 }
 
 /// A backfill ends once: the end is detected at the close of a drained cycle, and its marker, activity
-/// row and notification flag are written in one transaction. `completed_jobs` is the number of
-/// finished backfill jobs at the last end, so a relaunch or a later cycle repeats nothing, while a new
-/// backfill (a destination added afterwards) ends again.
+/// row and notification flag are written in one transaction. `completed_max_job` is the highest id of
+/// the (non-cancelled) backfill jobs at the last end. Job ids only grow, so a relaunch, a retried
+/// skipped file or a deleted finished job repeats or hides nothing, while a new backfill (a destination
+/// added or added again) creates higher ids and ends again.
 enum BackfillCompletion {
     enum Key {
-        static let completedJobs = "backfill.completed_jobs"
+        static let completedMaxJob = "backfill.completed_max_job"
         static let completedAt = "backfill.completed_at"
         static let completedAssets = "backfill.completed_assets"
         static let completedBytes = "backfill.completed_bytes"
@@ -42,23 +43,24 @@ enum BackfillCompletion {
     static func activityText(assets: Int, bytes: Int64) -> String { activityPrefix + ": " + countsText(assets: assets, bytes: bytes) }
 
     /// Records the end of a backfill when one just finished.
-    static func note(_ db: Database, drained: Bool, now: Date) throws {
-        guard drained, try isFinished(db) else { return }
-        let jobs = try doneJobs(db)
-        guard jobs > (try KeyValueRepository.int(db, Key.completedJobs) ?? 0) else { return }
-        let state = try counts(db)
-        try store(db, jobs: jobs, at: now, state: state, pending: true)
+    static func note(_ db: Database, drained: Bool, now: Date, settings: SettingsSnapshot) throws {
+        guard drained, let latest = try latestJobId(db), latest > (try recordedJobId(db)) else { return }
+        guard try isFinished(db, settings: settings) else { return }
+        let state = try counts(db, after: try recordedJobId(db))
+        guard state.assets > 0 else { return }
+        try store(db, latestJob: latest, at: now, state: state, pending: true)
         try ActivityRepository.record(db, ActivityEvent(at: now, kind: .milestone, message: activityText(assets: state.assets, bytes: state.bytes)))
     }
 
     /// A backfill that finished before the end was recorded: mark it without a notification or an
     /// activity row. Runs once per launch, before the first cycle's work.
-    static func markEarlierBackfill(_ db: Database) throws {
-        guard try KeyValueRepository.int(db, Key.completedJobs) == nil, try isFinished(db) else { return }
-        let jobs = try doneJobs(db)
-        guard jobs > 0 else { return }
+    static func markEarlierBackfill(_ db: Database, settings: SettingsSnapshot) throws {
+        guard try KeyValueRepository.int(db, Key.completedMaxJob) == nil, let latest = try latestJobId(db),
+              try isFinished(db, settings: settings) else { return }
+        let state = try counts(db, after: 0)
+        guard state.assets > 0 else { return }
         let finishedAt = try Date.fetchOne(db, sql: "SELECT MAX(updated_at) FROM upload_job WHERE state = 'done' AND origin IN (\(origins))")
-        try store(db, jobs: jobs, at: finishedAt, state: try counts(db), pending: false)
+        try store(db, latestJob: latest, at: finishedAt, state: state, pending: false)
     }
 
     static func acknowledgeNotification(_ db: Database) throws {
@@ -75,26 +77,50 @@ enum BackfillCompletion {
 
     // MARK: Queries
 
-    /// Every backfill job is closed, at least one exists, and no old photo waits to be classified.
-    private static func isFinished(_ db: Database) throws -> Bool {
-        let progress = try SnapshotCounterRepository.backfillProgress(db)
+    private static func recordedJobId(_ db: Database) throws -> Int64 {
+        Int64(try KeyValueRepository.int(db, Key.completedMaxJob) ?? 0)
+    }
+
+    private static func latestJobId(_ db: Database) throws -> Int64? {
+        try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM upload_job WHERE origin IN (\(origins)) AND state != 'cancelled'")
+    }
+
+    /// Every backfill job (of a destination the owner has not paused) is closed, at least one exists,
+    /// and no old photo that some destination still needs classified is waiting. Photos outside every
+    /// destination's scope, or that the settings exclude, stay provisional for good and do not count.
+    private static func isFinished(_ db: Database, settings: SettingsSnapshot) throws -> Bool {
+        let progress = try EngineQueries.backfillProgress(db)
         guard progress.total > 0, progress.done == progress.total else { return false }
-        return try Bool.fetchOne(db, sql: "SELECT NOT EXISTS(SELECT 1 FROM asset WHERE category_provisional = 1 AND deleted_at IS NULL)") ?? false
+        let destinations = try DestinationRepository.fetchAll(db)
+        let scope = ClassifyScope(destinations: destinations)
+        var cursor: EngineQueries.ProvisionalCursor?
+        while true {
+            let page = try EngineQueries.provisionalPage(db, after: cursor, limit: 200, scope: scope)
+            guard let last = page.last else { return true }
+            cursor = last.cursor
+            for entry in page {
+                guard let asset = try AssetRepository.fetch(db, key: entry.key), asset.sourceId == .photos else { continue }
+                if Eligibility.needsClassification(asset, destinations: destinations, settings: settings.settings, archiveTimeZone: settings.timeZone) {
+                    return false
+                }
+            }
+        }
     }
 
-    private static func doneJobs(_ db: Database) throws -> Int {
-        try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM upload_job WHERE state = 'done' AND origin IN (\(origins))") ?? 0
-    }
-
-    private static func counts(_ db: Database) throws -> (assets: Int, bytes: Int64) {
+    /// Photos with a finished backfill job after `jobId`, and the bytes those jobs uploaded.
+    private static func counts(_ db: Database, after jobId: Int64) throws -> (assets: Int, bytes: Int64) {
+        let assets = try Int.fetchOne(db, sql: """
+            SELECT COUNT(DISTINCT asset_key) FROM upload_job WHERE state = 'done' AND origin IN (\(origins)) AND id > ?
+            """, arguments: [jobId]) ?? 0
         let bytes = try Int64.fetchOne(db, sql: """
-            SELECT COALESCE(SUM(b.bytes), 0) FROM job_bytes b JOIN upload_job j ON j.id = b.job_id WHERE j.origin IN (\(origins))
-            """) ?? 0
-        return (try SnapshotCounterRepository.backfillProgress(db).total, bytes)
+            SELECT COALESCE(SUM(b.bytes), 0) FROM job_bytes b JOIN upload_job j ON j.id = b.job_id
+            WHERE j.origin IN (\(origins)) AND j.id > ?
+            """, arguments: [jobId]) ?? 0
+        return (assets, bytes)
     }
 
-    private static func store(_ db: Database, jobs: Int, at date: Date?, state: (assets: Int, bytes: Int64), pending: Bool) throws {
-        try KeyValueRepository.set(db, Key.completedJobs, jobs)
+    private static func store(_ db: Database, latestJob: Int64, at date: Date?, state: (assets: Int, bytes: Int64), pending: Bool) throws {
+        try KeyValueRepository.set(db, Key.completedMaxJob, Int(latestJob))
         try KeyValueRepository.set(db, Key.completedAt, date)
         try KeyValueRepository.set(db, Key.completedAssets, state.assets)
         try KeyValueRepository.set(db, Key.completedBytes, Int(state.bytes))

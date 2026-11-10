@@ -12,6 +12,7 @@ struct SyncMilestones: Sendable {
     func record(_ report: CycleReport) async {
         let env = env
         let ids = await env.destinations.ids
+        let settings = await env.settingsSnapshot()
         await Task {
             let now = env.clock.now
             do {
@@ -21,7 +22,7 @@ struct SyncMilestones: Sendable {
                             try Self.noteUploads(db, id: id, count: count, now: now)
                         }
                     }
-                    try BackfillCompletion.note(db, drained: report.drained, now: now)
+                    try BackfillCompletion.note(db, drained: report.drained, now: now, settings: settings)
                 }
             } catch {
                 env.log.log(.error, category: "activity", "could not record sync progress")
