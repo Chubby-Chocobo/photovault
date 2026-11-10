@@ -85,6 +85,20 @@ struct DriveImportLister: Sendable {
     struct Listing: Sendable {
         var entries: [FolderFileEntry] = []
         var ids: [String: String] = [:]
+
+        /// A file picked on its own and also found inside a picked folder is read once, under the deeper path
+        /// (the one that keeps its folder); a tie goes to the path that sorts first.
+        mutating func dropRepeatedFiles() {
+            var best: [String: String] = [:]
+            for (path, id) in ids {
+                guard let kept = best[id] else { best[id] = path; continue }
+                let depth = path.split(separator: "/").count, keptDepth = kept.split(separator: "/").count
+                if depth > keptDepth || (depth == keptDepth && path.utf8.lexicographicallyPrecedes(kept.utf8)) { best[id] = path }
+            }
+            let keep = Set(best.values)
+            ids = ids.filter { keep.contains($0.key) }
+            entries = entries.filter { keep.contains($0.relativePath) }
+        }
     }
 
     func list() async throws -> Listing {
@@ -92,6 +106,7 @@ struct DriveImportLister: Sendable {
         var listing = Listing()
         var visited = Set<String>()
         try await walk(roots.filter { !$0.isSkipped }, prefix: "", depth: 0, visited: &visited, into: &listing)
+        listing.dropRepeatedFiles()
         listing.entries.sort { $0.relativePath.utf8.lexicographicallyPrecedes($1.relativePath.utf8) }
         return listing
     }
@@ -169,7 +184,7 @@ struct DriveImportLister: Sendable {
         }
     }
 
-    /// Under `drive.file` Google may return nothing for a picked folder; that is an empty list, not an error.
+    /// A folder with nothing the app may read is an empty list, not an error.
     private func children(of folderId: String) async throws -> [ImportItem] {
         struct Page: Decodable { var files: [ImportItem]?; var nextPageToken: String? }
         var all: [ImportItem] = []

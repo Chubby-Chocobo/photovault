@@ -24,10 +24,11 @@ public enum PickerError: Error, Equatable, Sendable {
     case selectionTooLarge
 }
 
-/// Google's desktop Picker flow: OAuth with `drive.file` only and `trigger_onepick`. The browser
+/// Google's desktop Picker flow: OAuth with `drive.file` (so the Picker's grants work) plus `drive.readonly`
+/// (so the folders picked can be read to their depth) and `trigger_onepick`. Only imports use it; the backup destination stays `drive.file`. The browser
 /// shows the account chooser, consent and the picker; the loopback redirect carries `picked_file_ids`.
 public struct GooglePickerFlow: Sendable {
-    public static let scope = "https://www.googleapis.com/auth/drive.file"
+    public static let scope = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly"
     /// What the loopback request line can carry with room to spare: an id is at most about 45 bytes and its
     /// comma may arrive as `%2C`, so 48 bytes each, after 4 KiB for the other query items. More than this is refused.
     static let maxPickedIds = (LoopbackRequestParser.maxRequestBytes - 4096) / 48

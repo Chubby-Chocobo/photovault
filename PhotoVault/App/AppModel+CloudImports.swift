@@ -121,6 +121,28 @@ extension AppModel {
         }
     }
 
+    // MARK: Finished imports
+
+    /// Deletes the stored sign-in of every import that is closed with no upload of its files left, and drops its
+    /// adapter. Runs after each cycle; running it twice changes nothing. A destination added later finds the
+    /// import without a sign-in and asks the owner for one ("Đăng nhập lại").
+    func releaseFinishedImportGrants() async {
+        guard let env else { return }
+        let ids: [SourceID]
+        do { ids = try await env.coordinator.closedImportsReadyToRelease() } catch {
+            env.log.log(.error, category: "import", "could not list finished imports: \(type(of: error))")
+            return
+        }
+        for id in ids where env.cloud.hasGrant(id) {
+            if env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)]) == 0 {
+                await env.coordinator.releaseImportSource(id)
+                env.log.log(.info, category: "import", "finished import: sign-in removed")
+            } else {
+                env.log.log(.error, category: "import", "finished import: could not remove its sign-in")
+            }
+        }
+    }
+
     // MARK: Sign in again
 
     /// Reruns the sign-in of a held or finished import. It must be the account the import reads from; the

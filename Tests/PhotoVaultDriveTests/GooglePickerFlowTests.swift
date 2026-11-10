@@ -51,11 +51,17 @@ private final class LockedPage: @unchecked Sendable {
         let url = GooglePickerFlow.authorizationURL(clientID: "c", redirectURI: "http://127.0.0.1:5/oauth2/callback", state: "s", challenge: "ch")
         let q = items(url)
         #expect(url.host == "accounts.google.com" && url.path == "/o/oauth2/v2/auth")
-        #expect(q["scope"] == "https://www.googleapis.com/auth/drive.file")
+        #expect(q["scope"] == "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly")
         #expect(q["trigger_onepick"] == "true" && q["allow_multiple"] == "true" && q["allow_folder_selection"] == "true")
         #expect(q["access_type"] == "offline" && q["prompt"] == "select_account consent" && q["response_type"] == "code")
         #expect(q["code_challenge_method"] == "S256" && q["state"] == "s" && q["client_id"] == "c")
         #expect(q["redirect_uri"] == "http://127.0.0.1:5/oauth2/callback")
+    }
+
+    @Test func destinationSignInStaysDriveFileOnly() {
+        let url = OAuthClient.authorizationURL(clientID: "c", redirectURI: "http://127.0.0.1:5/oauth2/callback", state: "s", challenge: "ch")
+        let scopes = Set((items(url)["scope"] ?? "").split(separator: " ").map(String.init))
+        #expect(scopes == ["https://www.googleapis.com/auth/drive.file", "openid", "email"])
     }
 
     @Test func parserReadsPickedIds() throws {

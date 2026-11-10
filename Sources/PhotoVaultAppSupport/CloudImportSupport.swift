@@ -41,13 +41,16 @@ public enum CloudImportText {
         return last ?? tr(vi: "Toàn bộ Dropbox", en: "All of Dropbox")
     }
 
-    /// Shown for a finished Google Drive import that read no file: Google often lets the app read a
-    /// picked folder's own contents only when the files are selected too.
-    public static func emptyGoogleHint(_ item: ImportSnapshot) -> String? {
-        guard item.kind == .googleDrive, item.status == .completed, item.found == 0 else { return nil }
-        return tr(
-            vi: "Không đọc được ảnh nào. Hãy nhập lại và chọn ảnh bên trong thư mục (⌘A để chọn tất cả), không chỉ chọn thư mục.",
-            en: "No photos could be read. Import again and select the photos inside the folder (⌘A selects all), not just the folder.")
+    /// Shown for a finished import whose listing found no photo or video the app could read, so it never
+    /// looks like a silent success. A Google Drive import also gets the hint to sign in again and pick the
+    /// folder again: imports made before Drive reading was granted only saw the picked folder itself.
+    public static func emptyImportNotice(_ item: ImportSnapshot) -> String? {
+        guard item.status == .completed, item.found == 0 else { return nil }
+        let base = tr(vi: "Thư mục này không có ảnh hay video nào mà app đọc được.", en: "This folder had no photos or videos the app could read.")
+        guard item.kind == .googleDrive else { return base }
+        return base + " " + tr(
+            vi: "Nếu nhập bằng bản cũ, hãy đăng nhập lại và chọn lại thư mục.",
+            en: "If it was imported with an older version, sign in again and pick the folder again.")
     }
 
     /// A cloud import the provider no longer lets in: an open one is held, a finished one waits for its files.

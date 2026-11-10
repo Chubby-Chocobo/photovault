@@ -43,12 +43,27 @@ import Testing
         vi { #expect(CloudImportText.dropboxDisplayName(path: "") == "Toàn bộ Dropbox") }
     }
 
-    @Test func emptyGoogleHintOnlyForFinishedEmptyDriveImport() {
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .googleDrive, status: .completed)) != nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .googleDrive, status: .completed, found: 3)) == nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .googleDrive, status: .importing)) == nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .dropbox, status: .completed)) == nil)
-        #expect(CloudImportText.emptyGoogleHint(snapshot(kind: .localFolder, status: .completed)) == nil)
+    @Test func emptyImportNoticeForAnyFinishedImportThatFoundNothing() {
+        for kind in [SourceKind.googleDrive, .dropbox, .localFolder] {
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .completed)) != nil)
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .completed, found: 3)) == nil)
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .importing)) == nil)
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: kind, status: .cancelled)) == nil)
+        }
+    }
+
+    @Test func emptyImportNoticeTextAndGoogleHint() {
+        vi {
+            let box = CloudImportText.emptyImportNotice(snapshot(kind: .dropbox, status: .completed))
+            #expect(box == "Thư mục này không có ảnh hay video nào mà app đọc được.")
+            let drive = CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? ""
+            #expect(drive.hasPrefix("Thư mục này không có ảnh hay video nào mà app đọc được."))
+            #expect(drive.contains("đăng nhập lại") && drive.contains("chọn lại thư mục"))
+        }
+        en {
+            #expect(CloudImportText.emptyImportNotice(snapshot(kind: .localFolder, status: .completed)) == "This folder had no photos or videos the app could read.")
+            #expect((CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? "").contains("sign in again and pick the folder again"))
+        }
     }
 
     @Test func signInRequiredForCloudImportsHeldOrFinished() {
