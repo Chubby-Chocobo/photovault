@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PhotoVaultCore
+import PhotoVaultTestSupport
 @testable import PhotoVaultDrive
 
 private let clock = FixedClock()
@@ -50,10 +51,7 @@ private func makeSession(keychain: any KeychainStore, gate: Gate = Gate(), rotat
 }
 
 private func waitUntilRefreshing(_ gate: Gate) async throws {
-    for _ in 0..<200 {
-        if await gate.arrived > 0 { return }
-        try await Task.sleep(for: .milliseconds(10))
-    }
+    if await pollUntil({ await gate.arrived > 0 }) { return }
     Issue.record("refresh never started")
 }
 

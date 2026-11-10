@@ -57,6 +57,8 @@ public actor StagingManager {
     }
 
     func isLeased(_ path: String) -> Bool { leases[Self.canonical(path)] != nil }
+    /// True between the release's "nobody needs it" check and the end of its database write and unlink.
+    func isReleasing(_ path: String) -> Bool { releasing.contains(Self.canonical(path)) }
     var activeTransfers: Int { leases.values.reduce(0, +) }
 
     // MARK: Sizes

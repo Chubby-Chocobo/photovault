@@ -50,7 +50,8 @@ These rules come from the code as it is built. Where this file and the code disa
 ## Tests
 
 - Use Swift Testing (`@Test`, `#expect`). Write the test first for behaviour changes.
-- Tests are deterministic: use `TestClock` and the fakes in `PhotoVaultTestSupport`, poll with a timeout instead of sleeping for a fixed time, and do not share mutable clocks between parallel tests.
+- Tests are deterministic: use `TestClock` and the fakes in `PhotoVaultTestSupport`, poll with a timeout (`pollUntil`) instead of sleeping for a fixed time, and do not share mutable clocks between parallel tests.
+- A loaded CI runner can stretch any real-time window many times over. Do not let a result depend on a short real-time window running out or not: inject the clock or the timeout (a test seam with the same default), wait for a signal, and keep real timeouts in tests only as hang guards, far above what the work takes.
 - For crash safety, use fault injection (`CrashPoint`) and rebuild the engine over the same database.
 - Camera detection on real files is guarded at two levels:
   - `RawHeaderFixtureTests` runs on the opening bytes of real RAW files kept in git (`Tests/PhotoVaultPhotosTests/Fixtures/RawHeaders/`, about 3.4 MB).

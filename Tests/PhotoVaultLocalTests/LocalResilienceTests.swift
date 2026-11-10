@@ -195,7 +195,8 @@ import Testing
             body()
             done.signal()
         }.start()
-        if done.wait(timeout: .now() + 10) == .success { return true }
+        // Long enough that a loaded machine cannot look like a blocked open; a blocked open never finishes.
+        if done.wait(timeout: .now() + 60) == .success { return true }
         let release = open(fifo.path, O_RDWR | O_NONBLOCK)
         if release >= 0 { close(release) }
         _ = done.wait(timeout: .now() + 5)

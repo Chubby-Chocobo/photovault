@@ -130,11 +130,6 @@ private final class SleepGate: @unchecked Sendable {
         second.end()
     }
 
-    /// Polls for a condition that must come true soon after the gate opens; the limit is generous for a loaded runner.
-    private func eventually(_ condition: () -> Bool) async throws {
-        for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
-    }
-
     @Test func aThrottledChangeIsFlushedWhenTheWindowEndsWithoutFurtherReports() async throws {
         let gate = SleepGate()
         defer { gate.release() }
@@ -147,11 +142,10 @@ private final class SleepGate: @unchecked Sendable {
         // The ended file is gone from the current list at once; the publish waits for the end of the window.
         #expect(tracker.current.map(\.fileName) == ["other"])
         #expect(published.all.last?.map(\.fileName) == ["long"])
-        try await eventually { gate.sleeps >= 1 }  // the flush task starts asynchronously
+        #expect(await pollUntil { gate.sleeps >= 1 })  // the flush task starts asynchronously
         #expect(gate.sleeps == 1)
         gate.release()
-        try await eventually { published.all.last?.map(\.fileName) == ["other"] }
-        #expect(published.all.last?.map(\.fileName) == ["other"])
+        #expect(await pollUntil { published.all.last?.map(\.fileName) == ["other"] })
         #expect(gate.sleeps == 1, "one flush, not one per change")
         other.end()
     }
@@ -168,10 +162,10 @@ private final class SleepGate: @unchecked Sendable {
         }
         for handle in handles { handle.end() }
         #expect(published.all.count == 1)
-        try await eventually { gate.sleeps >= 1 }
+        #expect(await pollUntil { gate.sleeps >= 1 })
         #expect(gate.sleeps == 1)
         gate.release()
-        try await eventually { published.all.count >= 2 }
+        #expect(await pollUntil { published.all.count >= 2 })
         #expect(published.all.count == 2 && published.all.last?.map(\.fileName) == ["first"], "\(published.all.count)")
         first.end()
     }

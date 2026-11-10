@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PhotoVaultCore
+import PhotoVaultTestSupport
 @testable import PhotoVaultDrive
 
 private let clock = FixedClock()
@@ -32,9 +33,11 @@ private final class Browser: @unchecked Sendable {
     }
 }
 
+/// The fake browser always answers, so the loopback timeout only stops a hang. It is far above what both steps take on
+/// a loaded machine: a short one ran out first there and turned the error under test into `timedOut`.
 private func flow(_ transport: any HTTPTransport, opener: @escaping URLOpening, onReadStep: @escaping @Sendable () -> Void = {}) -> GooglePickerFlow {
     GooglePickerFlow(config: OAuthConfig(clientID: "client-1", clientSecret: "s"), transport: transport, clock: clock,
-                     openURL: opener, loopbackTimeout: 5, onReadStep: onReadStep)
+                     openURL: opener, loopbackTimeout: 300, onReadStep: onReadStep)
 }
 
 private let bothScopes = fileScope + " " + readScope
@@ -140,7 +143,7 @@ private final class LockedCounter: @unchecked Sendable {
             return true
         }
         await #expect(throws: PickerError.selectionTooLarge) { try await flow(server(), opener: opener).run() }
-        for _ in 0..<100 where page.text.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(await pollUntil { !page.text.isEmpty })
         #expect(page.text.contains("Too many items"))
     }
 
@@ -204,11 +207,12 @@ private final class LockedCounter: @unchecked Sendable {
     }
 
     @Test func cancellingTheTaskStopsWaitingForTheBrowserAtOnce() async throws {
+        let opened = LockedCounter()
         let waiting = GooglePickerFlow(
             config: OAuthConfig(clientID: "client-1", clientSecret: "s"), transport: server(), clock: clock,
-            openURL: { _ in true }, loopbackTimeout: 60)
+            openURL: { _ in opened.increment(); return true }, loopbackTimeout: 60)
         let task = Task { try await waiting.run() }
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(await pollUntil { opened.value == 1 }, "the flow waits for the browser")
         let started = ContinuousClock.now
         task.cancel()
         await #expect(throws: PickerError.cancelled) { _ = try await task.value }
@@ -234,9 +238,10 @@ private final class LockedCounter: @unchecked Sendable {
     }
 
     @Test func cancellingTheTaskDuringTheReadStepStopsAtOnce() async throws {
+        let readOpened = LockedCounter()
         let opener: URLOpening = { url in
             let q = items(url)
-            guard q["trigger_onepick"] != nil else { return true }
+            guard q["trigger_onepick"] != nil else { readOpened.increment(); return true }
             let target = URL(string: "\(q["redirect_uri"]!)?state=\(q["state"]!)&code=pick-code&picked_file_ids=f1")!
             Task.detached { _ = try? await URLSession.shared.data(from: target) }
             return true
@@ -244,7 +249,8 @@ private final class LockedCounter: @unchecked Sendable {
         let waiting = GooglePickerFlow(config: OAuthConfig(clientID: "client-1", clientSecret: "s"), transport: server(), clock: clock,
                                        openURL: opener, loopbackTimeout: 60)
         let task = Task { try await waiting.run() }
-        try await Task.sleep(for: .milliseconds(500))
+        // Cancelled only once the read step waits for the browser, not while the pick step still talks to Google.
+        #expect(await pollUntil { readOpened.value == 1 }, "the read step waits for the browser")
         let started = ContinuousClock.now
         task.cancel()
         await #expect(throws: PickerError.cancelled) { _ = try await task.value }
