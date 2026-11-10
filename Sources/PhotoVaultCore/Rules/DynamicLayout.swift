@@ -14,8 +14,15 @@ public struct FolderLevel: Hashable, Sendable {
 /// Folder layout for backup files and views (spec §7 extension point).
 public protocol LayoutPolicy: Sendable {
     /// Folders from the root down to the folder that holds the asset's files.
-    func folderChain(for placement: Placement, placeName: String?) -> [FolderLevel]
+    /// `slot` names an extra folder of a split camera day; nil is the main folder.
+    func folderChain(for placement: Placement, placeName: String?, slot: String?) -> [FolderLevel]
     func viewFolderChain(_ path: ViewPath) -> [FolderLevel]
+}
+
+public extension LayoutPolicy {
+    func folderChain(for placement: Placement, placeName: String?) -> [FolderLevel] {
+        folderChain(for: placement, placeName: placeName, slot: nil)
+    }
 }
 
 /// A view location; keys are stable, names are for display.
@@ -46,7 +53,7 @@ public struct DynamicLayout: LayoutPolicy {
 
     public init() {}
 
-    public func folderChain(for placement: Placement, placeName: String?) -> [FolderLevel] {
+    public func folderChain(for placement: Placement, placeName: String?, slot: String?) -> [FolderLevel] {
         var levels: [FolderLevel] = []
         let branch = placement.category.rawValue
         switch placement.category {
@@ -58,10 +65,36 @@ public struct DynamicLayout: LayoutPolicy {
         case .unknown:
             levels.append(FolderLevel(logicalPath: "\(branch)/unknown", displayName: Self.unknownDateName))
         case .day(let day):
-            let name = placement.category == .camera ? Self.dayFolderName(day, placeName: placeName) : day.description
-            levels.append(FolderLevel(logicalPath: "\(branch)/\(day.description)", displayName: name))
+            let isCamera = placement.category == .camera
+            let name = isCamera ? Self.dayFolderName(day, placeName: placeName) : day.description
+            let path = isCamera && slot != nil ? Self.slotLogicalPath(day: day, slot: slot!) : "\(branch)/\(day.description)"
+            levels.append(FolderLevel(logicalPath: path, displayName: name))
         }
         return levels
+    }
+
+    /// Logical path of an extra folder of a split day: a sibling of the main folder, never nested in it.
+    public static func slotLogicalPath(day: ArchiveDay, slot: String) -> String {
+        "camera/\(day.description)@\(slot)"
+    }
+
+    /// The day and slot of `camera/<day>` or `camera/<day>@<slot>`; nil for any other path or a malformed slot.
+    public static func parseCameraDay(_ logicalPath: String) -> (day: ArchiveDay, slot: String?)? {
+        let prefix = "camera/"
+        guard logicalPath.hasPrefix(prefix) else { return nil }
+        let rest = logicalPath.dropFirst(prefix.count)
+        let parts = rest.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let day = ArchiveDay(string: String(parts[0])), parts.count <= 2 else { return nil }
+        guard parts.count == 2 else { return (day, nil) }
+        let slot = String(parts[1])
+        guard isValidSlot(slot) else { return nil }
+        return (day, slot)
+    }
+
+    /// `p` or `r` followed by at least 12 lowercase hex digits.
+    public static func isValidSlot(_ slot: String) -> Bool {
+        guard let first = slot.first, first == "p" || first == "r", slot.count >= 13 else { return false }
+        return slot.dropFirst().allSatisfy { $0.isASCII && ($0.isNumber || ("a"..."f").contains($0)) }
     }
 
     /// `YYYY-MM-DD[ <place>]`, sanitized.

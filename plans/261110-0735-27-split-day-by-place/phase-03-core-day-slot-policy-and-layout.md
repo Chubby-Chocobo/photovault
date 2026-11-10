@@ -1,7 +1,7 @@
 ---
 phase: "03"
 title: "Core: DaySlotPolicy and slot-aware layout"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 1.5-2.5h

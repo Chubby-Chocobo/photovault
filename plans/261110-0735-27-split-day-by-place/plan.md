@@ -54,7 +54,7 @@ Camera Uploads/
 |---|---|---|---|---|
 | 01 | [Store: slot column, day_place table, move index, newer-schema guard](phase-01-store-slot-and-day-place.md) | Completed | L | — |
 | 02 | [Core: PlaceSplitPolicy (grouping)](phase-02-core-place-split-policy.md) | Completed | M | — |
-| 03 | [Core: DaySlotPolicy and slot-aware layout](phase-03-core-day-slot-policy-and-layout.md) | Pending | M | 02 |
+| 03 | [Core: DaySlotPolicy and slot-aware layout](phase-03-core-day-slot-policy-and-layout.md) | Completed | M | 02 |
 | 04 | [Engine: slot-aware LayoutResolver plumbing](phase-04-engine-layout-plumbing.md) | Pending | M | 01, 03 |
 | 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Pending | L | 04 |
 | 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Pending | M | 05 |
