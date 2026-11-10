@@ -2,6 +2,8 @@
 
 - **Trạng thái:** Thiết kế, chưa implement. Không có dòng code nào của nguồn liên tục trong nhánh phát hành.
 - **Ngày:** 2026-11-10
+- **Vai trò:** tài liệu hướng dẫn duy nhất để thêm nhà cung cấp (không có file `adding-a-source-provider.md` riêng).
+- **Kế hoạch:** `plans/261110-0805-17-dropbox-continuous/` trên nhánh `feat/17-dropbox-continuous` (tạm dừng).
 - **Liên quan:** quyết định [0024](../decisions/0024-multiple-sources-and-folder-import.md), [0026](../decisions/0026-cloud-folder-imports.md), [0029](../decisions/0029-photos-only-continuous-source.md); spec FR-110, FR-115, FR-121, FR-124; issue #17 (tạm dừng)
 
 Tài liệu này mô tả cách thêm một nguồn liên tục (một thư mục hoặc tài khoản được theo dõi mãi, không chỉ nhập một lần) mà không làm lại pipeline. Mọi quy tắc trong mục "Quy tắc an toàn" là yêu cầu bắt buộc với mỗi nhà cung cấp, rút từ bản audit của kế hoạch Dropbox.
@@ -86,16 +88,16 @@ Mỗi quy tắc có kịch bản mà nó chặn. Nhà cung cấp nào không đ�
 |---|---|---|
 | R1 | Lưu id của thư mục gốc khi thêm nguồn (`SourceConfig`, trường `remoteRootId`; tài khoản Dropbox toàn bộ không có id). Trước mỗi listing đầy đủ và khi `probe()`, id phải khớp. Không khớp hoặc không có gốc → lỗi `SourceError.rootChanged`, nguồn `offline` với lý do `rootChanged`, không commit gì. | Đổi tên `/Camera Uploads` rồi điện thoại tạo lại thư mục cùng tên: cursor báo `reset`, listing đầy đủ của thư mục rỗng đánh dấu mọi asset đã xoá. |
 | R2 | Một mục `deleted` trùng hoặc cao hơn thư mục gốc không bao giờ thành `.tree`; nó là lỗi `rootChanged`, cursor không commit. | Xoá thư mục gốc: `.tree(root)` xoá mọi dòng của nguồn. |
-| R3 | Bộ chặn xoá hàng loạt: nếu một feed có số `removed` vượt max(50 dòng, 20 % số dòng đang sống), không commit gì. Nguồn `offline` với lý do `largeRemoval`; owner bấm **Xác nhận** (feed chạy đúng một lần) hoặc **Gỡ**. | Lỗi của nhà cung cấp hoặc thay đổi lớn không lường trước. Lỗi trong R1–R2 cũng được chặn ở đây. |
-| R4 | Khi asset bị retire, mọi dòng khác còn giữ byte của nó (`imported` không phải primary, `duplicate`, ở nguồn đang mở) quay về `pending` với nhóm riêng và `seen_at = NULL`. Lần ingest sau gắn lại asset (không upload lại nếu job đã xong) hoặc tạo asset mới cho file đó. | Cùng một ảnh nằm ở hai thư mục theo dõi: xoá một bản làm mất backup của bản còn lại. RAW bị xoá, JPEG giữ lại: JPEG bị huỷ job. Sao chép sang thư mục nguồn khác rồi xoá nguồn gốc. |
+| R3 | Bộ chặn xoá hàng loạt: nếu một feed có số `removed` vượt max(50 dòng, 20 % số dòng đang sống), không commit gì. Nguồn `offline` với lý do `largeRemoval` ("cần xác nhận"). Owner bấm **Xác nhận**: đúng một feed kế tiếp được áp dụng, với hạn mức bằng đúng số dòng đã vượt (không hơn, để một lỗi khác không lọt qua). Hạn mức chỉ bị xoá khi đã dùng hoặc khi nguồn bị **Gỡ**, không bị xoá bởi chính lệnh xác nhận hay bởi đăng nhập lại. Xác nhận chỉ chạy khi lý do là `largeRemoval`. Feed thứ hai vượt ngưỡng lại bị chặn. | Lỗi của nhà cung cấp hoặc thay đổi lớn không lường trước. Lỗi trong R1–R2 cũng được chặn ở đây. Nếu hạn mức bị xoá bởi chính lệnh xác nhận, nguồn bị kẹt mãi cho tới khi **Gỡ**. |
+| R4 | Khi asset bị retire, mọi dòng khác còn giữ byte của nó (`imported` không phải primary, `duplicate`, ở nguồn đang mở) được chuyển giao (`AssetHandover`). Giới hạn: chỉ chạy khi asset đang sống, thuộc nguồn này và `local_id` là của dòng này; chỉ chuyển giao cho dòng ở nguồn liên tục đang mở hoặc nhập một lần đang mở. Nhập một lần đã đóng không được chuyển giao (không có gì nhập lại các dòng đó; chạy nhập lại sẽ gắn lại asset). Dòng được chuyển giao về `pending` với nhóm có hậu tố và `seen_at = NULL`; lần ingest sau gắn lại K (không upload lại nếu job đã xong) hoặc tạo asset mới. Một companion được chuyển giao (JPEG còn lại khi RAW bị xoá) thành asset `x:` riêng, có thể được upload thêm một lần dưới tên riêng, không bao giờ mất. Xoá ảnh trong Photos không đưa lại dòng `duplicate` của nguồn liên tục vào hàng đợi (giới hạn đã ghi nhận). | Cùng một ảnh nằm ở hai thư mục theo dõi: xoá một bản làm mất backup của bản còn lại. RAW bị xoá, JPEG giữ lại: JPEG bị huỷ job. Sao chép sang thư mục nguồn khác rồi xoá nguồn gốc. |
 | R5 | Thứ tự áp dụng: `removed` → `changed` → `moved` → `returned` → `reuse` → `insert`; sắp theo `rel_path`. Chọn tên trống `stem (n).ext` trong transaction, dựa trên các dòng đã có (so theo khoá đã gấp). | Hành động `reuse(p)` và `removed(p)` rơi vào hai lô khác nhau: file mới không bao giờ được đọc. `stem (2).jpg` đã có dòng: khoá chính bị vi phạm và feed lỗi lặp lại. |
 | R6 | `inspect` trả về hash của byte thực sự đọc (Dropbox: SHA-256 của chuỗi SHA-256 các khối 4 MiB, tính khi stream). Dòng lưu hash này, không lưu hash của feed. | File đổi giữa feed và lúc đọc: asset mới bị retire ngay ở feed sau, tải lại, rồi sống lại. |
 | R7 | Cửa sổ chờ theo nhóm: nhóm (RAW+JPEG, Live Photo) sẵn sàng khi thành viên mới nhất đã chờ đủ (mặc định 1 giờ), quyết định cho cả nhóm. | Cặp đến ở hai lần kiểm tra khác nhau bị tách thành hai asset. |
-| R8 | Dòng `failed` của nguồn liên tục được thử lại theo lịch (lần đầu sau khi mở app, rồi mỗi 24 giờ, sau listing đầy đủ và khi đăng nhập lại), hoặc có nút **Thử lại**. | Sau khi FR-124 bỏ cuộc, ảnh không bao giờ được backup và không ai biết (nguồn liên tục không có "nhập lại"). |
-| R9 | File đổi nội dung là phiên bản mới: không ghi đè. Dòng về `pending` với nhóm riêng và chờ cửa sổ R7. Asset primary cũ bị retire và R4 áp dụng. Thư mục gốc mặc định là một thư mục cụ thể; chọn cả Dropbox cần xác nhận cảnh báo. | Ghi đè file gốc làm mất bản trước. Các công cụ ghi metadata tại chỗ (Lightroom, digiKam) làm archive lớn lên mà không cảnh báo. |
-| R10 | Tải xuống (cả để nhập lẫn đọc feed) chỉ chạy khi cổng `TransferGate` (mạng, `pauseOnExpensiveNetwork`, `allUploadsOnlyOnACPower`) cho phép, cùng quy tắc với upload. | Cả thư viện Dropbox được tải hai lần trong nền khi đang dùng 4G. Hiện `ImportStage` không kiểm tra điều này. |
+| R8 | Dòng `failed` của nguồn liên tục được đưa về `pending` theo lịch: ở lần kiểm tra đầu tiên sau khi mở app, rồi mỗi 24 giờ, sau listing đầy đủ và khi đăng nhập lại. Không có nút **Thử lại** (đã bị loại). Dòng hiện "N file chưa đọc được · thử lại mỗi ngày". | Sau khi FR-124 bỏ cuộc, ảnh không bao giờ được backup và không ai biết (nguồn liên tục không có "nhập lại"; một hash không đổi không sinh hành động nào). |
+| R9 | File đổi nội dung là phiên bản mới: không ghi đè. Dòng về `pending` với nhóm riêng và `seen_at = now`, nên chờ cửa sổ R7. Chỉ phiên bản có sau cửa sổ được đọc. Nếu dòng là primary của asset đang sống của nguồn này, asset đó bị retire (`deleted_at`, `local_id` đổi thành `<cũ>#<16 hex>`) và R4 áp dụng; companion đã đổi thành asset riêng, cặp cũ vẫn sống. Trình chọn thư mục mở ở `/Camera Uploads` khi có; theo dõi cả Dropbox cần xác nhận cảnh báo rằng mỗi lần sửa thêm một bản sao. Ngưỡng hỏi owner khi nhiều file đổi cùng lúc chưa được chọn (xem câu hỏi mở). | Ghi đè file gốc làm mất bản trước. Các công cụ ghi metadata tại chỗ (Lightroom, digiKam) làm archive lớn lên mà không cảnh báo. |
+| R10 | Cổng `TransferGate.allowsNow` (mạng, `pauseOnExpensiveNetwork`, `allUploadsOnlyOnACPower`), cùng luật với upload, áp cho việc đọc file và tải xuống của nguồn liên tục: khi cổng đóng, nhập liên tục không đọc gì và asset liên tục không nằm trong danh sách xuất. Việc liệt kê feed vẫn chạy (vài request nhỏ). Nhập một lần giữ hành vi 0.4.0. | Cả thư viện Dropbox được tải hai lần trong nền khi đang dùng 4G hoặc pin. Hiện `ImportStage` không kiểm tra điều này. |
 | R11 | Id migration không đánh số (`continuous-sources`), đăng ký sau migration cuối của nhánh gốc khi merge, và không đổi tên khi bất kỳ bản build nào đã chạy nó. `Store.open` từ chối schema mới hơn. Rollback: sau khi đã dùng, hạ phiên bản làm app không mở được dữ liệu. | Đổi tên migration làm lặp `ALTER TABLE ADD COLUMN` (lỗi "duplicate column"). Bản cũ đọc `state = 'removed'` làm hỏng `SourceRepository.fetchAll`, kéo theo cả backup Photos. |
-| R12 | Gỡ nguồn = huỷ nhập (FR-115): dừng feed, dòng chưa xử lý thành `cancelled`, asset có job chưa xong bị xoá (job bị huỷ), file đã upload và asset đã xong giữ nguyên, grant `import-<id>` giữ như với nhập một lần. | Gỡ nguồn làm mất các file mà đích sau này còn cần. Đây là quyết định của owner (kế hoạch, audit I8). |
+| R12 | Gỡ nguồn = huỷ nhập (FR-115), theo từng asset: (1) dòng chưa xử lý thành `cancelled`; (2) asset có job pending, đang upload hoặc deferred được retire qua `AssetHandover`, job chưa xong bị huỷ, nơi khác giữ bản sẽ nhận chuyển giao; (3) asset đã backup đủ vẫn sống, các dòng của nguồn mở khác giữ chúng đi về `pending` và nhận chuyển giao; (4) nguồn thành `cancelled`, cursor xoá, adapter gỡ đăng ký, holds xoá, và app xoá grant `import-<id>`. Đích thêm sau không nhận các asset không ai nhận chuyển giao (`resourceMissing`). Thêm lại cùng thư mục thì nhận chuyển giao hoặc gắn lại mà không upload lại bản gốc. Lý do xoá grant: owner đã rút quyền truy cập của PhotoVault. Đây là quyết định của lead, không phải của owner; giá phải trả là các lần bỏ qua `resourceMissing` nhìn thấy được. | Giữ grant mà không có dòng nguồn thì grant thành mồ côi; xoá asset của nguồn khác còn giữ bản thì mất file. |
 | R13 | Khớp đường dẫn: so khớp chính xác theo khoá; tiền tố phải là `key + "/"` (không phải `/a/bc` khớp `/a/b`). Chuẩn hoá hoa thường trong Swift. | Xoá `/Photos/x` làm mất `/photos/x`. Tên tiếng Việt khác hoa thường (`ẢNH.jpg`, `ảnh.jpg`) bị coi là một file. |
 | R14 | Adapter trả về trạng thái ròng, sắp theo thứ tự feed cho mỗi đường dẫn. | File được liệt kê rồi bị xoá cùng thư mục trong một delta vẫn sống: dòng cũ và file xuất lỗi về sau. |
 | R15 | Log, Hoạt động gần đây và sidecar không chứa tên file, đường dẫn, id nhà cung cấp, email (FR-123). | Lộ thông tin riêng tư qua log. |
@@ -119,7 +121,7 @@ Mỗi quy tắc phải có test trước khi bật nhà cung cấp: R1–R3 vớ
 
 - Settings › Nguồn gồm hai phần tách biệt: **Nguồn liên tục** (Photos luôn đứng đầu, rồi mỗi nguồn đang theo dõi) và **Lần nhập** (nhập một lần).
 - Mỗi nguồn liên tục có chấm trạng thái, tên, tài khoản và các trạng thái: Đang theo dõi · kiểm tra lần cuối …; Đang đọc N file mới; Không kết nối được; Cần đăng nhập lại (kèm nút); Chờ chỗ trống; Cần xác nhận (R3).
-- Hành động: **Thêm nguồn…** (với nhà cung cấp chưa cấu hình khoá thì bị vô hiệu), **Gỡ…** (có xác nhận, theo R12), **Đăng nhập lại**, **Xác nhận** (R3), **Thử lại** (R8).
+- Hành động: **Thêm nguồn…** (với nhà cung cấp chưa cấu hình khoá thì bị vô hiệu), **Gỡ…** (có xác nhận, theo R12), **Đăng nhập lại**, **Xác nhận** (R3). Không có nút Thử lại; thử lại theo lịch ở R8.
 - Menu bar chỉ hiện mục "Nguồn" khi có nguồn liên tục ngoài Photos.
 
 ## Bảng sơ phác từng nhà cung cấp
@@ -163,6 +165,24 @@ Toàn bảng là `[UNVERIFIED]` trừ khi ghi khác: chưa kiểm tra tài liệ
 | `DropboxListEntry` | `Sources/PhotoVaultDropbox/DropboxModels.swift:3` | Ánh xạ mục feed |
 | `ChangeTracker` (chỉ Photos) | `Sources/PhotoVaultEngine/ChangeTracker.swift:26` | Mẫu transaction theo thay đổi |
 | `FakeContentSource` | `Sources/PhotoVaultTestSupport/FakeContentSource.swift:5` | Fake cho test |
+
+## Hướng dẫn thêm nhà cung cấp
+
+Tài liệu này là hướng dẫn duy nhất cho nhà cung cấp nguồn liên tục. Thêm một nhà cung cấp là: viết adapter, khai báo kind, đăng ký, rồi qua đủ các mục dưới đây.
+
+| Mục | Việc phải làm |
+|---|---|
+| Hợp đồng | Triển khai `ContinuousSource` (mục trên). Nhận `SourceConfig` gồm `remoteRootId` (nil nếu là toàn bộ tài khoản). |
+| Lỗi | Chỉ ném `SourceError`: `unavailable` (không kết nối, thư mục vắng), `rootChanged` (gốc đổi hoặc bị xoá, R1–R2), `fileMissing`, `fileChanged`, `accessRevoked` (cần đăng nhập lại), `busy` (giới hạn tốc độ, 5xx), `readFailed(code:)`. Không ném lỗi khác: `readResource` coi lỗi lạ là `unavailable`. Lỗi không chứa đường dẫn hay tên file (FR-123). |
+| Cursor và `isComplete` | Cursor là chuỗi mờ. Cursor không còn hợp lệ được xử lý trong adapter bằng listing đầy đủ với `isComplete = true`. Chỉ listing đầy đủ mới được xoá theo "không có trong danh sách" (và chịu R3). |
+| Thứ tự và gộp | Trả về trạng thái ròng theo từng đường dẫn, theo thứ tự feed (R14). |
+| Hash | `contentHash` chỉ là tín hiệu thay đổi. `inspect` trả về hash của byte đã đọc (R6). Không dùng ETag multipart như MD5. |
+| Gốc | Lưu id gốc khi thêm nguồn; kiểm tra trước `probe()` và trước mỗi listing đầy đủ (R1). |
+| Xác thực | OAuth PKCE hoặc khoá, chỉ quyền đọc. Grant lưu trong Keychain dưới `CloudTokenAccount.importGrant(id)` (`import-<sourceId>`), mỗi nguồn một bản (`SourceModels.swift:54`). |
+| Đăng ký | Thêm case vào `SourceKind` (`SourceModels.swift:41`), `SourceRegistry.add` (`SourceRegistry.swift:12`), và stage đọc riêng cho nguồn liên tục (`ImportStage.swift:25` hiện chỉ lấy `kind.isImport`). |
+| Kiểm thử | Fake feed có các kịch bản R1–R15 (đổi tên và tạo lại gốc, xoá gốc, reset, hơn 500 hành động, `IMG (2).jpg` có sẵn, byte đổi giữa feed và đọc, cặp đến ở hai lần kiểm tra, nhà cung cấp lỗi, mạng tốn kém). Log không có đường dẫn, tên, id hay email. |
+
+Bảng nhà cung cấp ở trên là phác thảo; mỗi nhà cung cấp phải được kiểm chứng trước khi viết code.
 
 ## Cách tiếp tục
 

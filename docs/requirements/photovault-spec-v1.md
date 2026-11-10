@@ -421,7 +421,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 3. Gặp `localIdentifier` lạ (library rebuild, đăng xuất iCloud) → tra cloud ID → **gắn lại** vào asset cũ; không có thì là asset mới.
 4. FR-53 bổ sung cloud ID cho asset `l:`.
 5. [VERIFY M0-2] cloud ID có ổn định qua rebuild/đăng xuất iCloud không; độ dài.
-6. File nhập từ thư mục (FR-111), Google Drive (FR-119) hoặc Dropbox (FR-120) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Nguồn liên tục khác (để sau, không làm theo quyết định 0029) sẽ dùng `x:` như trên, không dùng `s:<sourceId>/<itemId>` như dự kiến trước đây; xem [continuous-source-extension](../architecture/continuous-source-extension.md).
+6. File nhập từ thư mục (FR-111), Google Drive (FR-119) hoặc Dropbox (FR-120) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Với nguồn liên tục trong tương lai, kế hoạch đề xuất (chưa implement, không phải quy tắc đã chốt) là dùng `x:` như trên thay cho `s:<sourceId>/<itemId>` của quyết định 0024; xem [continuous-source-extension](../architecture/continuous-source-extension.md).
 **Placement** (`placement_category`, `placement_day` hoặc `unknown`, `name_stem`):
 - Chốt ngay khi có category chính thức, trước khi export bất kỳ resource nào để upload.
 - Dùng cho mọi file của asset ở mọi đích.
