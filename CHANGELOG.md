@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.2] - 2026-11-10
+
+### Bug fixes
+
+- **app:** say why a Google sign-in failed instead of a temporary error (#46) (29b5dc9). A sign-in without the Google Drive permission now names the box to tick; a rejected account token points at the Mac's date and time. The log keeps the reason code, never an account detail or token.
+
+## [0.4.1] - 2026-11-10
+
+### Bug fixes
+
+- **import:** ask Google Drive consent in two steps, drive.file then drive.readonly (#45) (872cc08). The Picker sign-in no longer fails with `Error 400: invalid_scope`: Google allows `drive.file` alone for the desktop Picker, so the import asks twice for the same account, first the Picker (`drive.file`), then "Step 2 of 2" to read the chosen folder (`drive.readonly`). Another account in step 2 is refused; only the read grant is kept. An import whose start waits for a busy sync now shows as a queued item ("Chờ đến lượt"), and launch removes leftover import sign-ins.
+
+### Setup
+
+- No setup change beyond 0.4.0's. Step 2 shows Google's "unverified app" screen because `drive.readonly` is a restricted scope (Advanced › continue).
+
 ## [0.4.0] - 2026-11-10
 
 ### Setup
