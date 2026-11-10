@@ -89,6 +89,9 @@ struct SidecarPlanner: JobPlanningExtension {
                 db, asset: asset, destinationId: destination.id, type: type, settings: context.settings, timeZone: context.timeZone,
                 nameBuilder: context.nameBuilder) else { return }
             guard existing.uploadedHash != SidecarFactory.hash(file, kind: destination.kind) else { return }
+            // The place is still being looked up (a database loss empties the geocode cache): the sidecar is
+            // refreshed once the answer arrives, which marks the asset again, instead of twice.
+            if context.geocodingAvailable, try OrganizationLookups.placeIsPending(db, asset: asset, settings: context.settings) { return }
             try JobRepository.upsert(db, desired: .init(identity: identity, origin: .refresh, targetGen: existing.targetGen + 1), now: context.now)
         case .pending, .deferred, .skipped, .missingRemote:
             return

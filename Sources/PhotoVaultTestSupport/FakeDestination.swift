@@ -4,9 +4,9 @@ import PhotoVaultCore
 /// In-memory destination. With `reservesIds` it behaves like Drive (IDs must be reserved first,
 /// duplicate IDs are rejected); without, like a local folder (files identified by path, same name
 /// + same hash is success, different content gets a conflict name or `foreignFile`).
-public actor FakeDestination: ViewDestination, RootManaging {
+public actor FakeDestination: ViewDestination, RootManaging, SmallFileReading {
     public enum Operation: String, Hashable, Sendable {
-        case reserve, ensureFolder, upload, resume, probe, replace, move, rename, list, shortcut, availability
+        case reserve, ensureFolder, upload, resume, probe, replace, move, rename, list, shortcut, availability, read
     }
 
     /// Simulates a crash after the remote side effect but before the caller sees the result.
@@ -22,6 +22,8 @@ public actor FakeDestination: ViewDestination, RootManaging {
         public var description: String?
         public var targetId: String?
         public var trashed: Bool
+        /// Bytes of a small file, kept so a read-back works after staging removed the source.
+        public var data: Data?
 
         public init(
             id: String, name: String, parentId: String, kind: RemoteItemKind, content: StagedContent? = nil,
@@ -36,6 +38,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
             self.description = description
             self.targetId = targetId
             self.trashed = trashed
+            self.data = content.flatMap { $0.size <= 1 << 20 ? try? Data(contentsOf: $0.file) : nil }
         }
     }
 
@@ -54,6 +57,8 @@ public actor FakeDestination: ViewDestination, RootManaging {
     public var listsWholeAccount = false
     private var failures: [Operation: [DestinationError]] = [:]
     private var crashes: [Operation: Int] = [:]
+    private var readFailures: [String: DestinationError] = [:]
+    private var periodicFailures: [Operation: (Int, DestinationError)] = [:]
     private var sessions: [String: UploadRequest] = [:]
     private var nextId = 1
     private var uploadHook: (@Sendable (UploadRequest) async -> Void)?
@@ -114,8 +119,15 @@ public actor FakeDestination: ViewDestination, RootManaging {
         return parts.joined(separator: "/")
     }
 
+    /// Every `n`th call of `op` throws `error`, from the first call on.
+    public func failEvery(_ op: Operation, n: Int, with error: DestinationError) { periodicFailures[op] = (n, error) }
+    public func failReads(of remoteId: String, with error: DestinationError?) { readFailures[remoteId] = error }
+    public func clearPeriodicFailures() { periodicFailures = [:] }
+    public func failAlways(_ op: Operation, with error: DestinationError) { periodicFailures[op] = (1, error) }
+
     private func step(_ op: Operation) throws {
         operationLog.append(op)
+        if let (n, error) = periodicFailures[op], operationLog.filter({ $0 == op }).count % n == 0 { throw error }
         if var queue = failures[op], !queue.isEmpty {
             let error = queue.removeFirst()
             failures[op] = queue
@@ -286,6 +298,13 @@ public actor FakeDestination: ViewDestination, RootManaging {
     /// Drops all open sessions (expiry, long sleep).
     public func expireSessions() { sessions.removeAll() }
 
+    public func readSmallFile(remoteId: String, maxBytes: Int) async throws -> Data? {
+        try step(.read)
+        if let error = readFailures[remoteId] { throw error }
+        guard let item = items[remoteId], item.kind == .file, let data = item.data, data.count <= maxBytes else { return nil }
+        return data
+    }
+
     public func probe(remoteId: String) async throws -> RemoteItem? {
         try step(.probe)
         return items[remoteId].map(remote)
@@ -298,6 +317,7 @@ public actor FakeDestination: ViewDestination, RootManaging {
             throw DestinationError.foreignModified
         }
         item.content = request.content
+        item.data = request.content.size <= 1 << 20 ? try? Data(contentsOf: request.content.file) : nil
         item.description = request.description ?? item.description
         items[remoteId] = item
         try crashIfRequested(.replace)

@@ -249,6 +249,14 @@ public struct ShortcutRequest: Hashable, Sendable {
     }
 }
 
+/// A destination that can hand back the bytes of a small file it holds, by remote id. Recovery reads the
+/// JSON sidecars through it; nothing else does.
+public protocol SmallFileReading: Destination {
+    /// The file's bytes; nil when it is gone, not readable by this app, or larger than `maxBytes`.
+    /// Transient failures (network, throttling) are thrown.
+    func readSmallFile(remoteId: String, maxBytes: Int) async throws -> Data?
+}
+
 /// Shortcut views (Drive only, FR-100..103).
 public protocol ViewDestination: Destination {
     func createShortcut(_ request: ShortcutRequest) async throws -> RemoteItem

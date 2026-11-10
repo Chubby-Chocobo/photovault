@@ -15,7 +15,7 @@ Checked against the code on 2026-11-09. The examples below were produced by runn
 
 A RAW+JPEG pair shares one `.json` and one `.xmp` (spec §8.12). The sidecar content differs per destination (FR-90). The JSON `resources` list covers that destination's files only.
 
-`SidecarFile` computes the SHA-256 and MD5 of the bytes in memory. The engine stores as `uploaded_hash` the MD5 for Google Drive and the SHA-256 for local folders (`SidecarFactory.hash`). That is the hash each destination reports back. A sidecar is uploaded again only when its hash changes (FR-93).
+`SidecarFile` computes the SHA-256 and MD5 of the bytes in memory. The engine stores as `uploaded_hash` the MD5 for Google Drive and the SHA-256 for local folders (`SidecarFactory.hash`). That is the hash each destination reports back. A sidecar is uploaded again only when its hash changes (FR-93). After a database loss, recovery reads back the JSON sidecars it finds (local files, or one small Drive download each) and puts back the resource hashes and camera fields they list. A sidecar is not refreshed while its place name is still being looked up. So recovery writes a sidecar again only when its content really differs, or when it cannot be read back (then once).
 
 ## JSON fields
 

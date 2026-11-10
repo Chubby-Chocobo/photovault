@@ -22,6 +22,12 @@ struct RemoteFileEntry: Sendable {
     /// Hash the app wrote: MD5 on Drive, the sidecar's SHA-256 on a local destination.
     var uploadedHash: String?
     var expectedSize: Int64?
+    /// Hashes of the file's content as the destination or its sidecar reports them. A database loss
+    /// drops the resource hashes the sidecar lists; they are put back so the sidecar is built the same.
+    var contentMd5: String?
+    var contentSha256: String?
+    /// Camera fields the sidecar carried; the scan alone cannot know them.
+    var camera: SidecarDocument.Camera?
 }
 
 struct RemoteFolderEntry: Sendable {
@@ -61,7 +67,7 @@ struct RemoteInventoryLoader: Sendable {
     let record: DestinationRecord
     let destination: any Destination
 
-    private static let maxSidecarBytes: Int64 = 1 << 20
+    static let maxSidecarBytes: Int64 = 1 << 20
 
     func load() async throws -> RemoteInventory {
         var items: [RemoteItem] = []
@@ -127,7 +133,7 @@ struct RemoteInventoryLoader: Sendable {
                     item: item, parentLogical: parentLogical(item), parentFolderId: item.parentIds.first,
                     resType: item.appProperties[AppPropertyKey.resType].flatMap(AppPropertyCodec.decodeResourceType),
                     claimedKey: item.appProperties[AppPropertyKey.assetId], name: NameFingerprint.parse(item.name),
-                    uploadedHash: item.md5, expectedSize: item.size))
+                    uploadedHash: item.md5, expectedSize: item.size, contentMd5: item.md5, contentSha256: item.sha256))
             case .shortcut:
                 guard let raw = item.appProperties[AppPropertyKey.view], let view = ViewKind(rawValue: raw),
                       let key = item.appProperties[AppPropertyKey.assetId] else {
@@ -142,6 +148,7 @@ struct RemoteInventoryLoader: Sendable {
             }
         }
         inventory.files.sort { $0.item.remoteId < $1.item.remoteId }
+        try await restoreFromSidecars(&inventory.files)
         return inventory
     }
 
@@ -214,6 +221,8 @@ struct RemoteInventoryLoader: Sendable {
                 entry.resType = AppPropertyCodec.decodeResourceType(hit.1.type)
                 entry.uploadedHash = hit.1.sha256
                 entry.expectedSize = hit.1.size ?? file.size
+                entry.contentMd5 = hit.1.md5
+                entry.contentSha256 = hit.1.sha256
                 Self.apply(hit.0, to: &entry)
             }
             inventory.files.append(entry)
@@ -230,6 +239,7 @@ struct RemoteInventoryLoader: Sendable {
         entry.pixelWidth = document.pixelWidth
         entry.pixelHeight = document.pixelHeight
         entry.duration = document.duration
+        entry.camera = document.camera
     }
 
     private static func directory(of path: String) -> String {
