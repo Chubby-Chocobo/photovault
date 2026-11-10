@@ -114,3 +114,26 @@ private let day2 = ArchiveDay(year: 2026, month: 11, day: 9)!
         _ = try Store.open(at: url)
     }
 }
+
+@Suite struct ImportRetryMigrationTests {
+    @Test func upgradeKeepsImportItemsAndAddsEmptyRetryColumns() async throws {
+        let queue = try DatabaseQueue()
+        let migrator = Schema.makeMigrator()
+        try migrator.migrate(queue, upTo: "v6-day-place")
+        try await queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO source (id, kind, mode, display_name, config_json, status, created_at)
+            VALUES ('s1', 'dropbox', 'oneTime', 'Trip', '{}', 'scanning', 0)
+            """)
+            try db.execute(sql: "INSERT INTO import_item (source_id, rel_path, group_key, uti, size_bytes) VALUES ('s1', 'a.jpg', 'a', 'public.jpeg', 10)")
+        }
+        try migrator.migrate(queue)
+        try await queue.read { db in
+            let columns = try Set(Row.fetchAll(db, sql: "PRAGMA table_info(import_item)").map { $0["name"] as String })
+            #expect(columns.isSuperset(of: ["fail_count", "first_failed_at"]))
+            let row = try #require(try Row.fetchOne(db, sql: "SELECT * FROM import_item"))
+            #expect(row["rel_path"] as String == "a.jpg" && row["state"] as String == "pending")
+            #expect(row["fail_count"] as Int? == nil && row["first_failed_at"] as Date? == nil)
+        }
+    }
+}

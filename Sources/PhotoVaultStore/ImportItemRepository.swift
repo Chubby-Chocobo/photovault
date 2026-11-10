@@ -59,6 +59,21 @@ public enum ImportItemRepository {
         """, arguments: [state.rawValue, assetKey?.rawValue, isPrimary, dateSource?.rawValue, reason, sourceId.rawValue, relativePath])
     }
 
+    /// Stores how often the group's files could not be read and when that first happened.
+    public static func recordFailure(_ db: Database, sourceId: SourceID, groupKey: String, count: Int, first: Date) throws {
+        try db.execute(sql: """
+        UPDATE import_item SET fail_count = ?, first_failed_at = ? WHERE source_id = ? AND group_key = ? AND state = 'pending'
+        """, arguments: [count, first, sourceId.rawValue, groupKey])
+    }
+
+    /// The group was read (or given up): its failures are forgotten.
+    public static func clearFailure(_ db: Database, sourceId: SourceID, groupKey: String) throws {
+        try db.execute(sql: """
+        UPDATE import_item SET fail_count = NULL, first_failed_at = NULL
+        WHERE source_id = ? AND group_key = ? AND fail_count IS NOT NULL
+        """, arguments: [sourceId.rawValue, groupKey])
+    }
+
     public static func counts(_ db: Database, sourceId: SourceID) throws -> [ImportItemState: Int] {
         var result: [ImportItemState: Int] = [:]
         for row in try Row.fetchAll(db, sql: "SELECT state, COUNT(*) AS n FROM import_item WHERE source_id = ? GROUP BY state", arguments: [sourceId.rawValue]) {
@@ -103,6 +118,8 @@ public enum ImportItemRepository {
             assetKey: try row.optionalParse("asset_key", table: table) { (raw: String) in AssetKey(rawValue: raw) },
             isPrimary: row["is_primary"],
             dateSource: try row.optionalEnum("date_source", table: table),
-            reason: row["reason"])
+            reason: row["reason"],
+            failCount: row["fail_count"],
+            firstFailedAt: row["first_failed_at"])
     }
 }

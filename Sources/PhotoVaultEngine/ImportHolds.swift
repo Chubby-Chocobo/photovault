@@ -9,7 +9,8 @@ enum SourceStatusReason {
     static let diskFull = "diskFull"
 }
 
-/// What each import has been waiting for, in memory only (a relaunch starts fresh): when a job was last
+/// What each import has been waiting for, in memory (the failure count and first failure time of a group are also
+/// stored with its items, so a relaunch carries on): when a job was last
 /// held, which groups wait for a retry, and how long a group has been failing. A folder that comes
 /// and goes cannot keep the cycle busy, and a stubborn group cannot hold back the others.
 final class ImportHolds: @unchecked Sendable {
@@ -35,6 +36,15 @@ final class ImportHolds: @unchecked Sendable {
         var giveUp: Bool
         /// No earlier failure of this group was recorded.
         var isFresh: Bool
+        /// Failures so far, this one included, and the time of the first.
+        var tries: Int
+        var first: Date
+    }
+
+    /// Failures of a group stored before this run began (see `ImportItemRepository.recordFailure`).
+    struct Prior: Equatable {
+        var tries: Int
+        var first: Date
     }
 
     private let lock = NSLock()
@@ -85,15 +95,17 @@ final class ImportHolds: @unchecked Sendable {
     }
 
     /// Notes that a group could not be read now and schedules its next try.
-    func noteFailure(_ id: SourceID, group: String, now: Date) -> Failure {
+    /// Without an entry in memory (the app was relaunched), the stored count and first time carry on.
+    func noteFailure(_ id: SourceID, group: String, now: Date, prior: Prior? = nil) -> Failure {
         lock.withLock {
-            let old = failing[id]?[group]
+            let old = failing[id]?[group] ?? prior.map { Failing(first: $0.first, last: $0.first, tries: $0.tries, retryAt: now) }
             let tries = (old?.tries ?? 0) + 1
             let wait = min(Self.backoff * pow(2, Double(tries - 1)), Self.maxGroupBackoff)
             let entry = Failing(first: old?.first ?? now, last: now, tries: tries, retryAt: now.addingTimeInterval(wait))
             failing[id, default: [:]][group] = entry
             return Failure(
-                giveUp: tries >= Self.giveUpAfterTries && now.timeIntervalSince(entry.first) >= Self.giveUpAfter, isFresh: old == nil)
+                giveUp: tries >= Self.giveUpAfterTries && now.timeIntervalSince(entry.first) >= Self.giveUpAfter, isFresh: old == nil,
+                tries: tries, first: entry.first)
         }
     }
 
