@@ -20,6 +20,16 @@ import Testing
         #expect(value.includeEdited == GlobalSettings().includeEdited)
     }
 
+    @Test func settingsSavedBeforeTheLensViewDecodeWithItOff() async throws {
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(GlobalSettings())) as? [String: Any])
+        object.removeValue(forKey: "viewByLensEnabled")
+        object["viewFavoritesEnabled"] = false
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+        let value = await (try stored(json)).snapshot().settings
+        #expect(!value.viewByLensEnabled)
+        #expect(!value.viewFavoritesEnabled, "the other choices survive")
+    }
+
     @Test func aSettingThatNoLongerDecodesFallsBackOnlyForThatKey() async throws {
         let log = RecordingLogSink()
         let settings = try stored(#"{"includeVideos": false, "integrityCheckIntervalDays": "many"}"#, log: log)

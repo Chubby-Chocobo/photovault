@@ -177,9 +177,10 @@ struct ViewExecutor: Sendable {
     // MARK: Helpers
 
     /// Queues the renames of view folders whose display name changed (device renamed, language
-    /// changed) even when no shortcut has to move.
+    /// changed) even when no shortcut has to move. Lens folders keep the name they were created with:
+    /// spellings that differ only in case share one folder and must not rename it back and forth.
     func syncFolderNames(_ plan: ViewPlan) async throws {
-        for path in Set(plan.paths.values) { try await queueRenames(layout.viewFolderChain(path)) }
+        for path in Set(plan.paths.values) where path.view != .byLens { try await queueRenames(layout.viewFolderChain(path)) }
     }
 
     /// A view level whose display name changed is renamed in place; shortcuts inside keep pointing

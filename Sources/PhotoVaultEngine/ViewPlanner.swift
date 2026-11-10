@@ -24,6 +24,7 @@ enum ViewPlanner {
         if settings.viewByDeviceEnabled { views.insert(.byDevice) }
         if settings.viewByPlaceEnabled { views.insert(.byPlace) }
         if settings.viewFavoritesEnabled { views.insert(.favorites) }
+        if settings.viewByLensEnabled { views.insert(.byLens) }
         return views
     }
 

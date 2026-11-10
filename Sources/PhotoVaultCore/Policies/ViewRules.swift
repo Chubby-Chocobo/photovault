@@ -43,6 +43,8 @@ public enum ViewRules {
             return devicePath(asset, day: day, context: context)
         case .byPlace:
             return placePath(asset, day: day, context: context)
+        case .byLens:
+            return lensPath(asset, day: day)
         }
     }
 
@@ -53,6 +55,12 @@ public enum ViewRules {
         let groupId = context.deviceGroupByModelKey[key] ?? DeviceNameResolver.groupId(forKey: key)
         let name = context.deviceGroupNames[groupId] ?? context.deviceNames.displayName(make: asset.cameraMake, model: model)
         return .byDevice(groupKey: groupId, groupName: name, day: day)
+    }
+
+    private static func lensPath(_ asset: AssetRecord, day: ArchiveDay) -> ViewPath? {
+        guard asset.placement?.category == .camera, let name = LensNameResolver.name(for: asset.lensModel),
+              let key = LensNameResolver.key(for: asset.lensModel) else { return nil }
+        return .byLens(groupKey: key, lensName: name, day: day)
     }
 
     private static func placePath(_ asset: AssetRecord, day: ArchiveDay, context: ViewContext) -> ViewPath? {

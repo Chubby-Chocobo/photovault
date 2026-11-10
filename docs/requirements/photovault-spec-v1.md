@@ -23,7 +23,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 **Mục tiêu:**
 1. Backup bản gốc + bản chỉnh sửa lên Google Drive và 0..n thư mục local/NAS, với rule nội dung riêng cho từng đích.
 2. Layout: mỗi ngày một thư mục `YYYY-MM-DD` trong từng nhánh (`Camera Uploads`, `Screenshots`, `Saved`); thư mục ngày của ảnh chụp có tên địa danh khi đủ điều kiện (sửa đổi 2026-11-09, issue #12, quyết định 0023).
-3. Sidecar JSON + XMP; trên Drive có view bằng shortcut: `By device`, `By place`, `Favorites`.
+3. Sidecar JSON + XMP; trên Drive có view bằng shortcut: `By device`, `By place`, `Favorites` và `By lens` (mặc định tắt).
 4. Lần chạy đầu chọn: toàn bộ / từ một ngày / chỉ ảnh mới.
 5. Không upload trùng, kể cả khi mất DB hoặc library bị rebuild. Chịu được crash, sleep, mất mạng, NAS bị ngắt.
 6. Không làm đầy ổ Mac.
@@ -359,6 +359,12 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Thành viên: asset `camera` có GPS và ô đã geocode ra quốc gia + tỉnh.
 - Khoá = `isoCountryCode` + `administrativeArea` ở locale **`en`**; tên hiển thị theo FR-82 (tên nước tiếng Anh).
 - Kết quả geocode cố định; nút "Làm mới địa danh" xoá cache rồi geocode lại.
+**FR-107 `By lens/<Ống kính>/YYYY-MM-DD/` (quyết định 0027):**
+- Thành viên: asset `camera` có `lens_model` không rỗng; không có thư mục Unknown. Ảnh đã xoá khỏi Photos vẫn giữ shortcut như các view khác.
+- Tên = EXIF LensModel đã chuẩn hoá: bỏ khoảng trắng thừa; chuỗi Apple `<máy> back <…> camera <phần còn lại>` thành `<máy> <phần còn lại>`, `<máy> front <…> camera <phần còn lại>` thành `<máy> front <phần còn lại>`; ống kính khác giữ nguyên. Tên được làm sạch như tên thư mục khác (FR-42).
+- Khoá nhóm = hash của tên chuẩn hoá viết thường, nên biến thể chỉ khác hoa/thường hay khoảng trắng gom vào một thư mục. Tên thư mục giữ như lúc tạo.
+- Cài đặt `viewByLensEnabled`, **mặc định tắt** (JSON cũ không có khoá này đọc ra tắt). Bật/tắt/dựng lại theo FR-103. Đổi tên và gộp nhóm ống kính để sau.
+
 ### 4.13 Nguồn & nhập một lần (sửa đổi 2026-11-09, issue #17, quyết định 0024; bổ sung 2026-11-10, quyết định 0026)
 
 **FR-110 Danh sách nguồn:** Settings › Nguồn có "Nguồn liên tục" (Photos, luôn đứng đầu) và "Nhập một lần" (các import job: đang chạy trước, đã xong sau). Photos vẫn cần quyền và baseline trước khi một import chạy.

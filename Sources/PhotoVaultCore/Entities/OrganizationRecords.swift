@@ -128,7 +128,7 @@ public struct MoveJob: Hashable, Codable, Sendable {
 
 /// Drive views (FR-104..106).
 public enum ViewKind: String, Codable, Sendable, CaseIterable {
-    case byDevice, byPlace, favorites
+    case byDevice, byPlace, favorites, byLens
 }
 
 public enum ShortcutState: String, Codable, Sendable, CaseIterable {
