@@ -8,6 +8,7 @@ public enum TransferLineText {
     public static let minimumVisibleSeconds: TimeInterval = 1
     static let nameLimit = 28
     static let destinationLimit = 24
+    static let accountLimit = 28
 
     /// Transfers that have run long enough to show, longest-running first.
     public static func visible(_ transfers: [TransferProgress], now: Date) -> [TransferProgress] {
@@ -56,18 +57,19 @@ public enum TransferLineText {
     private static func action(for transfer: TransferProgress) -> String {
         let name = middleTruncated(transfer.fileName, limit: nameLimit)
         let destination = transfer.destinationName.map { middleTruncated($0, limit: destinationLimit) }
+        let account = transfer.accountEmail.map { " (\(middleTruncated($0, limit: accountLimit)))" } ?? ""
         switch transfer.kind {
         case .exportFromPhotos:
             return tr(vi: "Đang xuất \(name) từ Photos", en: "Exporting \(name) from Photos")
         case .download(.dropbox):
-            return tr(vi: "Đang tải \(name) từ Dropbox", en: "Downloading \(name) from Dropbox")
+            return tr(vi: "Đang tải \(name) từ Dropbox\(account)", en: "Downloading \(name) from Dropbox\(account)")
         case .download(.googleDrive):
-            return tr(vi: "Đang tải \(name) từ Google Drive", en: "Downloading \(name) from Google Drive")
+            return tr(vi: "Đang tải \(name) từ Google Drive\(account)", en: "Downloading \(name) from Google Drive\(account)")
         case .download:
             return tr(vi: "Đang đọc \(name) từ thư mục Mac", en: "Reading \(name) from a Mac folder")
         case .upload:
             guard let destination else { return tr(vi: "Đang upload \(name)", en: "Uploading \(name)") }
-            return tr(vi: "Đang upload \(name) lên \(destination)", en: "Uploading \(name) to \(destination)")
+            return tr(vi: "Đang upload \(name) lên \(destination)\(account)", en: "Uploading \(name) to \(destination)\(account)")
         case .copy:
             guard let destination else { return tr(vi: "Đang chép \(name)", en: "Copying \(name)") }
             return tr(vi: "Đang chép \(name) vào \(destination)", en: "Copying \(name) to \(destination)")

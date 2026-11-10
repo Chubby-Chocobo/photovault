@@ -106,10 +106,12 @@ private final class Published: @unchecked Sendable {
     }
 
     @Test func descriptionRedactsNames() {
-        let item = TransferProgress(kind: .upload, fileName: "Holiday-Anna.MOV", destinationName: "Anna NAS", bytesDone: 5, startedAt: Date())
+        var item = TransferProgress(kind: .upload, fileName: "Holiday-Anna.MOV", destinationName: "Anna NAS", bytesDone: 5, startedAt: Date())
+        item.accountEmail = "anna@example.com"
         for text in ["\(item)", String(describing: item), String(reflecting: item), "\(TransferKind.download(.dropbox))"] {
             #expect(!text.contains("Holiday"))
             #expect(!text.contains("Anna"))
+            #expect(!text.contains("example.com"))
         }
         #expect("\(item)".contains("redacted"))
     }

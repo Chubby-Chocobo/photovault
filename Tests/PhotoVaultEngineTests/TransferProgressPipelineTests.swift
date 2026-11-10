@@ -76,6 +76,38 @@ private extension Harness {
         #expect(recorder.last.isEmpty && h.env.transfers.current.isEmpty)
     }
 
+    @Test func driveUploadNamesTheDestinationAccountAndACopyDoesNot() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        try h.addNAS(scope: .full)
+        try h.updateDestination(.googleDrive) { $0.accountEmail = "ten@example.com" }
+        await h.add(h.snapshot("one"), recordChange: false)
+        try await h.baseline(.googleDrive, h.nasId)
+        let recorder = h.recordTransfers()
+        await h.run()
+        let uploads = recorder.seen.filter { $0.kind == .upload }
+        let copies = recorder.seen.filter { $0.kind == .copy }
+        #expect(!uploads.isEmpty && uploads.allSatisfy { $0.accountEmail == "ten@example.com" })
+        #expect(!copies.isEmpty && copies.allSatisfy { $0.accountEmail == nil })
+        let exports = recorder.seen.filter { $0.kind == .exportFromPhotos }
+        #expect(exports.allSatisfy { $0.accountEmail == nil })
+    }
+
+    @Test func importReadsNameTheImportsAccount() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        try await h.baseline(.googleDrive)
+        let recorder = h.recordTransfers()
+        let folder = try ImportFolder()
+        try folder.add("clip.jpg", metadata: ImportFolder.photo(at: h.clock.now.addingTimeInterval(-3 * 86_400)))
+        let id = try await h.coordinator.startImport(
+            source: folder.source(), kind: .dropbox, displayName: "Trip", config: SourceConfig(account: "ten@example.com"))
+        await h.settle(rounds: 6)
+        _ = id
+        let reads = recorder.seen.filter { $0.kind == .download(.dropbox) }
+        #expect(!reads.isEmpty && reads.allSatisfy { $0.accountEmail == "ten@example.com" })
+    }
+
     @Test func localFolderWriteIsACopy() async throws {
         let h = try await Harness()
         try h.addNAS(scope: .full)

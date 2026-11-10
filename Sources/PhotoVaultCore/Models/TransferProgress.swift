@@ -21,17 +21,20 @@ public struct TransferProgress: Sendable, Equatable, Identifiable, CustomStringC
     public var fileName: String
     /// Display name of the destination for an upload or copy. Shown in the app only.
     public var destinationName: String?
+    /// The cloud account (e-mail) the transfer reads from or writes to. Shown in the app only.
+    public var accountEmail: String?
     public var bytesDone: Int64
     /// Nil when the total is not known; only the bytes done are shown then.
     public var bytesTotal: Int64?
     public var startedAt: Date
 
     public init(id: UUID = UUID(), kind: TransferKind, fileName: String, destinationName: String? = nil,
-                bytesDone: Int64 = 0, bytesTotal: Int64? = nil, startedAt: Date) {
+                accountEmail: String? = nil, bytesDone: Int64 = 0, bytesTotal: Int64? = nil, startedAt: Date) {
         self.id = id
         self.kind = kind
         self.fileName = fileName
         self.destinationName = destinationName
+        self.accountEmail = accountEmail
         self.bytesDone = bytesDone
         self.bytesTotal = bytesTotal
         self.startedAt = startedAt

@@ -96,7 +96,8 @@ extension ImportStage {
                 return .waitingForDisk
             }
             let transfer = env.transfers.begin(
-                kind: .download(source.kind), fileName: (item.relativePath as NSString).lastPathComponent, bytesTotal: item.sizeBytes)
+                kind: .download(source.kind), fileName: (item.relativePath as NSString).lastPathComponent,
+                accountEmail: source.config.account, bytesTotal: item.sizeBytes)
             defer { transfer.end() }
             let control = ExportControl()
             control.setProgress(transfer.sink)

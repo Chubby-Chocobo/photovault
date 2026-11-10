@@ -39,6 +39,24 @@ struct TransferLineTextTests {
         #expect(en { line([item(.copy, to: "Home NAS", done: gib, total: big)]) } == "Copying IMG_1234.MOV to Home NAS · 1.0 / 5.0 GB (20%)")
     }
 
+    @Test func cloudTransfersNameTheAccount() {
+        func account(_ kind: TransferKind, to destination: String? = nil, email: String = "ten@example.com") -> TransferProgress {
+            var transfer = item(kind, to: destination, done: gib, total: 2 * gib)
+            transfer.accountEmail = email
+            return transfer
+        }
+        #expect(vi { line([account(.download(.dropbox))]) } == "Đang tải IMG_1234.MOV từ Dropbox (ten@example.com) · 1,0 / 2,0 GB (50%)")
+        #expect(en { line([account(.download(.googleDrive))]) } == "Downloading IMG_1234.MOV from Google Drive (ten@example.com) · 1.0 / 2.0 GB (50%)")
+        #expect(vi { line([account(.upload, to: "Google Drive")]) } == "Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)")
+        #expect(vi { line([account(.copy, to: "NAS")]) } == "Đang chép IMG_1234.MOV vào NAS · 1,0 / 2,0 GB (50%)")
+        #expect(vi { line([account(.exportFromPhotos)]) } == "Đang xuất IMG_1234.MOV từ Photos · 1,0 / 2,0 GB (50%)")
+        let long = vi { line([account(.download(.dropbox), email: "a.very.long.mailbox.name.here@subdomain.example.com")]) } ?? ""
+        #expect(!long.contains("a.very.long.mailbox.name.here@subdomain.example.com") && long.contains("…") && long.contains(".com)"))
+        let missing = item(.download(.dropbox), done: gib, total: 2 * gib)
+        #expect(vi { line([missing]) }?.contains("(") == true)
+        #expect(vi { line([missing]) }?.contains("@") == false)
+    }
+
     @Test func differentUnitsKeepBothAndAnUnknownTotalShowsOnlyBytesDone() {
         let small = item(.upload, to: "Drive", done: 300 << 20, total: 2 * gib)
         #expect(vi { line([small]) } == "Đang upload IMG_1234.MOV lên Drive · 300 MB / 2,0 GB (14%)")

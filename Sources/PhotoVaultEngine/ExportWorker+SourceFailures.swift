@@ -12,12 +12,15 @@ extension ExportWorker {
             sourceId: asset.sourceId, localId: asset.localId, type: started.resource.type,
             originalFilename: started.resource.originalFilename)
         let kind: TransferKind
+        var account: String?
         if asset.sourceId == .photos { kind = .exportFromPhotos } else {
             let id = asset.sourceId
-            let sourceKind = try await env.store.read { db in try SourceRepository.fetch(db, id: id)?.kind }
-            kind = .download(sourceKind ?? .localFolder)
+            let source = try await env.store.read { db in try SourceRepository.fetch(db, id: id) }
+            kind = .download(source?.kind ?? .localFolder)
+            account = source?.config.account
         }
-        let transfer = env.transfers.begin(kind: kind, fileName: started.resource.originalFilename, bytesTotal: started.resource.sizeBytes)
+        let transfer = env.transfers.begin(
+            kind: kind, fileName: started.resource.originalFilename, accountEmail: account, bytesTotal: started.resource.sizeBytes)
         defer { transfer.end() }
         started.permit.control.setProgress(transfer.sink)
         let file: ExportedFile
