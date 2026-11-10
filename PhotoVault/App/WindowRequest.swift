@@ -11,7 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: tr(vi: "Chung", en: "General")
         case .content: tr(vi: "Nội dung", en: "Content")
         case .organization: tr(vi: "Sắp xếp", en: "Organization")
-        case .places: tr(vi: "Địa danh & riêng tư", en: "Places & privacy")
+        case .places: tr(vi: "Địa danh", en: "Places")
         case .sources: tr(vi: "Nguồn", en: "Sources")
         case .destinations: tr(vi: "Đích", en: "Destinations")
         case .advanced: tr(vi: "Nâng cao", en: "Advanced")
