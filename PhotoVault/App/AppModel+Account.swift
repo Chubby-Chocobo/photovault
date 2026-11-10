@@ -28,7 +28,12 @@ extension AppModel {
     /// Opens the browser and waits for the loopback redirect (FR-02).
     func signInGoogle() async throws -> GoogleIdentity {
         guard let env else { throw EngineError.invalidState("no environment") }
-        return try await env.auth.signIn()
+        do {
+            return try await env.auth.signIn()
+        } catch {
+            env.log.log(.notice, category: "drive.auth", SignInFailureLog.line(for: error))
+            throw error
+        }
     }
 
     func driveRoots() async throws -> [RootChooser.RemoteItemSummary] {

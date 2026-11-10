@@ -28,6 +28,31 @@ struct ErrorTextTests {
         #expect(ErrorText.message(for: DestinationError.transient(reason: "browser could not be opened")).contains("trình duyệt"))
     }
 
+    @Test func aSignInWithoutTheDrivePermissionSaysWhichBoxToTick() {
+        let message = ErrorText.message(for: DestinationError.itemRejected(reason: "drive.file scope not granted"))
+        #expect(message.contains("Google Drive"))
+        #expect(message.contains("tích"))
+        #expect(message != "Lỗi tạm thời. Thử lại sau.")
+    }
+
+    @Test func aRejectedAccountTokenPointsAtTheMacClock() {
+        for reason in ["id token expired", "id token audience", "id token issuer", "id token malformed", "id token missing"] {
+            let message = ErrorText.message(for: DestinationError.itemRejected(reason: reason))
+            #expect(message.contains("tài khoản"), "\(reason)")
+            #expect(message != "Lỗi tạm thời. Thử lại sau.", "\(reason)")
+        }
+    }
+
+    @Test func signInFailureLogLinesCarryOnlyTheReasonCode() {
+        #expect(SignInFailureLog.line(for: DestinationError.itemRejected(reason: "drive.file scope not granted"))
+            == "sign-in failed: itemRejected(drive.file scope not granted)")
+        #expect(SignInFailureLog.line(for: DestinationError.server(status: 503)) == "sign-in failed: server(503)")
+        // Reasons the app did not write itself never reach the log.
+        #expect(SignInFailureLog.line(for: DestinationError.transient(reason: "someone@example.com secret")) == "sign-in failed: transient(other)")
+        struct Other: Error {}
+        #expect(SignInFailureLog.line(for: Other()) == "sign-in failed: Other")
+    }
+
     @Test func otherErrorTypes() {
         #expect(ErrorText.message(for: DeviceGroupError.duplicateName(existingGroupId: "g")).contains("trùng tên"))
         #expect(ErrorText.message(for: DeviceGroupError.emptyName).contains("trống"))
