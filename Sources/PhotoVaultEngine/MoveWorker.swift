@@ -60,8 +60,12 @@ actor MoveWorker {
         var finished = 0
         var activity = MovePassActivity()
         do {
+            // A rename that has to be retried holds back the later renames of the same folder: they were queued
+            // for the name the first one produces.
+            var blockedFolders = Set<String>()
             passLoop: for move in pending {
                 try Task.checkCancellation()
+                if move.operation == .renameFolder, blockedFolders.contains(move.subject) { continue }
                 var change = Change.none
                 switch try await execute(move, record: record, destination: destination, ensurer: ensurer, change: &change) {
                 case .done:
@@ -71,7 +75,9 @@ actor MoveWorker {
                     case .renamed(let from, let to): activity.renamed(from: from, to: to)
                     case .moved(let folder): activity.moved(into: folder)
                     }
-                case .retry: continue
+                case .retry:
+                    if move.operation == .renameFolder { blockedFolders.insert(move.subject) }
+                    continue
                 case .stop: break passLoop
                 }
             }

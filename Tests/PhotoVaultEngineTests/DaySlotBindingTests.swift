@@ -3,6 +3,8 @@ import PhotoVaultCore
 import Testing
 @testable import PhotoVaultEngine
 
+typealias BoundResult = (inventory: RemoteInventory, conflicts: Int, guessed: Set<ArchiveDay>, byContents: Set<ArchiveDay>)
+
 @Suite struct DaySlotBindingTests {
     let day = ArchiveDay(year: 2026, month: 11, day: 8)!
     let dest = DestinationID.local()
@@ -22,15 +24,16 @@ import Testing
     }
 
     func bind(
-        _ folders: [RemoteFolderEntry], files: [RemoteFileEntry] = [], known: [DaySlot] = [], rows: [RemoteFolder] = [], drive: Bool = false
-    ) -> (inventory: RemoteInventory, conflicts: Int, guessed: Set<ArchiveDay>) {
+        _ folders: [RemoteFolderEntry], files: [RemoteFileEntry] = [], known: [DaySlot] = [], rows: [RemoteFolder] = [], drive: Bool = false,
+        assetPaths: [String: String] = [:]
+    ) -> BoundResult {
         var inventory = RemoteInventory()
         inventory.folders = folders
         inventory.files = files
-        return DaySlotBinding.bind(inventory, known: known.isEmpty ? [:] : [day: known], rows: rows, isDrive: drive)
+        return DaySlotBinding.bind(inventory, known: known.isEmpty ? [:] : [day: known], rows: rows, isDrive: drive, slotPathOfAsset: assetPaths)
     }
 
-    func path(_ result: (inventory: RemoteInventory, conflicts: Int, guessed: Set<ArchiveDay>), _ id: String) -> String? {
+    func path(_ result: BoundResult, _ id: String) -> String? {
         result.inventory.folders.first { $0.remoteId == id }?.logicalPath
     }
 
@@ -53,6 +56,33 @@ import Testing
         let known = [DaySlot(slot: nil, key: "K", name: "Hà Nội")]
         let result = bind([folder("2026-11-08 Hà Nội", id: "/new")], known: known, rows: [row("camera/2026-11-08", id: "/gone")])
         #expect(path(result, "/new") == "camera/2026-11-08")
+    }
+
+    @Test func aFolderKnownByNameKeepsItsPathWhateverSortsFirst() {
+        // "Hanoi City" sorts before the main folder's name but is unknown: it must not take the main path.
+        let known = [DaySlot(slot: nil, key: "K1", name: "Đà Lạt"), DaySlot(slot: "p0123456789ab", key: "K2", name: "Hà Nội")]
+        let result = bind([folder("2026-11-08 Hanoi City", id: "/A"), folder("2026-11-08 Đà Lạt", id: "/B")], known: known)
+        #expect(result.conflicts == 0)
+        #expect(path(result, "/B") == "camera/2026-11-08")
+        let other = path(result, "/A")
+        #expect(other != "camera/2026-11-08" && other != "camera/2026-11-08@p0123456789ab")
+        #expect(other?.hasPrefix("camera/2026-11-08@r") == true)
+        #expect(result.guessed == [day])
+    }
+
+    @Test func anUnknownLocalFolderTakesTheKnownSlotHoldingItsAssets() {
+        let known = [DaySlot(slot: nil, key: "K1", name: "Đà Lạt"), DaySlot(slot: "p0123456789ab", key: "K2", name: "Hà Nội")]
+        let files = [file("f1", in: "/A"), file("f2", in: "/A")].map { entry -> RemoteFileEntry in
+            var entry = entry
+            entry.claimedKey = "l:" + entry.item.remoteId
+            return entry
+        }
+        let result = bind(
+            [folder("2026-11-08 Hanoi City", id: "/A"), folder("2026-11-08 Đà Lạt", id: "/B")], files: files, known: known,
+            assetPaths: ["l:f1": "camera/2026-11-08@p0123456789ab", "l:f2": "camera/2026-11-08@p0123456789ab"])
+        #expect(path(result, "/A") == "camera/2026-11-08@p0123456789ab")
+        #expect(path(result, "/B") == "camera/2026-11-08")
+        #expect(result.byContents == [day] && result.guessed.isEmpty)
     }
 
     @Test func unknownLocalFoldersTakeMainFirstThenStableRecoveredSlots() {

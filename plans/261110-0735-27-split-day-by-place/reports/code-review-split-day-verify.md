@@ -216,7 +216,89 @@ I-new-1, I-new-2, I-new-A, I3 and M-new-1 to M-new-5 are unchanged in the commit
 2. I-new-A is a pre-existing gap found by the requested probe. Fix it in this branch, or record it as a known limit next to (b)?
 3. I-new-3: remap open move_job subjects in the rebinding transaction, or also add the from_value guard in MoveWorker (recommended: both)?
 
-Counts: Critical 0 / Important 5 / Minor 9
+Counts at 4280603: Critical 0 / Important 5 / Minor 9
+
+Status at 4280603: DONE_WITH_CONCERNS
+Summary (updated for 4280603): rebinding fixes the name-order guess when names agree and is crash-safe, but it leaves open renames on stale subjects, so a NAS folder can end up permanently mislabeled (I-new-3), and 2(b) with differing names is still a limit. Earlier summary: Every Critical and Important finding from both reviews is fixed, and reverting each fix makes a test fail. The new Drive-recovery wait silently stops NAS backups while a flagged Drive cannot recover, and it breaks first start when Drive's recovery has to wait. Probe (b) found Drive moving a whole extra group after a recovery whose folder name is out of date, even with Drive recovered first or alone.
+
+## 6. Final verification at `54ee60b` (`b7ee303`, `54ee60b`)
+
+**Checks.** Throwaway worktrees at `54ee60b`, removed afterwards. Probe file `ZZAuditFinal.swift` is in the session scratchpad.
+- Full suite x3: **1339 tests, pass / pass / pass**.
+- The lookup test took 2.74 s, 0.14 s and 0.16 s. Run 1 would have failed the old 2 s bound; the new bound is 10 s.
+- Release xcodebuild unsigned: **BUILD SUCCEEDED**.
+
+### Status of the open findings
+"Mutation" means the fix was reverted in the throwaway copy and the named test then failed.
+
+| Finding | Status | Evidence |
+|---|---|---|
+| I-new-1 NAS waits silently and with no limit | VERIFIED-FIXED | The NAS no longer waits for a Drive that is stalled (signed out, root problems, `userPaused`) or awaiting an owner decision, and waits at most 30 min otherwise. It shows `paused(waitingForDrive)` plus one activity row. Mutations: drop the stalled skip, then `aLocalDestinationDoesNotWaitForADriveThatIsSignedOut` fails; drop the decision skip, then `…AwaitingTheOwner` fails; drop the time bound, then `…ForHalfAnHourAndShowsWhy` fails. Probe `zzSignedOut`: the NAS recovers alone, and the new photo is `done` at the NAS (3 files). Probe `zzOfflineWait`: `paused(waitingForDrive)`, then the NAS recovers alone after 35 min of harness time. |
+| I-new-2 first start / add folder fail on `waitingForDrive` | VERIFIED-FIXED (code only) | Both catch sites now treat it as "continues by itself", with new text. The app target has no unit test; it compiles in Release. |
+| I-new-3 pending NAS rename hits the wrong folder | VERIFIED-FIXED | Open `move_job`s are remapped in the rebinding transaction, and `MoveWorker` discards a rename whose `fromValue` is not the folder's name. Mutations: drop the remap, then `aRenamePendingAtTheNASFollowsItsFolderThroughTheRebind` fails; drop the guard, then `aRenameQueuedForAnotherNameThanTheFolderCarriesIsDiscarded` fails. Probe `zzPendingRenameRebind`: the NAS ends with "Hà Nội: h=9" and "Đà Lạt: d=30", and no Drive file moves. |
+| I-new-A drifted extra folder emptied by 9 Drive moves | VERIFIED-FIXED | Pass 2 matches a key-less `p…` slot by its key slug. Mutation: `aFolderRecoveredWithoutAKeyIsRenamedWhenItsSlugIsTheGroupsOwn` and `aRenamedExtraFolderOnDriveIsRenamedNotEmptied` fail. Probe `zzDriveOnlyDrift`: 0 Drive moves, 1 rename. |
+| I3 flaky lookup test, `EXPLAIN` on copied SQL | VERIFIED-FIXED | `EXPLAIN` now runs on `DaySplitWriter.openRenamesSQL` and `folderNamesSQL`, with a 10 s bound. Mutation: drop the filter from `folderNamesSQL`, then the test fails at once (0.36 s, on the plan assertion). |
+| 2(b) names that differ at the loss | VERIFIED-FIXED for Drive; see I-new-B for the NAS | All 8 drift cases (extra or main folder renamed, at Drive or at the NAS, one pass or Drive added later) plus Drive-only: **0 Drive file moves and 0 duplicate Drive names**. A drifted Drive name is fixed with one `renameFolder`. Mutations: disable the membership mapping, then `aRenamedExtraFolderOnDrive…` and `aRenamedMainFolderOnDrive…` fail; disable `renameDriftedFolders`, then both fail too. |
+| M-new-1 `remote_folder` scan | VERIFIED-FIXED | It now uses the destination filter (same mutation as I3). |
+| M-new-2 permanent deferral after a rename that failed for good | VERIFIED (accepted, documented) | Recorded in plan Decisions. |
+| M-new-3 ordering untested | VERIFIED (documented) | Recorded as an optimisation. |
+| M-new-4 docs | VERIFIED-FIXED | The architecture sentence is fixed, the wait and its bound are documented, and `plan.md` no longer says "any order". |
+| M-new-5 activity text | VERIFIED-FIXED | The "its files are untouched" claim is gone. |
+| M-new-6 rebinding before the match guard | VERIFIED-FIXED | Mutation-free evidence: test `nothingIsReboundWhileDrivesRecoveryAsksTheOwner`, and probe `zzRebindBeforeDecision` (rows unchanged, days stay provisional, 1 decision). |
+| M-new-7 docs overclaim | PARTIAL | The Drive claims are now true. The recorded conflict limit understates its effect (see I-new-B). |
+| M-new-8 stale flags, PK collision | VERIFIED-FIXED | No flags once Drive is recovered (`aFolderGuessedAfterDriveWasRecoveredIsNotProvisional`); a timezone restore clears them; a PK clash leaves the day provisional. Mutation: drop the PK check, then `aRowOutsideTheRebindOnATargetPathLeavesTheDayAlone` fails. |
+
+**Correction to section 2.** The table there reported 0 Drive moves for "one pass, NAS extra folder renamed", which is right. But that probe never checked the NAS's own recovery state, and the NAS had ended in an owner decision (see I-new-B). That path is unchanged since `5ace4cd`, so it was probably already true then.
+
+### Rebinding and remap: regressions hunted
+- **Crash between the phases.** None is possible: both phases, the asset slots, `day_stat`/`day_place` and the `move_job` remap are one `store.write`.
+- **A move interrupted by a crash (`afterMoveStarted`/`afterMoveBeforeCommit`) and then rebound before it reruns.**
+  - The rebinding applies one mapping to the folder rows, `remote_logical_parent`, `place_slot` and `move_job.from_value`/`to_value`, so each logical path still names the same physical folder.
+  - `MoveWorker` takes `from` from the rebound parent and recomputes the target from the rebound slot. The replay is the same operation as without the rebinding, so no new idempotency case appears. This is reasoned from the code, not probed with a crash point.
+- **Membership mapping.**
+  - It counts `upload_job` rows with a remote id for the day across destinations; Drive has no jobs yet at that point.
+  - It is greedy by shared count, with a lexicographic tie-break. Names come second.
+  - No case in 8 drift probes plus 3 tests mislabeled a folder or moved a Drive file.
+- **Rename discard: see M-new-9.**
+
+### Important: I-new-B. A local folder with an out-of-date name, recovered after Drive (the default order), either blocks the NAS behind an owner decision or silently duplicates a group into a mislabeled folder
+This is the developer's recorded limit. In my judgement it is **not acceptable for release** as recorded.
+- **Mechanism.** `DaySlotBinding.bind` binds the folders of a day one by one, sorted by collision key.
+  - A folder whose name no known slot carries ("Hanoi City", which sorts before "Đà Lạt") takes the fallback first. On a local destination that means `camera/<day>` while it is still free.
+  - The folder that really is the main one ("Đà Lạt", known by name) then finds its path bound and is **dropped as a conflict**.
+- **Two-province probe (`zzOnePass` nasExtraRenamed and driveExtraRenamed).**
+  - Drive moves nothing, but the NAS ends in `paused(recovering)` with `recoveryNeedsDecision`: 9 of 39 matched, and NAS backups are held.
+  - In the NAS-renamed variant, "Try again" can never succeed, because the NAS folder keeps its name. "Continue without the old data" re-uploads all 39 files next to the existing ones.
+- **Three-province probe (`zzConflictWithThreeProvinces`; Đà Lạt 10 main, Bắc Ninh 9, Hà Nội 3; the NAS's Hà Nội folder is "Hanoi City").** The dropped group is under 50%, so the recovery goes on with only the activity row "1 folder claimed a path… left out".
+  - The NAS ends with `Hanoi City: d=30` (**the 30 Đà Lạt files uploaded again, into a folder named "Hanoi City"**), `Đà Lạt: d=30` (the originals, now untracked), `Hà Nội: h=9` (9 NAS moves out of "Hanoi City") and `Bắc Ninh: b=27`.
+  - That is 96 files where there were 66. The main row is named "Hanoi City" while the database says Đà Lạt, and no rename is ever queued.
+  - The recorded limit's "Nothing is moved or lost" does not hold for this case. Nothing is lost, but files move at the NAS, bytes are duplicated, and a backup folder is permanently mislabeled.
+- **Trigger.** A NAS folder name that differs from Drive's at the loss: a rename still pending at the NAS, or a name done at the NAS only. That is exactly 2(b), in the default Drive-first order.
+- **Fix (small, inside `DaySlotBinding`):**
+  1. Bind every folder of a day by id and by name first, then run the fallback for what is left.
+  2. A local fallback never takes the path of a known slot; use `@r…` instead. The namer and membership then settle it, at worst with NAS-only moves.
+  3. Optionally, before the fallback, bind an unknown local folder to the known slot that holds most of its files' assets (the fingerprint names give the asset keys). That makes it a zero-move case.
+  - Tests: both probes above. Assert no conflict, no owner decision, an unchanged file count at the NAS, and folder names that match their contents.
+
+### Minor
+- **M-new-9. A chained rename after a transient failure ends on the older name, for good (already so before the guard).**
+  - `MoveWorker` handles `.retry` with `continue`, so the second rename of the same folder (B → C, queued with `fromValue` B) runs in the same pass while the folder is still A.
+  - The guard discards it, then the first rename succeeds on retry. Probe `zzChainedRenameAfterTransientFailure`: the Drive folder and the row end at "B", and both jobs are `done`.
+  - Without the guard the result was B as well (A→C, then C→B), so this is not a regression of the outcome. What changed: if the first rename failed for good, the second used to heal it (A→C) and is now discarded.
+  - Nothing reconciles a row's `display_name` with its slot's name afterwards.
+  - Fix: keep renames in order per subject within a pass (stop that subject's later jobs on `.retry`). Optionally, after the moves, queue a rename for any row whose name differs from its slot's name and that has no open or failed rename.
+- **M-new-10. `paused(waitingForDrive)` can outlive the wait.** `DestinationHealth` skips that status, and only `enter()` or `finish()` replace it.
+  - If the wait ends (time limit, or Drive stalls) while the NAS is itself unreachable, the NAS row keeps saying "waiting for Google Drive recovery" until the NAS comes back.
+  - Likewise, an owner resume during the wait shows "active" while it still waits (at most 30 min).
+  - Cosmetic. Set the status back when `mustWaitForDrive` returns false.
+- **M-new-7 (PARTIAL, above).** The architecture doc, ADR and plan "Known limit" describe the conflict as "asks the owner; nothing is moved or lost". Correct the text together with the I-new-B fix, or describe the duplicate-upload outcome if the fix is deferred.
+
+### Merge readiness
+**Not ready to merge as is.** Every finding from the earlier rounds is fixed, and the Importants are mutation-proven. Drive files never move in any of the probed orders. One Important remains: I-new-B sits in the default recovery order. Its worst case puts duplicate bytes into a permanently mislabeled NAS folder without asking the owner; its common case leaves the NAS held behind an owner decision that "Try again" cannot clear.
+- The fix is local to `DaySlotBinding`: two passes, and no known slot path in the fallback. With it and the two probe tests, I would call the branch ready.
+- If the lead accepts I-new-B as a known limit for this release instead, then M-new-7 must at least be corrected, so the docs do not promise "nothing is moved". The branch is otherwise mergeable, and M-new-9/10 can follow.
+
+Counts (final, at 54ee60b): Critical 0 / Important 1 / Minor 3
 
 Status: DONE_WITH_CONCERNS
-Summary (updated for 4280603): rebinding fixes the name-order guess when names agree and is crash-safe, but it leaves open renames on stale subjects, so a NAS folder can end up permanently mislabeled (I-new-3), and 2(b) with differing names is still a limit. Earlier summary: Every Critical and Important finding from both reviews is fixed, and reverting each fix makes a test fail. The new Drive-recovery wait silently stops NAS backups while a flagged Drive cannot recover, and it breaks first start when Drive's recovery has to wait. Probe (b) found Drive moving a whole extra group after a recovery whose folder name is out of date, even with Drive recovered first or alone.
+Summary (final): All earlier findings are fixed or documented, the Importants are proven by mutation, and Drive files no longer move in any of the 8 drift probes. One Important remains in the default Drive-first order (I-new-B): a local folder with an out-of-date name makes the binder drop the real main folder, which either holds the NAS behind an owner decision or re-uploads that group into a mislabeled folder. The fix is small; not ready to merge until it is fixed or explicitly accepted.

@@ -69,6 +69,9 @@ extension Harness {
 let daLat = GeoPoint(latitude: 11.9404, longitude: 108.4583)
 let hanoi = GeoPoint(latitude: 21.0285, longitude: 105.8542)
 let tokyo = GeoPoint(latitude: 35.6762, longitude: 139.6503)
+let bacNinh = GeoPoint(latitude: 21.186, longitude: 106.076)
+let bacNinhVietnamese = GeoPlace(isoCountryCode: "VN", country: "Việt Nam", administrativeArea: "Bắc Ninh", locality: "Bắc Ninh")
+let bacNinhEnglish = GeoPlace(isoCountryCode: "VN", country: "Vietnam", administrativeArea: "Bac Ninh", locality: "Bac Ninh")
 
 extension FakeGeocoder {
     /// Answers for `en` and for the cell's second locale (`PlaceNameRule.secondLocale`); `local` defaults to the English answer.

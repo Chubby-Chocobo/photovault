@@ -21,7 +21,7 @@ import Testing
         var reader: DirectoryReader?
     }
 
-    func world(drive: Bool, local: Bool, localFirst: Bool = false, daLatCount: Int = 10, hanoiCount: Int = 3, raw: Bool = false) async throws -> World {
+    func world(drive: Bool, local: Bool, localFirst: Bool = false, daLatCount: Int = 10, hanoiCount: Int = 3, bacNinhCount: Int = 0, raw: Bool = false) async throws -> World {
         let h = try await Harness.organized()
         try await h.update {
             $0.viewByDeviceEnabled = false
@@ -38,8 +38,10 @@ import Testing
         try addDestinations(h, drive: drive, local: local, localFirst: localFirst)
         await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         await h.geocoder.seed(hanoi, en: hanoiEnglish, local: hanoiVietnamese)
+        await h.geocoder.seed(bacNinh, en: bacNinhEnglish, local: bacNinhVietnamese)
         for index in 0..<daLatCount { await h.add(h.snapshot("d\(index)", daysAgo: 3, location: daLat), recordChange: false) }
         for index in 0..<hanoiCount { await h.add(h.snapshot("h\(index)", daysAgo: 3, raw: raw, location: hanoi), recordChange: false) }
+        for index in 0..<bacNinhCount { await h.add(h.snapshot("b\(index)", daysAgo: 3, location: bacNinh), recordChange: false) }
         try await h.coordinator.beginBaseline(destinations: drive ? [.googleDrive] + (local ? [h.nasId] : []) : [h.nasId])
         await h.settle(rounds: 8)
         return World(h: h, root: root, reader: reader)

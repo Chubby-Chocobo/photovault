@@ -106,9 +106,12 @@ actor RecoveryService {
             if decision || drive.status.reason.map(Self.driveStalled.contains) == true { continue }
             blocking = true
         }
-        guard blocking else { return false }
         let id = record.id
         let now = env.clock.now
+        guard blocking else {
+            try await endWait(record, now: now)
+            return false
+        }
         let since = try await env.store.read { db in try KeyValueRepository.int(db, Self.waitSinceKey + id.rawValue) }
         guard let since else {
             let owner = record.status == .paused(.userPaused)
@@ -122,7 +125,19 @@ actor RecoveryService {
         }
         guard now.timeIntervalSince1970 - TimeInterval(since) >= Self.driveWaitLimit else { return true }
         env.log.log(.notice, category: "recovery", "destination=\(id) stopped waiting for the Drive recovery")
+        try await endWait(record, now: now)
         return false
+    }
+
+    /// The status of a destination that was waiting goes back to what the owner had, even if the recovery that
+    /// follows cannot start (the destination may be unreachable).
+    private func endWait(_ record: DestinationRecord, now: Date) async throws {
+        guard record.status == .paused(.waitingForDrive) else { return }
+        let id = record.id
+        try await env.store.write { db in
+            let owner = try KeyValueRepository.int(db, Self.previousKey + id.rawValue) == 1
+            try DestinationRepository.setStatus(db, id: id, status: owner ? .paused(.userPaused) : .active, now: now)
+        }
     }
 
     // MARK: Recovery
@@ -176,7 +191,9 @@ actor RecoveryService {
         let (known, rows) = try await knownSlots(for: inventory, destinationId: record.id)
         let isDrive = destination.capabilities.supportsAppProperties
         let provisional = try await env.store.read { db in try ProvisionalSlots.days(db) }
-        let bound = DaySlotBinding.bind(inventory, known: known, rows: rows, isDrive: isDrive, provisionalDays: provisional)
+        let bound = DaySlotBinding.bind(
+            inventory, known: known, rows: rows, isDrive: isDrive, provisionalDays: provisional,
+            slotPathOfAsset: isDrive ? [:] : try await assetSlotPaths(days: Set(inventory.folders.compactMap(\.day))))
         inventory = bound.inventory
         var stats = RecoveryStats()
         stats.found = try await walkedFileCount(record: record, destination: destination)
@@ -203,10 +220,11 @@ actor RecoveryService {
         let daysWithRows = try await env.store.read { db in try DayPlaceRepository.days(db) }
         let folders = try await writer.writeFolders(inventory.folders, listedIds: Set(inventory.folders.map(\.remoteId)))
         stats.folders = folders.written
-        if !resolvedDays.isEmpty {
+        let renamedDays = resolvedDays + bound.byContents.sorted()
+        if !renamedDays.isEmpty {
             let id = record.id
             let now = env.clock.now
-            let days = resolvedDays
+            let days = renamedDays
             try await env.store.write { db in try ProvisionalSlots.renameDriftedFolders(db, destinationId: id, days: days, now: now) }
         }
         stats.folderConflicts = bound.conflicts + folders.conflicts
@@ -232,6 +250,20 @@ actor RecoveryService {
             try DayPlaceRepository.deleteAll(db)
             try AssetPlacementRepository.clearPlaceSlots(db)
             try ProvisionalSlots.clear(db)
+        }
+    }
+
+    /// Where the database places each camera asset of the given days (main folder or slot).
+    private func assetSlotPaths(days: Set<ArchiveDay>) async throws -> [String: String] {
+        let wanted = Set(days.map(\.description))
+        return try await env.store.read { db in
+            var result: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT asset_key, placement_day, place_slot FROM asset WHERE placement_category = 'camera' AND placement_day IS NOT NULL") {
+                guard let day: String = row["placement_day"], wanted.contains(day), let parsed = ArchiveDay(string: day) else { continue }
+                let slot: String? = row["place_slot"]
+                result[row["asset_key"]] = slot.map { DynamicLayout.slotLogicalPath(day: parsed, slot: $0) } ?? "camera/\(day)"
+            }
+            return result
         }
     }
 

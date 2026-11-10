@@ -304,5 +304,7 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - Rebinding runs after the match guard; a day whose target path is already used by a `remote_folder` row outside the rebind is left provisional and logged.
 - No provisional flag is written once a Drive destination is probed and not awaiting recovery; a timezone restore clears the flags.
 - Open `renameFolder` jobs are remapped to the rebound subject, open `moveFile` jobs to the rebound paths, and `MoveWorker` discards a rename whose `fromValue` differs from the folder's current name.
-- Known limit found while testing: a local folder with an unknown name, recovered after Drive, next to folders Drive already knows, falls back to a slot another folder holds; it is refused as a conflict and its files are not adopted, so the recovery asks the owner. Nothing is moved or lost.
+- Resolved after the final review: `DaySlotBinding` binds every folder of a day by id and name first, then an unknown local folder to the known slot holding most of its assets, then falls back; a fallback never takes a known slot's path. Tests: two provinces (no owner decision, no Drive move, names fixed) and three provinces (no group uploaded again, no extra folder).
+- Remaining limit: a local folder with an unknown name and no sidecar-identified asset in a known slot is a guess (`@r…`, provisional); its files may move at that destination, never at Drive.
+- Renames of one folder run in queue order in a pass: a rename that must be retried holds back the later renames of that folder. `paused(waitingForDrive)` is reset when the wait ends.
 - Review later: yes

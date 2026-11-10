@@ -24,15 +24,15 @@ extension SplitDayRecoveryTests {
 
     /// "<folder>: d=<Đà Lạt files> h=<Hà Nội files>" per camera folder at the NAS.
     private func nasContents(_ root: URL) -> [String] {
-        var per: [String: (d: Int, h: Int)] = [:]
+        var per: [String: (d: Int, h: Int, b: Int)] = [:]
         for key in treeListing(root).keys where key.hasPrefix("Camera Uploads/") {
             let parts = key.split(separator: "/")
             guard parts.count >= 3 else { continue }
-            var entry = per[String(parts[1])] ?? (0, 0)
-            if parts.last!.contains("_h") { entry.h += 1 } else { entry.d += 1 }
+            var entry = per[String(parts[1])] ?? (0, 0, 0)
+            if parts.last!.contains("_h") { entry.h += 1 } else if parts.last!.contains("_b") { entry.b += 1 } else { entry.d += 1 }
             per[String(parts[1])] = entry
         }
-        return per.sorted { $0.key < $1.key }.map { "\($0.key): d=\($0.value.d) h=\($0.value.h)" }
+        return per.sorted { $0.key < $1.key }.map { "\($0.key): d=\($0.value.d) h=\($0.value.h)" + ($0.value.b > 0 ? " b=\($0.value.b)" : "") }
     }
 
     private func recoverNASAloneThenAddDrive(_ w: World, pauseNAS: Bool = false) async throws {
@@ -160,5 +160,67 @@ extension SplitDayRecoveryTests {
         #expect(await w.h.drive.folders.map(\.name).sorted() == before, "the folder keeps its name")
         let open = try w.h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job WHERE state IN ('pending', 'inProgress', 'failed')") ?? 0 }
         #expect(open == 0, "the stale job is gone")
+    }
+
+    /// A local folder whose name no known slot carries must not take the path of the folder that does.
+    @Test func aLocalFolderWithAnOldNameIsRecoveredAfterDriveWithoutAnOwnerDecision() async throws {
+        let w = try await world(drive: true, local: true)
+        let root = try #require(w.root)
+        let base = root.appendingPathComponent("Camera Uploads")
+        try FileManager.default.moveItem(at: base.appendingPathComponent(hanoiFolder), to: base.appendingPathComponent("\(day) Hanoi City"))
+        let before = await driveFileParents(w.h)
+        try await recoverFresh(w, drive: true, local: true)
+        #expect(try w.h.destinationRecord(w.h.nasId).recoveryRequired == false)
+        #expect(await w.h.coordinator.pendingOwnerDecisions().isEmpty, "no owner decision")
+        #expect(await driveFilesMoved(w.h, since: before) == 0)
+        #expect(nasContents(root) == ["\(hanoiFolder): d=0 h=9", "\(daLatFolder): d=30 h=0"], "\(nasContents(root))")
+    }
+
+    @Test func aLocalFolderWithAnOldNameDoesNotUploadAGroupAgainWithThreeProvinces() async throws {
+        let w = try await world(drive: true, local: true, bacNinhCount: 9)
+        let root = try #require(w.root)
+        let base = root.appendingPathComponent("Camera Uploads")
+        try FileManager.default.moveItem(at: base.appendingPathComponent(hanoiFolder), to: base.appendingPathComponent("\(day) Hanoi City"))
+        let before = nasContents(root)
+        #expect(before.count == 3, "\(before)")
+        try await recoverFresh(w, drive: true, local: true)
+        let after = nasContents(root)
+        #expect(Set(after.map { $0.split(separator: ":").last! }) == Set(before.map { $0.split(separator: ":").last! }), "same contents: \(after)")
+        #expect(after.count == 3, "no extra folder: \(after)")
+        #expect(after.contains { $0.hasPrefix(daLatFolder) && $0.hasSuffix("d=30 h=0") } && after.contains { $0.hasPrefix(hanoiFolder) })
+    }
+
+    @Test func chainedRenamesOfOneFolderRunInOrderEvenAfterATransientFailure() async throws {
+        let w = try await world(drive: true, local: false, hanoiCount: 0)
+        let mid = "\(day) Mid"
+        let final = "\(day) Final"
+        try w.h.write { db in
+            let now = Date()
+            try MoveJobRepository.insert(db, MoveJob(destinationId: .googleDrive, operation: .renameFolder, subject: "camera/\(self.day)", fromValue: self.daLatFolder, toValue: mid, createdAt: now))
+            try MoveJobRepository.insert(db, MoveJob(destinationId: .googleDrive, operation: .renameFolder, subject: "camera/\(self.day)", fromValue: mid, toValue: final, createdAt: now))
+        }
+        await w.h.drive.failNext(.rename, with: .server(status: 500), times: 1)
+        await w.h.settle(rounds: 6)
+        let names = await w.h.drive.folders.map(\.name).filter { $0.hasPrefix(day.description + " ") }
+        #expect(names == [final], "\(names)")
+        let open = try w.h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job WHERE state != 'done'") ?? 0 }
+        #expect(open == 0)
+    }
+
+    @Test func theWaitingStatusEndsWithTheWaitEvenIfTheDestinationIsOffline() async throws {
+        let w = try await world(drive: true, local: true)
+        try await w.h.loseDatabase(localContent: w.reader)
+        try addDestinations(w.h, drive: true, local: true, localFirst: true)
+        await w.h.drive.setStatus(.unavailable(.offline))
+        try w.h.updateDestination(.googleDrive) { $0.recoveryRequired = true }
+        try await w.h.coordinator.beginBaseline(destinations: [w.h.nasId, .googleDrive])
+        await w.h.settle(rounds: 3)
+        #expect(try w.h.destinationRecord(w.h.nasId).status == .paused(.waitingForDrive))
+        // Drive stalls (signed out) and the NAS cannot be reached: the wait is over, so the status must not claim it.
+        try w.h.updateDestination(.googleDrive) { $0.status = .paused(.signedOut) }
+        let moved = try #require(w.root).deletingLastPathComponent().appendingPathComponent("away-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: try #require(w.root), to: moved)
+        await w.h.settle(rounds: 3)
+        #expect(try w.h.destinationRecord(w.h.nasId).status != .paused(.waitingForDrive))
     }
 }
