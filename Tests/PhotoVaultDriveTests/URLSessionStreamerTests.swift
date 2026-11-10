@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PhotoVaultCore
+import PhotoVaultTestSupport
 @testable import PhotoVaultDrive
 
 /// Answers requests from a table keyed by host, so tests can run side by side.
@@ -86,16 +87,14 @@ func scriptedTransport() -> URLSessionTransport {
         let got = Received()
         let transport = scriptedTransport()
         let task = Task { try await transport.stream(self.request(host)) { got.add($0) } }
-        for _ in 0..<200 where got.all.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(!got.all.isEmpty)
+        #expect(await pollUntil { !got.all.isEmpty })
         task.cancel()
         let outcome = await task.result
         switch outcome {
         case .success: Issue.record("a cancelled download must not report success")
         case .failure(let error): #expect(error is CancellationError, "\(error)")
         }
-        for _ in 0..<200 where !ScriptedURLProtocol.wasStopped(host: host) { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(ScriptedURLProtocol.wasStopped(host: host), "the network request was cancelled too")
+        #expect(await pollUntil { ScriptedURLProtocol.wasStopped(host: host) }, "the network request was cancelled too")
     }
 
     @Test func aFailedRequestThrowsTheTransportError() async throws {

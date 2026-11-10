@@ -23,6 +23,8 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var callbackConnection: NWConnection?
     private var acceptedCallback: LoopbackCallback?
+    private var acceptedTotal = 0
+    private var listenerStopped = false
 
     public init(expectedState: String, timeout: TimeInterval = LoopbackRedirectServer.defaultTimeout,
                 connectionTimeout: TimeInterval = 10, port: UInt16 = 0) throws {
@@ -50,6 +52,7 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
                     if let port = self?.listener.port?.rawValue { gate.resume(.success(port)) }
                     else { gate.resume(.failure(DestinationError.transient(reason: "loopback port unavailable"))) }
                 case .failed, .cancelled:
+                    if let self { self.lock.withLock { self.listenerStopped = true } }
                     gate.resume(.failure(DestinationError.transient(reason: "loopback listener failed")))
                 default: break
                 }
@@ -63,6 +66,10 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
 
     /// Connections currently open and not yet answered.
     var openConnectionCount: Int { lock.withLock { connections.count } }
+    /// Connections accepted since the start, closed ones included.
+    var acceptedConnectionCount: Int { lock.withLock { acceptedTotal } }
+    /// True once the listener has stopped and takes no new connection.
+    var hasStoppedListening: Bool { lock.withLock { listenerStopped } }
 
     /// Tells the browser that the selection had more items than the app takes, and closes the callback connection.
     public func respondSelectionTooLarge() {
@@ -119,7 +126,10 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private func accept(_ connection: NWConnection) {
         lock.lock()
         let done = outcome != nil
-        if !done { connections[ObjectIdentifier(connection)] = connection }
+        if !done {
+            connections[ObjectIdentifier(connection)] = connection
+            acceptedTotal += 1
+        }
         lock.unlock()
         guard !done else { connection.cancel(); return }
         connection.start(queue: queue)

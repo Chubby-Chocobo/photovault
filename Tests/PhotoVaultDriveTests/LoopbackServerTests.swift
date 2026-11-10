@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultDrive
 
@@ -12,7 +13,8 @@ private enum RawSocket {
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = port.bigEndian
         guard inet_pton(AF_INET, host, &address.sin_addr) == 1 else { close(fd); return nil }
-        var timeout = timeval(tv_sec: 3, tv_usec: 0)
+        // Reads wait for the server to close; the timeout only stops a hang, so it is far above a loaded machine's delays.
+        var timeout = timeval(tv_sec: 60, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         let result = withUnsafePointer(to: &address) {
@@ -143,7 +145,7 @@ private enum RawSocket {
         _ = try await server.awaitCode()
         server.respond(success: true)
         _ = try await browser.value
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(await pollUntil { server.hasStoppedListening })
         await #expect(throws: (any Error).self) { _ = try await fetch(port, "/oauth2/callback?code=c2&state=st") }
     }
 
@@ -153,12 +155,10 @@ private enum RawSocket {
         defer { server.cancel() }
         let fd = try #require(RawSocket.connect(host: "127.0.0.1", port: port))
         defer { close(fd) }
-        // A busy machine accepts the connection late: wait for it instead of a fixed pause.
-        let deadline = ContinuousClock.now + .seconds(5)
-        while server.openConnectionCount == 0, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(server.openConnectionCount == 1)
+        // The read waits for the server to close the connection, however late the timeout fires.
         let (data, closed) = RawSocket.readAll(fd)
         #expect(closed && data.isEmpty)
+        #expect(server.acceptedConnectionCount == 1, "the connection was accepted, then closed by the timeout")
         #expect(server.openConnectionCount == 0)
     }
 

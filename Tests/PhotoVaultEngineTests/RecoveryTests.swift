@@ -236,12 +236,7 @@ import Testing
         // The owner's request is made while the destination still needs recovery, then waits for the lane.
         await coordinator.lane.beginCommand()
         let request = Task { try await coordinator.startRecovery(.googleDrive, onlyIfRequired: true) }
-        var waiting = false
-        for _ in 0..<2_000 where !waiting {
-            waiting = await coordinator.lane.hasWaitingCommands
-            if !waiting { try await Task.sleep(nanoseconds: 1_000_000) }
-        }
-        #expect(waiting)
+        #expect(await pollUntil { await coordinator.lane.hasWaitingCommands })
         // Meanwhile the cycle's own recovery finishes.
         let first = try await coordinator.hardening.recovery.recover(.googleDrive)
         guard case .recovered = first else {

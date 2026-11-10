@@ -119,6 +119,11 @@ extension DriveImportSource {
     /// The paths of the first picked items, read with metadata GETs only. nil on any error or when `timeout`
     /// passes: this must never delay or fail the import, which keeps the folder's name.
     public func pickedLocations(timeout: Duration = .seconds(10)) async -> DriveImportLocations? {
+        await pickedLocations(giveUp: { try? await Task.sleep(for: timeout) })
+    }
+
+    /// The lookup stops waiting once `giveUp` returns; tests end it on a signal rather than after a time.
+    func pickedLocations(giveUp: @escaping @Sendable () async -> Void) async -> DriveImportLocations? {
         let http = http
         let picked = lister.pickedIds
         return await withTaskGroup(of: DriveImportLocations?.self) { group in
@@ -130,7 +135,7 @@ extension DriveImportSource {
                 return await resolver.resolve(picked: picked)
             }
             group.addTask {
-                try? await Task.sleep(for: timeout)
+                await giveUp()
                 return nil
             }
             let first = await group.next() ?? nil

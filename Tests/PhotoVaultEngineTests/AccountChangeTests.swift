@@ -63,12 +63,12 @@ import Testing
         try await h.baseline(.googleDrive)
         let entered = Flag()
         wrapper.beforeUpload = {
+            // Only the first transfer hangs until the account change cancels it; the long sleep only stops a hang.
             guard entered.takeFirst() else { return }
-            try await Task.sleep(nanoseconds: 10_000_000_000)
+            try await Task.sleep(for: .seconds(300))
         }
         let cycle = Task { await h.run() }
-        for _ in 0..<2_000 where !entered.isSet { try await Task.sleep(nanoseconds: 1_000_000) }
-        #expect(entered.isSet)
+        #expect(await pollUntil { entered.isSet })
 
         let seen = Box<(accountBefore: String?, uploadsBefore: Int, uploadsAfter: Int)>((nil, -1, -1))
         let store = h.store
