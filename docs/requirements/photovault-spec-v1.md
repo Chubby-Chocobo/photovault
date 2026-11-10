@@ -29,10 +29,10 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 6. Không làm đầy ổ Mac.
 7. Phát hiện backup bị mất; không im lặng.
 8. Quyền tối thiểu: Photos (không Full Disk Access), `drive.file`, Dropbox chỉ đọc, chỉ thư mục hoặc file do owner chọn.
-9. Nhiều nguồn, cùng một cách tổ chức: Photos là nguồn chính, liên tục; có thể nhập một lần từ một thư mục trên Mac, Google Drive hoặc Dropbox (sửa đổi 2026-11-10, quyết định 0026); nguồn liên tục khác sẽ thêm sau (sửa đổi 2026-11-09, issue #17, quyết định 0024).
+9. Nhiều nguồn, cùng một cách tổ chức: Photos là nguồn liên tục duy nhất (sửa đổi 2026-11-10, quyết định 0029); có thể nhập một lần từ một thư mục trên Mac, Google Drive hoặc Dropbox (sửa đổi 2026-11-10, quyết định 0026). Cơ chế để thêm nguồn liên tục sau này được thiết kế nhưng chưa làm, xem [continuous-source-extension](../architecture/continuous-source-extension.md) (sửa đổi 2026-11-09, issue #17, quyết định 0024).
 **Phi mục tiêu:**
 - **Không bao giờ xoá dữ liệu backup** ở bất kỳ đích nào. Không sync hai chiều. Không sửa Photos library.
-- Không làm: Google Photos, S3, OneDrive, mã hoá phía client, backend, telemetry, phân phối. (Nguồn liên tục từ Dropbox và nhiều tài khoản Google: chuyển sang "để sau", §15; sửa đổi 2026-11-09, issue #17, quyết định 0024. Nhập một lần từ Dropbox và Google Drive: quyết định 0026.)
+- Không làm: Google Photos, S3, OneDrive, mã hoá phía client, backend, telemetry, phân phối. (Nguồn liên tục ngoài Photos, gồm Dropbox và Drive của tài khoản Google khác: không làm, để sau ở §15; sửa đổi 2026-11-10, quyết định 0029. Nhập một lần từ Dropbox và Google Drive: quyết định 0026.)
 - Không hỗ trợ nhiều library Photos.
 ## 3. Thuật ngữ
  
@@ -421,7 +421,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 3. Gặp `localIdentifier` lạ (library rebuild, đăng xuất iCloud) → tra cloud ID → **gắn lại** vào asset cũ; không có thì là asset mới.
 4. FR-53 bổ sung cloud ID cho asset `l:`.
 5. [VERIFY M0-2] cloud ID có ổn định qua rebuild/đăng xuất iCloud không; độ dài.
-6. File nhập từ thư mục (FR-111), Google Drive (FR-119) hoặc Dropbox (FR-120) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Nguồn liên tục khác (để sau) sẽ dùng `s:<sourceId>/<itemId>`.
+6. File nhập từ thư mục (FR-111), Google Drive (FR-119) hoặc Dropbox (FR-120) → `x:<sha256 của file primary>` (64 ký tự hex thường; vừa `pvAssetId` 124 byte). Cùng nội dung cho cùng khoá ở mọi lần nhập; `localId` = `<sourceId>/<đường dẫn tương đối của primary>`. Với nguồn liên tục trong tương lai, kế hoạch đề xuất (chưa implement, không phải quy tắc đã chốt) là dùng `x:` như trên thay cho `s:<sourceId>/<itemId>` của quyết định 0024; xem [continuous-source-extension](../architecture/continuous-source-extension.md).
 **Placement** (`placement_category`, `placement_day` hoặc `unknown`, `name_stem`):
 - Chốt ngay khi có category chính thức, trước khi export bất kỳ resource nào để upload.
 - Dùng cho mọi file của asset ở mọi đích.
@@ -723,9 +723,9 @@ Tiền đề: scan `complete` + FR-53 xong.
  
 - S3-compatible với layout stable `YYYY/MM` (không move), multipart + resume, key không có quyền xoá, Object Lock.
 - OneDrive, WebDAV, Immich.
-- Nguồn liên tục ngoài Photos (Dropbox, Flickr, Drive của tài khoản Google khác); Google Takeout và Photos Picker cho tài khoản Google khác (quyết định 0024, issue #17). Nhập một lần từ Google Drive và Dropbox đã làm (quyết định 0026).
+- Nguồn liên tục ngoài Photos (Dropbox, OneDrive, S3, Flickr, Drive của tài khoản Google khác): Photos là nguồn liên tục duy nhất theo quyết định 0029. Cơ chế thêm nguồn được thiết kế trong [continuous-source-extension](../architecture/continuous-source-extension.md) và chưa làm; Google Takeout và Photos Picker cho tài khoản Google khác (quyết định 0024, issue #17). Nhập một lần từ Google Drive và Dropbox đã làm (quyết định 0026).
 - Mã hoá phía client.
-- View `By lens`, `Albums`.
+- View `Albums`.
 - Layout gom sự kiện/chuyến đi.
 - Tool khôi phục về Photos.
 - Rule chọn lọc nâng cao.

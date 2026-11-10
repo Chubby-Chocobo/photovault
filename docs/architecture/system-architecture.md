@@ -78,6 +78,10 @@ flowchart LR
     UP -->|"job state"| DB
 ```
 
+### Continuous sources
+
+Photos is the only continuous source (decision [0029](../decisions/0029-photos-only-continuous-source.md)). Dropbox and Google Drive folders are imported once through the import pipeline. The design for adding a continuous source, with its safety rules, is in [continuous-source-extension](./continuous-source-extension.md); it is not implemented.
+
 ## Sync cycle
 
 `SyncCoordinator.run(trigger:)` is single-flight: a trigger that arrives during a cycle sets one follow-up flag, and the cycle runs once more. `SyncCoordinator.cycle(_:)` implements [spec 8.4](../requirements/photovault-spec-v1.md). Steps 3 to 9 repeat while a round makes progress (at most `maxCycleIterations`, default 100 000). Steps 10 and 11 run once at the end.
