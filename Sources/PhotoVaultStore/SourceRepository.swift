@@ -56,6 +56,20 @@ public enum SourceRepository {
         try setConfig(db, id: id, config)
     }
 
+    /// Changes the stored config in one transaction, so a field written meanwhile (a stored cancel) is kept. A missing row is left alone.
+    public static func updateConfig(_ db: Database, id: SourceID, _ change: (inout SourceConfig) -> Void) throws {
+        guard var config = try fetch(db, id: id)?.config else { return }
+        change(&config)
+        try setConfig(db, id: id, config)
+    }
+
+    /// Records that the owner asked to cancel `id`, keeping the rest of the stored config. A missing or finished row is left alone.
+    public static func requestCancel(_ db: Database, id: SourceID) throws {
+        guard var row = try fetch(db, id: id), row.status.isOpen, row.config.cancelRequested != true else { return }
+        row.config.cancelRequested = true
+        try setConfig(db, id: id, row.config)
+    }
+
     public static func setConfig(_ db: Database, id: SourceID, _ config: SourceConfig) throws {
         try db.execute(sql: "UPDATE source SET config_json = ? WHERE id = ?", arguments: [try Json.encode(config), id.rawValue])
     }

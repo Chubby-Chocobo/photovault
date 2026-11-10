@@ -27,6 +27,9 @@ extension ImportStage {
         var troubled = 0
         loop: for group in groups {
             try Task.checkCancellation()
+            // A cancel, a pause or a waiting command ends the pass after the group in hand; the cycle's next pass boundary serves it.
+            if interrupts.isCancelRequested(id) { return true }
+            if await shouldYield() { return true }
             switch try await process(group, source: source, folder: folder, settings: settings) {
             case .stop: return true
             case .waitingForDisk: break
@@ -89,6 +92,7 @@ extension ImportStage {
         let groupKey = group.first?.groupKey ?? ""
         let synced = source.config.syncedProvider != nil
         for item in group {
+            if interrupts.isCancelRequested(source.id) { return .stop }
             let mediaType: MediaType = UTType(item.uti)?.conforms(to: .movie) == true ? .video : .image
             // A cloud file is downloaded to scratch space first; do not start when it would eat the reserve. An
             // online-only file in a synced folder is downloaded by the first read, so it counts the same.
@@ -104,9 +108,17 @@ extension ImportStage {
             let control = ExportControl()
             control.setProgress(transfer.sink)
             do {
-                inspected[item.relativePath] = try await adapter {
-                    try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
+                // The read is told to stop, and the stage stops waiting for it: a download that cannot be interrupted (a synced
+                // online-only file) finishes in the background and its result is dropped.
+                let read = try await interrupts.whileReading(source.id, onCancel: { control.cancel() }) {
+                    try await adapter {
+                        try await interrupts.untilCancelled(source.id) {
+                            try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
+                        }
+                    }
                 }
+                guard let read else { return .stop }
+                inspected[item.relativePath] = read
             } catch is AdapterFault {
                 try await hold(source.id)
                 return .stop
@@ -146,6 +158,8 @@ extension ImportStage {
                 }
             }
         }
+        // A read that finished after the cancel is not committed (it would be exported, and so downloaded again).
+        if interrupts.isCancelRequested(source.id) { return .stop }
         try env.reach(.afterImportInspectBeforeCommit)
         if givenUp, !failed.isEmpty { env.log.log(.notice, category: "import", "import group unreadable for a day; marked failed") }
         try await commitGroup(group, inspected: inspected, failed: failed, source: source, settings: settings)

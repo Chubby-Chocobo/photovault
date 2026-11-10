@@ -21,6 +21,10 @@ public struct SourceConfig: Hashable, Codable, Sendable {
     /// history says where the photos came from. Kept as text so a value this version does not know still decodes.
     public var syncedProvider: String?
 
+    /// The owner asked to cancel and the engine has not yet finished the bookkeeping. Stored at once, outside the engine's
+    /// exclusive lane, so a relaunch honours it and the import stops reading files meanwhile.
+    public var cancelRequested: Bool?
+
     /// `syncedProvider` as a known provider; nil when absent or not known to this version.
     public var syncedCloudProvider: SyncedCloudProvider? {
         get { syncedProvider.flatMap(SyncedCloudProvider.init(rawValue:)) }

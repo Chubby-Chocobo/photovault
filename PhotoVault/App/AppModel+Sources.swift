@@ -115,6 +115,8 @@ extension AppModel {
         return (ImportProgressText.statusLabel(item), engineWaitReason)
     }
 
+    func isCancelling(_ item: ImportSnapshot) -> Bool { ImportProgressText.isCancelling(item, pending: cancellingImports) }
+
     /// Why a signed-in-again import or a cancel waits.
     var engineWaitReason: String { ImportQueue.waitReason(uploading: !transfers.isEmpty) }
 
