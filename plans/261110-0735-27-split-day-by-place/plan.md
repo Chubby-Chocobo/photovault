@@ -1,7 +1,7 @@
 ---
 title: "Split one camera day into one folder per province"
 description: "A camera day with photos from several provinces/cities gets one Camera Uploads folder per province; files and sidecars already uploaded are moved with MoveWorker."
-status: pending
+status: completed
 priority: P2
 size: L
 human_effort: 11.5-21h
@@ -59,7 +59,7 @@ Camera Uploads/
 | 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Completed | L | 04 |
 | 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Completed | M | 05 |
 | 07 | [Engine: recovery of split days](phase-07-engine-recovery.md) | Completed | L | 05 |
-| 08 | [App text and docs](phase-08-app-text-and-docs.md) | Pending | S | 06, 07 |
+| 08 | [App text and docs](phase-08-app-text-and-docs.md) | Completed | S | 06, 07 |
 
 Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} → 08`. File ownership: phases 01 and 02 touch disjoint files, and so do phases 06 and 07. The `touches` lists in the phase files are authoritative.
 

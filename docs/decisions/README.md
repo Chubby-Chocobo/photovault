@@ -38,5 +38,6 @@ Spec references use the FR, NFR, §, and T codes of [photovault-spec-v1.md](../r
 | [0025](0025-old-layout-block-and-reset.md) | Upgrading from 0.1.0: block the old layout, start over with a factory reset | Accepted | FR-117, FR-118, FR-08, FR-51, §8.7 |
 | [0026](0026-cloud-folder-imports.md) | One-time import from a Google Drive or Dropbox folder: Picker, folder browser, revoked grants | Accepted | §2, §9, §15, FR-119–123 |
 | [0027](0027-by-lens-view.md) | By lens view: opt-in, EXIF lens name shortened for Apple | Accepted | FR-107 |
+| [0028](0028-split-day-by-place.md) | Split a camera day into one folder per province | Accepted | FR-40, FR-81, FR-83, §8.2, §8.7, §8.11, §8.15 |
 
 Adding a decision: copy the next free number, keep the same five sections, and link it from this table and from the affected spec or code notes. A `[VERIFY]` default that the code uses goes in a group file (0012–0014) or its own file, and its spike goes in [docs/spikes/](../spikes/README.md).

@@ -184,7 +184,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 ### 4.5 Layout & tên (mọi đích)
  
 **FR-40 Cấu trúc:**
-- `camera`: `<Root>/Camera Uploads/YYYY-MM-DD[ <Địa danh>]/` — mọi ngày có ảnh đều có thư mục riêng.
+- `camera`: `<Root>/Camera Uploads/YYYY-MM-DD[ <Địa danh>]/` — mọi ngày có ảnh đều có thư mục riêng. Ngày có ảnh ở nhiều tỉnh/thành được tách thành mỗi tỉnh một thư mục `YYYY-MM-DD <Địa danh>` (FR-81, FR-83) (sửa đổi 2026-11-10, issue #27, quyết định 0028).
 - `<Root>/Screenshots/YYYY-MM-DD/` và `<Root>/Saved/YYYY-MM-DD/`: không địa danh.
 - Tên root mặc định: `PhotoVault`.
 - Không có ngày → `Unknown date/` trong từng nhánh.
@@ -286,12 +286,19 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 ### 4.10 Địa danh cho thư mục ngày
  
 - **FR-80** Chỉ áp dụng cho thư mục ngày của nhánh `camera`.
-- **FR-81** Xét asset `camera` có GPS; bỏ qua asset không có GPS; không có asset nào có GPS → không đặt tên. Mọi asset có GPS phải cùng `isoCountryCode` + `administrativeArea`, so bằng **khoá locale `en`**.
+- **FR-81** Xét asset `camera` có GPS; không có asset nào có GPS → không đặt tên. Nhóm theo `isoCountryCode` + `administrativeArea`, so bằng **khoá locale `en`**; mỗi nhóm một thư mục, đặt tên theo FR-82 (sửa đổi 2026-11-10, issue #27, quyết định 0028).
+  - Asset không có GPS, ô không có tỉnh (biển), hoặc ảnh ẩn khi "upload ảnh ẩn" tắt vào nhóm của asset có định danh gần nhất theo thời gian chụp (bằng nhau → asset sớm hơn, rồi `asset_key` nhỏ hơn). Asset đã xoá không được xếp lại: giữ thư mục đang ở.
+  - A → B → A là hai nhóm. Không có ngưỡng số ảnh tối thiểu. Hai nhóm cùng tên hiển thị dùng chung một thư mục; nhóm có hộp bao > 300 km không có tên (dùng chung thư mục không tên).
+  - Nhóm lớn nhất giữ thư mục chính `camera/<ngày>`; nhóm khác là thư mục phụ `camera/<ngày>@<slot>` (slot ổn định theo khoá tỉnh).
+  - Khi đã biết ≥ 2 tỉnh, mọi ô phải có đáp án `en` rồi mới tách; ít hơn thì tính như trước (một tỉnh → hành vi cũ, kể cả khi hộp bao > 300 km mà còn ô chưa có đáp án thì chờ `waitingGeocode`).
 - **FR-82** Cùng `locality` → hiển thị locality, ngược lại hiển thị tỉnh; khác quốc gia nhà thì thêm tên nước. Tên thư mục: `YYYY-MM-DD <Địa danh>`. Ngôn ngữ cố định (`PlaceNameRule`, quyết định 0023):
   - Tên nước: tiếng Anh chuẩn ("Vietnam", "Japan").
   - Nơi ở Việt Nam: tiếng Việt, bỏ tiền tố cấp tỉnh/thành ("Thành phố", "TP.", "Tỉnh", "Thủ đô") → "Hà Nội", "Lâm Đồng"; tiền tố phường/xã giữ nguyên ("P. Cửa Nam").
   - Nơi ở nước ngoài: tên tiếng Anh, kèm tên bản địa trong ngoặc khi khác ("Kyoto (京都市)").
-- **FR-83** Chỉ đặt tên khi ngày đã kết thúc ≥ 6 giờ. Tập asset đổi → tính lại → đổi tên (thêm, đổi hoặc bỏ địa danh).
+- **FR-83** Chỉ đặt tên và tách khi ngày đã kết thúc ≥ 6 giờ. Tập asset đổi → tính lại → đổi tên hoặc chuyển nhóm (thêm, đổi, bỏ địa danh; file đã backup được chuyển bằng `move_job`) (sửa đổi 2026-11-10, issue #27, quyết định 0028).
+  - Chế độ chỉ-quốc-gia (`kv.place_country_only = 1`): ngày đã tách giữ nguyên (không đổi slot, tên hay tách thêm); ngày chưa tách đặt tên theo quy tắc một nơi. Hết chế độ → tính lại.
+  - Chỉ `PlaceNamer` đổi slot, trừ ảnh mới vào ngày đã tách (chưa có file): lấy slot theo khoá `en` của ô, không có thì theo asset gần nhất theo thời gian.
+  - Thư mục phụ đã rỗng không bị xoá. Nhóm có tên còn nằm trên đĩa dưới dạng tên của thư mục khác (đổi tên chưa chạy xong) tạm ở lại thư mục hiện tại và ngày được tính lại sau.
 - **FR-84 Geocoding:**
   - Dùng `CLGeocoder.reverseGeocodeLocation(_:preferredLocale:)` (hoặc `MKMapItem.placemark`) sau protocol `ReverseGeocoding`; chấp nhận cảnh báo deprecated. `MKAddressRepresentations` **không** có `administrativeArea` nên không dùng được.
   - [VERIFY M0-6] Nếu mất các trường có cấu trúc → giảm cấp xuống chỉ quốc gia, báo owner.
@@ -433,6 +440,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
   - Định danh & thời gian: `local_id` UNIQUE, `cloud_id`, `creation_date`, `modification_date`.
   - Loại & category: `media_type`, `media_subtypes`, `category`, `category_reason`, `category_provisional`.
   - Placement: `placement_category`, `placement_day`, `name_stem`, `placed_at`.
+  - Thư mục phụ của ngày tách (migration `v6-day-place`) (sửa đổi 2026-11-10, issue #27, quyết định 0028): `place_slot` (NULL = thư mục chính `camera/<ngày>`; khác NULL = `camera/<ngày>@<slot>`, slot `p`/`r` + ≥ 12 chữ số hex). Bảng `day_place(day, slot, place_key, place_name)` cho các thư mục phụ; thư mục chính vẫn ở `day_stat`. Index `move_job(destination_id, subject)`. Từ bản này `Store.open` từ chối CSDL có migration mới hơn (`StoreError.newerSchema`); không hạ cấp xuống 0.3.0.
   - Thuộc tính: `is_hidden`, `is_favorite`, `burst_identifier`, `location_lat/lon`, `geo_cell`, kích thước, `duration`, `camera_make/model`, `lens_model`.
   - Chỉnh sửa: `has_adjustments`, `adjustment_hash`, `edit_check_pending`.
   - Vòng đời: **`inserted_at`** (NULL = có sẵn tại baseline Drive), `first/last_seen_at`, `deleted_at`.
@@ -494,7 +502,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 6. **Fan-out:** layout từ placement + `day_stat` (trong transaction), đảm bảo thư mục (actor; khoá thư mục ở local), upload, verify. Layout không phụ thuộc việc promote nên không có `move_job` vì tách ngày.
 7. Mọi job gốc của asset ở một đích đã kết thúc → job sidecar; mỗi lần có thêm resource `done` → tăng `target_gen` sidecar. Drive: tạo shortcut khi target `done`.
 8. MoveWorker.
-9. PlaceNamer → `renameFolder` + làm mới sidecar/description + view `By place`.
+9. PlaceNamer → nhóm theo tỉnh, gán slot, `renameFolder` cho thư mục đổi tên, `moveFile` cho file đã backup đổi nhóm (sidecar kèm theo; tối đa 500 move mỗi đích mỗi lượt, `EngineTuning.maxMovesPerPass`) + làm mới sidecar/description + view `By place` (sửa đổi 2026-11-10, issue #27, quyết định 0028).
 10. FR-53.
 11. Cập nhật UI qua observable state.
 ### 8.5 Dung lượng ổ Mac — rủi ro số 1
@@ -513,10 +521,10 @@ Luôn dùng archive timezone, không dùng `TimeZone.current`. `creationDate` sa
  
 ### 8.7 Thư mục ngày (mọi nhánh, mọi đích)
 
-1. Mọi file nằm trong thư mục ngày của `placement_day` ngay từ lần upload đầu; layout không phụ thuộc số lượng ảnh, nên không có `move_job` vì tách ngày.
+1. Mọi file nằm trong thư mục ngày của `placement_day` ngay từ lần upload đầu; layout không phụ thuộc số lượng ảnh. Ngày có ảnh ở nhiều tỉnh được tách theo FR-81 sau khi ngày kết thúc ≥ 6 giờ, và chỉ lúc đó mới có `move_job` vì tách ngày (sửa đổi 2026-11-10, issue #27, quyết định 0028).
 2. `day_stat.promoted` chỉ còn nghĩa "ngày này được đặt tên địa danh": bật ở asset `camera` đầu tiên của ngày, `place_state = pending`. Không demote.
 3. Count vẫn tính lại từ DB (cho tiến độ và địa danh), không cộng dồn.
-4. Không bao giờ xoá thư mục ngày; đổi tên (địa danh) không đổi đường dẫn logic.
+4. Không bao giờ xoá thư mục ngày; đổi tên (địa danh) không đổi đường dẫn logic. Thư mục phụ của ngày tách có đường dẫn `camera/<ngày>@<slot>`, là anh em của thư mục chính, và cũng không bị xoá khi rỗng (sửa đổi 2026-11-10, issue #27, quyết định 0028).
 5. Đổi từ layout `Năm/Tháng` cũ không có migration: app chặn DB cũ và owner dùng "Đặt lại từ đầu" rồi sync lại vào root mới (quyết định 0023, 0025; FR-117, FR-118).
 ### 8.8 Phạm vi & eligibility (tính thuần tuý, theo từng đích)
  
@@ -559,12 +567,13 @@ So tên album chính xác, không so chuỗi con. Ưu tiên screenshot hơn albu
  
 1. Trigger: ngày được promote / ngày kết thúc ≥ 6 giờ / tập asset đổi / geocode của một ô trong ngày về.
 2. Không có GPS → `unnamed`.
-3. Bounding box > 300 km → `unnamed`.
+3. Các ô đã có đáp án `en` cho thấy ≤ 1 tỉnh → quy tắc một nơi như trước (bước 3a–7), kể cả trạng thái tạm; hộp bao > 300 km mà còn ô chưa có đáp án → `waitingGeocode`. Cho thấy ≥ 2 tỉnh → mọi ô phải có `en` (`waitingGeocode` nếu thiếu), rồi nhóm theo khoá `en`; asset không định danh vào nhóm gần nhất theo thời gian; mỗi nhóm chạy bước 3a–7 riêng (sửa đổi 2026-11-10, issue #27, quyết định 0028).
+   - 3a. Bounding box > 300 km → `unnamed`.
 4. > 30 ô → chọn 30 ô đại diện (gồm các ô cực bắc/nam/đông/tây).
 5. Geocode các ô còn thiếu (`waitingGeocode`).
 6. Ô thiếu tỉnh → bỏ qua; mọi ô đều thiếu → `unnamed`.
 7. Mọi ô cùng khoá `en` → `named`.
-8. Tên đổi → `renameFolder` ở mỗi đích + làm mới sidecar/description.
+8. `DaySlotPolicy` ánh xạ nhóm lên thư mục: theo tên hiển thị (tên đang có hoặc còn trên đĩa), theo khoá, thư mục chính còn trống, thư mục mới; không bao giờ hai thư mục cùng tên. Tên đổi → `renameFolder` ở mỗi đích; nhóm đổi thư mục → `moveFile` (+ sidecar) + làm mới sidecar/description.
 ### 8.12 Sidecar
  
 Deterministic (khoá sắp xếp, số định dạng cố định, không có thời điểm sinh). Cặp RAW+JPEG dùng một `.xmp` + một `.json`. Sidecar JSON của asset nhập từ thư mục có thêm khối `"source": {kind, name, path, dateSource}` (sửa đổi 2026-11-09, quyết định 0024); sidecar của asset Photos không đổi một byte.
@@ -596,6 +605,9 @@ Tiền đề: scan `complete` + FR-53 xong.
 1. `paused(recovering)`.
 2. List item có `pvSchema=1` (Drive) [VERIFY thấy được sau khi cài lại app] hoặc duyệt cây + sidecar (local).
 3. Dựng `remote_folder` từ `pvLogical` (local: từ cấu trúc thư mục `Camera Uploads/<ngày>[ <địa danh>]`, `Screenshots/<ngày>`, `Saved/<ngày>`, tách phần địa danh). Thư mục ngày của `camera` tồn tại → `promoted`, `place_name`.
+   - Ngày tách (sửa đổi 2026-11-10, issue #27, quyết định 0028): mỗi thư mục ngày `camera` được gán đường dẫn logic bởi `DaySlotBinding`, cho mọi loại đích và mọi thứ tự khôi phục: (1) theo id thư mục của một hàng `remote_folder` sẵn có; (2) theo tên hiển thị của slot đã biết (`day_stat`, `day_place`); (3) dự phòng: `pvLogical` trên Drive, thư mục đầu tiên theo khoá tên là `camera/<ngày>` trên local, còn lại `@r…`.
+   - Không bao giờ re-point hàng mà thư mục của nó còn trong danh sách; chỉ hàng cũ (thư mục không còn, ví dụ CSDL phục hồi từ bản backup trước khi tách) được re-point. Ghi làm hai đường dẫn cùng một id, hoặc hai thư mục tranh một đường dẫn → bỏ qua, ghi nhật ký và báo một dòng hoạt động; file trong đó không được nhận.
+   - `place_slot` của asset lấy từ thư mục chứa file chính (không có thì thư mục chứa nhiều file nhất, hoà → thư mục chính), khi placement được đọc từ file hoặc ngày chưa từng tách trong CSDL này. Đổi múi giờ lưu trữ khi khôi phục xoá `day_place` và `place_slot`.
 4. Ghép file theo thứ tự:
    1. `pvAssetId`/`assetKey` (kể cả dạng `h:`, tra theo index hash) hoặc alias;
    2. cloud/local ID trong sidecar;
@@ -666,7 +678,7 @@ Tiền đề: scan `complete` + FR-53 xong.
 | T27 | Rule theo đích; ảnh tạm `camera` hoá ra `saved` vẫn đến đích chỉ nhận `saved` (kể cả khi đó là đích duy nhất) |
 | T27b | RAW+JPEG khi Drive không nhận RAW; Live Photo với 2 export song song → không kẹt |
 | T27c | NAS `newOnly` thêm sau khi Drive đang `full` |
-| T28 | Đà Lạt (iPhone + RAW không GPS) → có tên; đi 2 tỉnh → không tên; import thêm → bỏ địa danh |
+| T28 | Đà Lạt (iPhone + RAW không GPS) → có tên; đi 2 tỉnh → mỗi tỉnh một thư mục (nhóm lớn nhất giữ thư mục chính); import thêm vào ngày đã tách → vào đúng thư mục, không chuyển file (sửa đổi 2026-11-10, issue #27, quyết định 0028) |
 | T29 | Zalo/Safari → `Saved`; video drone không vào `Saved` |
 | T30 | JSON đúng theo đích; không ghi đè `.xmp` bị sửa ngoài hoặc `.xmp` Lightroom có sẵn; sidecar sinh lại khi edited xong |
 | T30b | Sửa 2 lần trong 1 phút khi đang upload → đích có bản cuối |

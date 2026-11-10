@@ -1,7 +1,7 @@
 ---
 phase: "08"
 title: "App text and docs"
-status: pending
+status: completed
 priority: P2
 size: S
 human_effort: 1-2h
