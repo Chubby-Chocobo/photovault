@@ -34,6 +34,9 @@ Owner request: show the name and progress of the file being synced on the status
 - Publishing: only the list filling or emptying bypasses the 0.5 s throttle; begin and end of a file among others wait for it, so a big first sync does not send an update per file. A change held back by the throttle is flushed by one deferred task at the end of the window (never more than one pending), so a file that ended leaves the line within about 0.5 s even when nothing else reports.
 - The launch orphan sweep skips `dropbox-account-email` like `dropbox-account`. The lazy e-mail fetch saves only while the same sign-in is in place (`DropboxEmailRefresh`).
 
+- Cards: the Backfill card and the import card show the full line under the progress bar (`CardActivityText`); the header switches to the short form (file, action, percent, "+N") whenever a backfill or import is running, so nothing repeats. The Backfill card counts Photos files (`TransferProgress.sourceId`), the import card its own import's files.
+- Waiting reasons come from the snapshot and disk state; `EngineSnapshot.nextRetryAt` (earliest future `next_attempt_at` of open jobs) gives "Retrying in m:ss". Power and thermal holds are not in the snapshot, so they read "Preparing the next file…".
+
 ## Unresolved
 
 - Tooltip on the status item is unverified on a real menu bar.
