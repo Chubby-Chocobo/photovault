@@ -24,6 +24,10 @@ Owner request: show the name and progress of the file being synced on the status
 - Privacy: `TransferProgress.description` redacts names; names live in the app's memory and view only.
 - The icon tooltip uses `.help` on the menu bar label; whether macOS shows it for a status item could not be checked without running the app.
 
+- Account on the line: `TransferProgress.accountEmail` comes from `SourceConfig.account` (imports) and `DestinationRecord.accountEmail` (Drive uploads); copies, exports and Mac folders have none. E-mails are middle-truncated at 28 characters.
+- Dropbox browsing account e-mail: stored in the Keychain as `dropbox-account-email` beside the token (written by `DropboxTokenAuthorizer.store`, removed with the token, included in the factory-reset cleanup). An older token has none: `refreshDropboxEmail` asks `users/get_current_account` once and stores it. If that fails the line says "signed in" without the e-mail.
+- Settings line sits in the existing imports row of `SourcesTab` (4 added lines); the hotfix-touched `AppModel+CloudImports.swift` is not edited.
+
 ## Unresolved
 
 - Tooltip on the status item is unverified on a real menu bar.
