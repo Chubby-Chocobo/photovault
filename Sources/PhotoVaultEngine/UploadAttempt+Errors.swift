@@ -63,7 +63,7 @@ extension UploadAttempt {
 
     func itemFailure(_ message: String) async throws -> UploadOutcome {
         let current = try await env.store.read { db in try JobRepository.fetch(db, identity: identity) }
-        let delay = Backoff().delay(forAttempt: current?.attempts ?? 0)
+        let delay = env.tuning.backoffDelay(current?.attempts ?? 0)
         try await applyIfValid(.itemFailure(message: message, retryAt: env.clock.now.addingTimeInterval(delay)))
         return .requeued
     }

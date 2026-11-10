@@ -88,7 +88,7 @@ actor GeocodeScheduler {
         } catch {
             if error is EngineAbort || error is CancellationError { throw error }
             failures += 1
-            blockedUntil = env.clock.now.addingTimeInterval(Backoff().delay(forAttempt: failures - 1))
+            blockedUntil = env.clock.now.addingTimeInterval(env.tuning.backoffDelay(failures - 1))
             env.log.log(.notice, category: "geocode", "geocoding failed; backing off")
             return nil
         }
