@@ -298,7 +298,46 @@ This is the developer's recorded limit. In my judgement it is **not acceptable f
 - The fix is local to `DaySlotBinding`: two passes, and no known slot path in the fallback. With it and the two probe tests, I would call the branch ready.
 - If the lead accepts I-new-B as a known limit for this release instead, then M-new-7 must at least be corrected, so the docs do not promise "nothing is moved". The branch is otherwise mergeable, and M-new-9/10 can follow.
 
-Counts (final, at 54ee60b): Critical 0 / Important 1 / Minor 3
+Counts at 54ee60b: Critical 0 / Important 1 / Minor 3
 
-Status: DONE_WITH_CONCERNS
-Summary (final): All earlier findings are fixed or documented, the Importants are proven by mutation, and Drive files no longer move in any of the 8 drift probes. One Important remains in the default Drive-first order (I-new-B): a local folder with an out-of-date name makes the binder drop the real main folder, which either holds the NAS behind an owner decision or re-uploads that group into a mislabeled folder. The fix is small; not ready to merge until it is fixed or explicitly accepted.
+Status at 54ee60b: DONE_WITH_CONCERNS
+Summary at 54ee60b: All earlier findings are fixed or documented, the Importants are proven by mutation, and Drive files no longer move in any of the 8 drift probes. One Important remains in the default Drive-first order (I-new-B): a local folder with an out-of-date name makes the binder drop the real main folder, which either holds the NAS behind an owner decision or re-uploads that group into a mislabeled folder. The fix is small; not ready to merge until it is fixed or explicitly accepted.
+
+## 7. Delta verification at `528d549`
+
+**Scope.** I-new-B, M-new-9, M-new-10 and M-new-7, plus a regression hunt around binding by the sidecar `claimedKey`.
+
+**Checks.**
+- Full suite once: **1345 tests passed** (44.2 s).
+- Release xcodebuild unsigned: **BUILD SUCCEEDED**.
+- Throwaway worktrees were removed afterwards. Probe files `ZZAuditDelta.swift` and `ZZAuditFinal.swift` are in the session scratchpad.
+
+| Finding | Status | Evidence |
+|---|---|---|
+| I-new-B unknown-name local folder drops the real main folder | VERIFIED-FIXED | `DaySlotBinding` binds by id and name for all folders first, then by contents, then falls back, and the fallback never takes a known slot path. **Cross-version check:** the 4 new tests, run against the `54ee60b` sources, fail (`aLocalFolderWithAnOldNameIsRecoveredAfterDriveWithoutAnOwnerDecision`, 3 issues; `…DoesNotUploadAGroupAgainWithThreeProvinces`, 1 issue); at `528d549` they pass. Mutation: disable the by-contents step, then `anUnknownLocalFolderTakesTheKnownSlotHoldingItsAssets` fails. My probes: two provinces gives **no owner decision**, no conflict, 0 Drive moves, and the NAS ends with "Hà Nội: h=9", "Đà Lạt: d=30" (one NAS rename). Three provinces gives **66 files (no duplicates)**, no conflict row, and folders named after their contents. |
+| M-new-9 chained renames after a transient failure | VERIFIED-FIXED | A retried rename holds back the later renames of that folder in the pass. Mutation: drop the hold-back, then `chainedRenamesOfOneFolderRunInOrderEvenAfterATransientFailure` fails. Probe `zzChainedRenameAfterTransientFailure`: the folder and row end at "C", as intended (it was "B" at `54ee60b`). |
+| M-new-10 `waitingForDrive` outlives the wait | VERIFIED-FIXED | `endWait` restores the owner's status. Mutation: make `endWait` a no-op, then `theWaitingStatusEndsWithTheWaitEvenIfTheDestinationIsOffline` fails; that test also fails on the `54ee60b` sources. |
+| M-new-7 docs | VERIFIED-FIXED | The architecture doc, ADR 0028 and the plan now describe the remaining limit accurately: no sidecar-identified asset means a `@r…` guess, and the files may move at that destination, never at Drive. That matches the JSON-off probe below. |
+
+**Regression hunt: binding by `claimedKey`.** All variants run in one pass with Drive first, and the NAS's Hà Nội folder renamed to "Hanoi City".
+- **JSON sidecars off** (two and three provinces):
+  - No `claimedKey`, so the folder falls back to `@r…`. The NAS moves 6 files into a new "Hà Nội" folder, and the empty "Hanoi City" stays, because emptied folders are never deleted (§8.7.4).
+  - **No Drive file moves.** The extra Drive files are JSON sidecars uploaded anew, because the settings were in the lost database and default back to on. They are not moves.
+  - No duplicate names and no decision. This is the documented limit.
+- **A folder holding files of two slots** (2 Đà Lạt assets left in "Hanoi City" from a half-done move): the majority (Hà Nội) wins. The 6 Đà Lạt files move back to the main folder at the NAS, the folder is renamed, and no Drive file moves.
+- **Sidecars of assets deleted from Photos** (all Hà Nội photos deleted before the loss): no claimed key resolves, so the folder falls back to `@r…` and keeps its files (T23). Nothing moves anywhere, and there is no conflict.
+- **`assetSlotPaths` keys by the raw `asset_key`.** A sidecar that claims an alias key (`h:` prefix, or a local id that changed on a new Mac) is not counted, so that folder degrades to the same `@r…` guess, with NAS-only moves. Acceptable.
+
+### Minor
+- **M-new-11. The "fallback never takes a known slot path" guard (`!owned.contains(preferred)`) is untested.**
+  - Mutation: remove it, and all 41 binding and recovery tests still pass. With the two-phase order, the main path is normally already bound by name before any fallback runs.
+  - The guard only matters when the main folder is absent at that destination (R7-like rules) and an unknown-name folder is present.
+  - Add one `DaySlotBindingTests` case: known main plus an extra slot, the NAS listing has only an unknown-name folder, and its path must not be `camera/<day>`.
+
+### Merge readiness
+**Ready to merge: yes.** No Critical or Important finding is open. Every Important from all rounds is proven fixed, either by mutation or by running the new tests against the previous sources. Drive files did not move in any probed recovery order or drift case. M-new-11 is a missing test, not a defect, and M-new-2 (permanent deferral after a rename that failed for good) is an accepted, documented trade-off.
+
+Counts (final, at 528d549): Critical 0 / Important 0 / Minor 1
+
+Status: DONE
+Summary (final): I-new-B, M-new-9, M-new-10 and M-new-7 are fixed and proven by mutation or by the new tests failing on 54ee60b. The claimedKey binding degrades safely without sidecars, with NAS-only moves and never Drive moves. The branch is ready to merge; one Minor (an untested guard) can follow.

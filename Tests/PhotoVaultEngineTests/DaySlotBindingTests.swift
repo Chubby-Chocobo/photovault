@@ -70,6 +70,15 @@ typealias BoundResult = (inventory: RemoteInventory, conflicts: Int, guessed: Se
         #expect(result.guessed == [day])
     }
 
+    @Test func theLocalFallbackNeverTakesAKnownSlotsPathWhenItsFolderIsAbsent() {
+        // The known main folder ("Đà Lạt") is not at this destination; the only folder there is unknown.
+        let known = [DaySlot(slot: nil, key: "K1", name: "Đà Lạt"), DaySlot(slot: "p0123456789ab", key: "K2", name: "Hà Nội")]
+        let result = bind([folder("2026-11-08 Hanoi City", id: "/A")], known: known)
+        let bound = path(result, "/A")
+        #expect(bound != "camera/2026-11-08" && bound != "camera/2026-11-08@p0123456789ab", "\(bound ?? "nil")")
+        #expect(bound?.hasPrefix("camera/2026-11-08@r") == true)
+    }
+
     @Test func anUnknownLocalFolderTakesTheKnownSlotHoldingItsAssets() {
         let known = [DaySlot(slot: nil, key: "K1", name: "Đà Lạt"), DaySlot(slot: "p0123456789ab", key: "K2", name: "Hà Nội")]
         let files = [file("f1", in: "/A"), file("f2", in: "/A")].map { entry -> RemoteFileEntry in
