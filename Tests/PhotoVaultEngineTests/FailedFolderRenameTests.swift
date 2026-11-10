@@ -87,12 +87,15 @@ import Testing
             try MoveJobRepository.insert(db, MoveJob(
                 destinationId: h.nasId, operation: .renameFolder, subject: self.main, fromValue: old, toValue: "\(self.day) Bravo", createdAt: h.clock.now))
         }
+        let before = try h.read { db in try Int64.fetchOne(db, sql: "SELECT COALESCE(MAX(id), 0) FROM activity") ?? 0 }
         await h.nas.failNext(.rename, with: .itemRejected(reason: "exists"), times: 10_000)
         await h.settle(rounds: 30)
         #expect(try h.moveJobs(.failed, destination: h.nasId).count == 1)
         #expect(try h.moveJobs(.pending, destination: h.nasId).isEmpty)
         #expect(try onDisk(h, h.nasId) == old, "never merged into or over another folder")
-        let notices = try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM activity WHERE destination_id = ?", arguments: [h.nasId.rawValue]) ?? 0 }
+        let messages = try h.read { db in try String.fetchAll(db, sql: "SELECT message FROM activity WHERE destination_id = ? AND id > ?", arguments: [h.nasId.rawValue, before]) }
+        let notices = messages.filter { $0.contains("thư mục") && $0.contains("giữ tên") || $0.contains("keeps its current name") }.count
         #expect(notices > 0, "the owner can see why the name stayed")
+        #expect(!messages.contains { $0.contains("Bravo") || $0.contains(old) || $0.contains(day.description) }, "no folder name in the activity text")
     }
 }
