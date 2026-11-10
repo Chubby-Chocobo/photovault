@@ -29,6 +29,12 @@ public enum ImportProgressText {
             : tr(vi: "Chưa kết nối được, sẽ tiếp tục khi có lại", en: "Can’t connect right now; it will continue when it is back")
     }
 
+    /// The owner pressed Cancel and the import has not ended yet: the engine already stopped reading (`cancelRequested`), or this
+    /// app's own command is still waiting for its turn (`pending`).
+    public static func isCancelling(_ item: ImportSnapshot, pending: Set<SourceID>) -> Bool {
+        item.isFinished ? false : item.cancelRequested || pending.contains(item.id)
+    }
+
     /// True while a cloud file waits because the Mac has no room to download it yet.
     public static func waitsForDisk(_ item: ImportSnapshot) -> Bool {
         item.status == .scanning && item.statusReason == "diskFull"

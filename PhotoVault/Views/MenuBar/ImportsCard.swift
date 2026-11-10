@@ -23,7 +23,7 @@ struct ImportsCard: View {
                         .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                 }
                 Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
-                if model.cancellingImports.contains(item.id) {
+                if model.isCancelling(item) {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
                         Text(ImportQueue.cancellingText).font(.caption).foregroundStyle(.secondary)
@@ -43,7 +43,7 @@ struct ImportsCard: View {
                 if let line = CardActivityText.importJob(item.id, transfers: model.transfers, now: Date()) {
                     CardActivityLine(text: line, isBusy: true)
                 }
-                if !ImportQueue.isQueued(item), !model.cancellingImports.contains(item.id) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
+                if !ImportQueue.isQueued(item), !model.isCancelling(item) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
                     .fixedSize(horizontal: false, vertical: true) }
                 if confirming {
                     HStack {

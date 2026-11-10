@@ -156,7 +156,7 @@ struct SourcesTab: View {
                             ImportRunningRow(
                                 row: row,
                                 waitingReason: ImportProgressText.waitingForPhotos(row.item, photosAllowsReading: model.photosAuthorization.allowsReading),
-                                signedInWaiting: model.resumingImports.contains(row.id), cancelling: model.cancellingImports.contains(row.id),
+                                signedInWaiting: model.resumingImports.contains(row.id), cancelling: model.isCancelling(row.item),
                                 queueWait: model.queueWait(for: row.item), waitReason: model.engineWaitReason,
                                 onCancel: { confirmCancel = row.id }, onSignInAgain: { model.reconnectImport(row.item) })
                         }

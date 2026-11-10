@@ -88,6 +88,8 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     public var filesTotal: Int
     /// Where the import came from. Shown in the app only; never written to logs or the activity list.
     public var location: ImportLocation?
+    /// The owner asked to cancel; the engine has stopped reading and finishes the bookkeeping when the lane is free.
+    public var cancelRequested: Bool
 
     public var isFinished: Bool { !status.isOpen }
 
@@ -95,9 +97,10 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
         id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, syncedProvider: SyncedCloudProvider? = nil, statusReason: String? = nil,
         displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
         processed: Int = 0, imported: Int = 0, duplicates: Int = 0, unsupported: Int = 0, failed: Int = 0,
-        filesUploaded: Int = 0, filesTotal: Int = 0, location: ImportLocation? = nil
+        filesUploaded: Int = 0, filesTotal: Int = 0, location: ImportLocation? = nil, cancelRequested: Bool = false
     ) {
         self.location = location
+        self.cancelRequested = cancelRequested
         self.id = id
         self.kind = kind
         self.account = account

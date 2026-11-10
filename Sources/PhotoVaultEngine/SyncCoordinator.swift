@@ -17,6 +17,8 @@ public actor SyncCoordinator {
     let staging: StagingManager
     /// When each import job was last held; the sign-in command clears it so a job resumes at once.
     let importHolds: ImportHolds
+    /// A cancel or pause the owner asked for, visible to the import stage while the cycle holds the lane.
+    let importInterrupts: ImportInterrupts
     let resourceGuard: ResourceGuard
     let baseline: Baseline
     let scanner: Scanner
@@ -31,7 +33,7 @@ public actor SyncCoordinator {
     let planningExtensions: [any JobPlanningExtension]
 
     /// Cycle and owner commands take turns on this lane (NFR-01).
-    let lane = ExclusiveLane()
+    let lane: ExclusiveLane
     var running = false
     var followUp = false
     var followUpTrigger: SyncTrigger = .manual
@@ -64,6 +66,10 @@ public actor SyncCoordinator {
         self.env = env
         let extensions = planningExtensions + [SidecarPlanner()]
         let importHolds = ImportHolds()
+        let importInterrupts = ImportInterrupts()
+        let lane = ExclusiveLane()
+        self.lane = lane
+        self.importInterrupts = importInterrupts
         let staging = StagingManager(env: env)
         let guardActor = ResourceGuard(env: env, staging: staging)
         let uploadRunner = UploadRunner(env: env, staging: staging)
@@ -76,7 +82,9 @@ public actor SyncCoordinator {
         organization = services
         self.hardening = hardening
         self.reconciler = reconciler ?? hardening.reconciler
-        self.stages = stages + services.stages + hardening.stages + [ImportStage(env: env, extensions: extensions, holds: importHolds)]
+        self.stages = stages + services.stages + hardening.stages + [ImportStage(
+            env: env, extensions: extensions, holds: importHolds, interrupts: importInterrupts,
+            commandWaiting: { await lane.hasWaitingCommands })]
         self.importHolds = importHolds
         self.planningExtensions = extensions
         self.staging = staging
@@ -125,11 +133,13 @@ public actor SyncCoordinator {
 
     public func pauseAll() async {
         globallyPaused = true
+        importInterrupts.paused = true
         await publish()
     }
 
     public func resumeAll() async {
         globallyPaused = false
+        importInterrupts.paused = false
         await publish()
     }
 

@@ -90,31 +90,18 @@ extension SyncCoordinator {
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled
     /// and what already reached a destination stays. Running the same import again brings them back.
     public func cancelImport(_ id: SourceID) async throws {
+        // At once, without the lane: the import stops reading and the intent survives a quit. The bookkeeping follows
+        // when the lane is free (here, or in the cycle's next import stage, whichever comes first).
+        importInterrupts.requestCancel(id)
+        let env = env
+        try await env.store.write { db in try SourceRepository.requestCancel(db, id: id) }
+        await publish()
+        let extensions = planningExtensions
         try await exclusive {
-            let env = env
-            let settings = await env.settingsSnapshot()
-            let extensions = planningExtensions
-            _ = try await env.store.write { db -> Bool in
-                guard let source = try SourceRepository.fetch(db, id: id), source.status.isOpen else { return false }
-                try ImportItemRepository.cancelPending(db, sourceId: id)
-                let context = try env.context(db, settings)
-                var dirty = Set<ArchiveDay>()
-                let keys = try String.fetchAll(db, sql: """
-                    SELECT DISTINCT a.asset_key FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
-                    WHERE a.source_id = ? AND a.deleted_at IS NULL AND j.state IN ('pending', 'uploading', 'deferred')
-                    """, arguments: [id.rawValue])
-                for raw in keys {
-                    guard let key = AssetKey(rawValue: raw), var asset = try AssetRepository.fetch(db, key: key) else { continue }
-                    asset.deletedAt = context.now
-                    try AssetRepository.upsert(db, asset, timeZone: context.timeZone)
-                    try EligibilityService.recompute(db, asset: asset, context: context, extensions: extensions)
-                    if asset.category == .camera, let creation = asset.creationDate { dirty.insert(ArchiveDay(date: creation, timeZone: context.timeZone)) }
-                }
-                try AssetFinalizer.recount(db, days: dirty, context: context)
-                return try ImportCompletion.finish(db, id: id, as: .cancelled, now: context.now)
-            }
+            try await ImportCancellation.apply(id, env: env, extensions: extensions)
             // The adapter stays: the assets kept by a cancel can still go to a destination added later.
         }
+        importInterrupts.clearCancel(id)
         await publish()
     }
 }

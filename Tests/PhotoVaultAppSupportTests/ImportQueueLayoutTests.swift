@@ -110,3 +110,17 @@ import Testing
         #expect(ImportQueue.locationKey(recorded) == ImportQueue.locationKey(recorded))
     }
 }
+
+@Suite struct ImportCancellingStateTests {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func anImportIsCancellingFromTheClickOrTheStoredRequest() {
+        var item = ImportSnapshot(id: .folder(), displayName: "X", status: .scanning, createdAt: t0)
+        #expect(!ImportProgressText.isCancelling(item, pending: []))
+        #expect(ImportProgressText.isCancelling(item, pending: [item.id]))
+        item.cancelRequested = true
+        #expect(ImportProgressText.isCancelling(item, pending: []), "a relaunch shows it too")
+        item.status = .cancelled
+        #expect(!ImportProgressText.isCancelling(item, pending: [item.id]), "an ended import is not cancelling")
+    }
+}

@@ -27,6 +27,9 @@ extension ImportStage {
         var troubled = 0
         loop: for group in groups {
             try Task.checkCancellation()
+            // A cancel, a pause or a waiting command ends the pass after the group in hand; the cycle's next pass boundary serves it.
+            if interrupts.isCancelRequested(id) { return true }
+            if await shouldYield() { return true }
             switch try await process(group, source: source, folder: folder, settings: settings) {
             case .stop: return true
             case .waitingForDisk: break
@@ -89,6 +92,7 @@ extension ImportStage {
         let groupKey = group.first?.groupKey ?? ""
         let synced = source.config.syncedProvider != nil
         for item in group {
+            if interrupts.isCancelRequested(source.id) { return .stop }
             let mediaType: MediaType = UTType(item.uti)?.conforms(to: .movie) == true ? .video : .image
             // A cloud file is downloaded to scratch space first; do not start when it would eat the reserve. An
             // online-only file in a synced folder is downloaded by the first read, so it counts the same.
@@ -104,8 +108,10 @@ extension ImportStage {
             let control = ExportControl()
             control.setProgress(transfer.sink)
             do {
-                inspected[item.relativePath] = try await adapter {
-                    try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
+                inspected[item.relativePath] = try await interrupts.whileReading(source.id, onCancel: { control.cancel() }) {
+                    try await adapter {
+                        try await folder.inspect(relativePath: item.relativePath, uti: item.uti, mediaType: mediaType, control: control)
+                    }
                 }
             } catch is AdapterFault {
                 try await hold(source.id)
