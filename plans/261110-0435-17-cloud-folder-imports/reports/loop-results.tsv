@@ -1,0 +1,5 @@
+iter	timestamp	critical	important	minor	kept	description
+1	2026-11-10T05:45	0	9	16	yes	round 1 review of v0.2.0...21144c3 (engine, adapters, app/docs)
+2	2026-11-10T06:10	0	3	18	yes	round 2 review of v0.2.0...b9c704f after round-1 fixes (all round-1 Important verified fixed except one partial)
+3	2026-11-10T06:40	0	2	3	yes	round 3 verify of b9c704f..7141778: round-2 items fixed; give-up/breaker logic regressions (starvation, stubborn groups never given up)
+4	2026-11-10T06:58	0	0	2	yes	round 4 final verify of 7141778..98aa810 plus full-release sweep: no Critical or Important

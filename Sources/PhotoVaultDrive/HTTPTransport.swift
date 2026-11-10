@@ -28,7 +28,8 @@ public protocol HTTPTransport: Sendable {
 }
 
 public struct URLSessionTransport: HTTPTransport {
-    private let session: URLSession
+    fileprivate let session: URLSession
+    fileprivate let streamer: URLSessionStreamer
 
     public init(timeout: TimeInterval = 120) {
         let configuration = URLSessionConfiguration.ephemeral
@@ -36,6 +37,12 @@ public struct URLSessionTransport: HTTPTransport {
         configuration.waitsForConnectivity = false
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
+        self.init(configuration: configuration)
+    }
+
+    /// For callers that need their own session setup, for example tests with a stub `URLProtocol`.
+    public init(configuration: URLSessionConfiguration) {
+        streamer = URLSessionStreamer(configuration: configuration)
         session = URLSession(configuration: configuration)
     }
 
@@ -53,8 +60,8 @@ public struct URLSessionTransport: HTTPTransport {
 /// Decorator that logs method, host, path template and status. Query strings, headers, bodies and
 /// error descriptions (which can embed the URL) are never logged (NFR-06).
 public struct LoggingHTTPTransport: HTTPTransport {
-    private let base: any HTTPTransport
-    private let log: any LogSink
+    fileprivate let base: any HTTPTransport
+    fileprivate let log: any LogSink
 
     public init(wrapping base: any HTTPTransport, log: any LogSink) {
         self.base = base
@@ -88,3 +95,49 @@ enum PathTemplate {
     }
 }
 
+
+/// A transport that can hand a response body over in chunks instead of one `Data`, so large
+/// downloads never sit in memory.
+public protocol StreamingTransport: HTTPTransport {
+    /// 2xx: the body goes to `sink` in order and the returned data is empty. Any other status: the sink
+    /// is never called and the returned data is the start of the body (error text, at most 64 KiB).
+    /// A throwing sink stops the transfer and its error propagates.
+    func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse)
+}
+
+extension HTTPTransport {
+    /// Streams when the transport can; otherwise buffers the response and replays it in chunks.
+    public func streamBody(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
+        if let streaming = self as? any StreamingTransport { return try await streaming.stream(request, sink: sink) }
+        let (data, response) = try await send(request, body: .none)
+        guard (200..<300).contains(response.statusCode) else { return (data.prefix(1 << 16), response) }
+        var offset = 0
+        while offset < data.count {
+            let end = min(offset + (1 << 20), data.count)
+            try sink(data.subdata(in: data.startIndex.advanced(by: offset)..<data.startIndex.advanced(by: end)))
+            offset = end
+        }
+        return (Data(), response)
+    }
+}
+
+extension URLSessionTransport: StreamingTransport {
+    public func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
+        try await streamer.stream(request, sink: sink)
+    }
+}
+
+extension LoggingHTTPTransport: StreamingTransport {
+    public func stream(_ request: URLRequest, sink: @Sendable (Data) throws -> Void) async throws -> (Data, HTTPURLResponse) {
+        let line = "\(request.httpMethod ?? "GET") \(request.url?.host ?? "?")\(PathTemplate.make(request.url?.path ?? ""))"
+        do {
+            let result = try await base.streamBody(request, sink: sink)
+            log.log(.debug, category: "drive.http", "\(line) -> \(result.1.statusCode)")
+            return result
+        } catch {
+            let code = (error as? URLError).map { String($0.code.rawValue) } ?? "other"
+            log.log(.debug, category: "drive.http", "\(line) failed (\(code))")
+            throw error
+        }
+    }
+}

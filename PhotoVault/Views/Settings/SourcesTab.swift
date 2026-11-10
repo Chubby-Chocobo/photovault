@@ -8,6 +8,8 @@ struct SourcesTab: View {
     @Environment(AppModel.self) private var model
     @State private var photosCount: Int?
     @State private var confirmCancel: SourceID?
+    @State private var showGoogleExplainer = false
+    @State private var showDropboxBrowser = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -16,7 +18,12 @@ struct SourcesTab: View {
             SettingsNote(tr(
                 vi: "Giữ thư mục và ổ đĩa chứa nó kết nối cho tới khi nhập xong. PhotoVault chỉ đọc, không sửa hay xoá gì trong thư mục.",
                 en: "Keep the folder and the disk it is on connected until the import is done. PhotoVault only reads; it never changes or deletes anything in the folder."))
+            SettingsNote(tr(
+                vi: "Google Drive và Dropbox: PhotoVault chỉ đọc và tải ảnh về để sao lưu, không sửa hay xoá gì trên tài khoản của bạn.",
+                en: "Google Drive and Dropbox: PhotoVault only reads and downloads photos to back them up; it never changes or deletes anything in your account."))
         }
+        .sheet(isPresented: $showGoogleExplainer) { GoogleDriveExplainerSheet() }
+        .sheet(isPresented: $showDropboxBrowser) { DropboxFolderSheet() }
         // Counted again with every snapshot, so the number follows the library while this tab is open.
         .task(id: model.snapshot?.updatedAt) { photosCount = await model.photosAssetCount() }
         .confirmationDialog(
@@ -85,6 +92,15 @@ struct SourcesTab: View {
             HStack {
                 Menu {
                     Button(tr(vi: "Từ thư mục trên Mac…", en: "From a folder on this Mac…")) { model.importFolder() }
+                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) { showGoogleExplainer = true }
+                        .disabled(!model.googleImportAvailable || model.cloudFlowBusy)
+                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
+                        Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
+                    }
+                    .disabled(!model.dropboxImportAvailable || model.cloudFlowBusy)
+                    .help(model.dropboxImportAvailable ? "" : tr(
+                        vi: "Bản này chưa có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
+                        en: "This build has no Dropbox app key (DROPBOX_APP_KEY)."))
                 } label: {
                     Label(tr(vi: "Nhập ảnh…", en: "Import photos…"), systemImage: "square.and.arrow.down")
                 }
@@ -95,69 +111,30 @@ struct SourcesTab: View {
                     Text(tr(vi: "Hoàn tất thiết lập ban đầu trước.", en: "Finish the first setup first.")).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
+                if model.dropboxSignedIn {
+                    Button(tr(vi: "Đăng xuất Dropbox", en: "Sign out of Dropbox")) { model.signOutDropbox() }
+                        .controlSize(.small)
+                        .help(tr(vi: "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.", en: "Existing imports keep their own read access."))
+                }
+            }
+            if model.cloudFlowBusy { BrowserWaitRow(onCancel: model.cancelCloudFlow) }
+            if !model.dropboxImportAvailable {
+                Text(tr(vi: "Nhập từ Dropbox cần khoá ứng dụng Dropbox trong bản build này.", en: "Importing from Dropbox needs a Dropbox app key in this build."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
             let running = model.runningImports
             if running.isEmpty && model.finishedImports.isEmpty {
                 Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
             }
             ForEach(running) { item in
-                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), onCancel: { confirmCancel = item.id })
+                ImportRunningRow(item: item, waitingReason: ImportProgressText.waitingForPhotos(item, photosAllowsReading: model.photosAuthorization.allowsReading), onCancel: { confirmCancel = item.id }, onSignInAgain: { model.reconnectImport(item) })
             }
             let finished = model.finishedImports
             if !finished.isEmpty {
                 Divider()
                 Text(tr(vi: "Đã xong", en: "Finished")).font(.subheadline.weight(.semibold))
-                ForEach(finished) { ImportFinishedRow(item: $0) }
+                ForEach(finished) { item in ImportFinishedRow(item: item, onSignInAgain: { model.reconnectImport(item) }) }
             }
         }
-    }
-}
-
-private struct ImportRunningRow: View {
-    var item: ImportSnapshot
-    var waitingReason: String?
-    var onCancel: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Image(systemName: "folder").foregroundStyle(.secondary).accessibilityHidden(true)
-                Text(item.displayName).font(.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 8)
-                Button(tr(vi: "Huỷ", en: "Cancel"), role: .destructive, action: onCancel).controlSize(.small)
-            }
-            Text(waitingReason ?? ImportProgressText.statusLabel(item.status)).font(.caption)
-                .foregroundStyle(item.status == .offline || waitingReason != nil ? .orange : .secondary)
-            if item.status != .offline || item.found > 0 {
-                ProgressBar(fraction: ImportProgressText.fraction(item))
-                    .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
-            }
-            let line = ImportProgressText.progressLine(item)
-            if !line.isEmpty { Text(line).font(.caption).monospacedDigit().foregroundStyle(.secondary) }
-            let rest = [
-                item.unsupported > 0 ? tr(vi: "\(VietnameseFormat.integer(item.unsupported)) bỏ qua", en: "\(VietnameseFormat.integer(item.unsupported)) skipped") : nil,
-                item.failed > 0 ? tr(vi: "\(VietnameseFormat.integer(item.failed)) lỗi", en: "\(VietnameseFormat.integer(item.failed)) failed") : nil,
-            ].compactMap { $0 }
-            if !rest.isEmpty { Text(rest.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
-        }
-    }
-}
-
-private struct ImportFinishedRow: View {
-    var item: ImportSnapshot
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Image(systemName: item.status == .completed ? "checkmark.circle.fill" : "xmark.circle")
-                    .foregroundStyle(item.status == .completed ? Color.green : Color.secondary).accessibilityHidden(true)
-                Text(item.displayName).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 8)
-                Text(ImportProgressText.statusLabel(item.status) + (item.finishedAt.map { " · " + RelativeTimeText.ago($0, now: Date()) } ?? ""))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Text(ImportProgressText.summaryLine(item)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-        }
-        .accessibilityElement(children: .combine)
     }
 }

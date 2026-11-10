@@ -59,6 +59,11 @@ public struct EngineSnapshot: Sendable, Equatable {
 /// Progress of one folder import, for Settings and the menu bar.
 public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     public var id: SourceID
+    public var kind: SourceKind
+    /// Cloud account (email) the import reads from. Shown in the app only; never logged.
+    public var account: String?
+    /// Why an offline import waits (`signInRequired` when the provider rejected the grant).
+    public var statusReason: String?
     /// The folder's name. Shown in the app only; never written to logs or the activity list.
     public var displayName: String
     public var status: SourceStatus
@@ -79,11 +84,15 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     public var isFinished: Bool { !status.isOpen }
 
     public init(
-        id: SourceID, displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
+        id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, statusReason: String? = nil,
+        displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
         processed: Int = 0, imported: Int = 0, duplicates: Int = 0, unsupported: Int = 0, failed: Int = 0,
         filesUploaded: Int = 0, filesTotal: Int = 0
     ) {
         self.id = id
+        self.kind = kind
+        self.account = account
+        self.statusReason = statusReason
         self.displayName = displayName
         self.status = status
         self.createdAt = createdAt

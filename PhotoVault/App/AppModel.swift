@@ -50,6 +50,12 @@ final class AppModel {
     var factoryResetInProgress = false
     var windowRequest: WindowRequest?
     var settingsTab: SettingsTab = .general
+    /// A Dropbox account token is stored (the folder browser needs no new sign-in).
+    var dropboxSignedIn = false
+    /// A Google or Dropbox sign-in is waiting for the browser; further starts are ignored meanwhile.
+    var cloudFlowBusy = false
+    /// Cancels the browser sign-in that is running; nil when none is.
+    @ObservationIgnored var cloudFlowCancel: (() -> Void)?
     var hardening: (any HardeningCommands)?
     /// Set before `bootstrap()`: builds the engine adapter for `HardeningCommands`.
     @ObservationIgnored var hardeningFactory: (@MainActor (AppEnvironment) -> any HardeningCommands)?
@@ -124,6 +130,7 @@ final class AppModel {
             return
         }
         env = environment
+        dropboxSignedIn = environment.cloud.hasDropboxAccount()
         hardening = hardeningFactory?(environment)
             ?? EngineHardeningCommands(coordinator: environment.coordinator, store: environment.store, log: environment.log)
         notificationService.configure()
@@ -170,7 +177,9 @@ final class AppModel {
         let scheduler = SyncScheduler(
             onTrigger: { [weak self] in self?.requestSync($0) },
             needsAvailabilityRecheck: { [weak self] in
-                self?.destinations.contains { record in
+                // A cloud import that is still reading may have groups waiting out a short cooldown.
+                let importWaiting = self?.snapshot?.imports.contains { $0.kind != .localFolder && $0.status == .scanning } ?? false
+                return importWaiting || self?.destinations.contains { record in
                     if record.kind == .localFolder, case .unavailable = record.status { return true }
                     return false
                 } ?? false

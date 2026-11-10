@@ -36,7 +36,7 @@ enum SidecarFactory {
         guard let source = try SourceRepository.fetch(db, id: asset.sourceId),
               let primary = try ImportItemRepository.primary(db, assetKey: asset.assetKey, preferring: asset.sourceId) else { return nil }
         let kind = source.kind.rawValue
-        return SidecarSource(kind: kind, name: source.displayName, path: primary.relativePath, dateSource: primary.dateSource)
+        return SidecarSource(kind: kind, name: source.sidecarName, path: primary.relativePath, dateSource: primary.dateSource)
     }
 
     /// Hash in the form the destination verifies, comparable with `job.uploaded_hash`.

@@ -20,6 +20,8 @@ LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
 // gitignored Secrets.xcconfig; copy Secrets.xcconfig.example.
 GOOGLE_CLIENT_ID =
 GOOGLE_CLIENT_SECRET =
+// Dropbox app key (README: Dropbox setup); empty disables importing from Dropbox.
+DROPBOX_APP_KEY =
 
 #include? "Secrets.xcconfig"
 // Personal Team signing (DEVELOPMENT_TEAM); copy Local.xcconfig.example.

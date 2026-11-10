@@ -5,15 +5,15 @@ import PhotoVaultStore
 
 /// Owner commands for one-time imports. They run in the exclusive lane, between cycle passes.
 extension SyncCoordinator {
-    /// Records the job, then registers its adapter (database before side effect). The next cycle lists the folder.
+    /// Records the job of any import kind, then registers its adapter (database before side effect). The next cycle lists the folder.
     /// - Throws: `EngineError.notBaselined` until the first baseline is taken.
     @discardableResult
-    public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?) async throws -> SourceID {
+    public func startImport(source: any FolderImportSource, kind: SourceKind, displayName: String, config: SourceConfig) async throws -> SourceID {
         try await exclusive {
             try await refuseLegacyLayout()
             guard baseline.isTaken else { throw EngineError.notBaselined }
             let record = SourceRecord(
-                id: source.id, kind: .localFolder, mode: .oneTime, displayName: displayName, config: SourceConfig(bookmark: bookmark),
+                id: source.id, kind: kind, mode: .oneTime, displayName: displayName, config: config,
                 status: .scanning, createdAt: env.clock.now)
             try await env.store.write { db in try SourceRepository.insert(db, record) }
             await env.sources.add(source)
@@ -22,9 +22,34 @@ extension SyncCoordinator {
         return source.id
     }
 
+    /// A Mac folder import; the app keeps its security-scoped bookmark with the job.
+    @discardableResult
+    public func startFolderImport(source: any FolderImportSource, displayName: String, bookmark: Data?) async throws -> SourceID {
+        try await startImport(source: source, kind: .localFolder, displayName: displayName, config: SourceConfig(bookmark: bookmark))
+    }
+
     /// Adopts the adapters of jobs that were open when the app last ran.
     public func registerSources(_ sources: [any FolderImportSource]) async {
         for source in sources { await env.sources.add(source) }
+    }
+
+    /// The owner signed in again: clears the hold and the "needs sign-in" mark of an import so it carries on
+    /// in the next cycle instead of after the cooldown. A held job goes back to reading its files.
+    public func resumeImportAfterSignIn(_ id: SourceID) async throws {
+        try await exclusive {
+            importHolds.clear(id)
+            let now = env.clock.now
+            try await env.store.write { db in
+                guard let source = try SourceRepository.fetch(db, id: id), source.kind.isImport else { return }
+                try EngineQueries.releaseExports(db, sourceId: id)
+                if source.status == .offline {
+                    try SourceRepository.setStatus(db, id: id, status: .scanning, reason: nil, now: now)
+                } else if source.statusReason != nil {
+                    try SourceRepository.setStatusReason(db, id: id, reason: nil)
+                }
+            }
+        }
+        await publish()
     }
 
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled

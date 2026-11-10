@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "PhotoVaultPhotos", targets: ["PhotoVaultPhotos"]),
         .library(name: "PhotoVaultDrive", targets: ["PhotoVaultDrive"]),
         .library(name: "PhotoVaultLocal", targets: ["PhotoVaultLocal"]),
+        .library(name: "PhotoVaultDropbox", targets: ["PhotoVaultDropbox"]),
         .library(name: "PhotoVaultEngine", targets: ["PhotoVaultEngine"]),
         .library(name: "PhotoVaultAppSupport", targets: ["PhotoVaultAppSupport"]),
     ],
@@ -34,6 +35,7 @@ let package = Package(
         .target(name: "PhotoVaultPhotos", dependencies: ["PhotoVaultCore"], swiftSettings: strictSwift),
         .target(name: "PhotoVaultDrive", dependencies: ["PhotoVaultCore"], swiftSettings: strictSwift),
         .target(name: "PhotoVaultLocal", dependencies: ["PhotoVaultCore"], swiftSettings: strictSwift),
+        .target(name: "PhotoVaultDropbox", dependencies: ["PhotoVaultCore", "PhotoVaultDrive"], swiftSettings: strictSwift),
         .target(
             name: "PhotoVaultEngine",
             dependencies: ["PhotoVaultCore", "PhotoVaultStore", .product(name: "GRDB", package: "GRDB.swift")],
@@ -53,6 +55,11 @@ let package = Package(
             resources: [.copy("Fixtures")], swiftSettings: strictSwift
         ),
         .testTarget(name: "PhotoVaultDriveTests", dependencies: ["PhotoVaultDrive", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
+        .testTarget(
+            name: "PhotoVaultDropboxTests",
+            dependencies: ["PhotoVaultDropbox", "PhotoVaultDrive", "PhotoVaultTestSupport"],
+            swiftSettings: strictSwift
+        ),
         .testTarget(name: "PhotoVaultLocalTests", dependencies: ["PhotoVaultLocal", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
         .testTarget(
             name: "PhotoVaultEngineTests",

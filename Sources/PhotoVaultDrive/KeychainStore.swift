@@ -9,15 +9,19 @@ public protocol KeychainStore: Sendable {
     func write(_ data: Data, account: String) throws
     /// Deleting a missing item is not an error.
     func delete(account: String) throws
+    /// Every account name stored under this store's service.
+    func accounts() throws -> [String]
 }
 
 /// Data-protection keychain item: no ACL prompts across rebuilds, never leaves this Mac.
 public struct SystemKeychainStore: KeychainStore {
     public static let service = "com.annh.photovault.google"
 
-    public init() {}
+    private let serviceName: String
 
-    static func query(account: String) -> [String: Any] {
+    public init(service: String = SystemKeychainStore.service) { serviceName = service }
+
+    static func query(account: String, service: String = SystemKeychainStore.service) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -27,8 +31,17 @@ public struct SystemKeychainStore: KeychainStore {
         ]
     }
 
+    /// Every item of the service, attributes only (no secret is read).
+    static func listQuery(service: String = SystemKeychainStore.service) -> [String: Any] {
+        var query = Self.query(account: "", service: service)
+        query[kSecAttrAccount as String] = nil
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        return query
+    }
+
     public func read(account: String) throws -> Data? {
-        var query = Self.query(account: account)
+        var query = Self.query(account: account, service: serviceName)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -43,17 +56,25 @@ public struct SystemKeychainStore: KeychainStore {
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
-        let status = SecItemUpdate(Self.query(account: account) as CFDictionary, attributes as CFDictionary)
+        let status = SecItemUpdate(Self.query(account: account, service: serviceName) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            try Self.check(SecItemAdd(Self.query(account: account).merging(attributes) { $1 } as CFDictionary, nil))
+            try Self.check(SecItemAdd(Self.query(account: account, service: serviceName).merging(attributes) { $1 } as CFDictionary, nil))
         } else {
             try Self.check(status)
         }
     }
 
     public func delete(account: String) throws {
-        let status = SecItemDelete(Self.query(account: account) as CFDictionary)
+        let status = SecItemDelete(Self.query(account: account, service: serviceName) as CFDictionary)
         if status != errSecItemNotFound { try Self.check(status) }
+    }
+
+    public func accounts() throws -> [String] {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(Self.listQuery(service: serviceName) as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        try Self.check(status)
+        return (result as? [[String: Any]])?.compactMap { $0[kSecAttrAccount as String] as? String } ?? []
     }
 
     static func check(_ status: OSStatus) throws {

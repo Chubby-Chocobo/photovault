@@ -15,6 +15,8 @@ public actor SyncCoordinator {
     let reconciler: any ReconciliationRunning
     let hardening: HardeningServices
     let staging: StagingManager
+    /// When each import job was last held; the sign-in command clears it so a job resumes at once.
+    let importHolds: ImportHolds
     let resourceGuard: ResourceGuard
     let baseline: Baseline
     let scanner: Scanner
@@ -60,6 +62,7 @@ public actor SyncCoordinator {
     ) {
         self.env = env
         let extensions = planningExtensions + [SidecarPlanner()]
+        let importHolds = ImportHolds()
         let staging = StagingManager(env: env)
         let guardActor = ResourceGuard(env: env, staging: staging)
         let uploadRunner = UploadRunner(env: env, staging: staging)
@@ -72,7 +75,8 @@ public actor SyncCoordinator {
         organization = services
         self.hardening = hardening
         self.reconciler = reconciler ?? hardening.reconciler
-        self.stages = stages + services.stages + hardening.stages + [ImportStage(env: env, extensions: extensions)]
+        self.stages = stages + services.stages + hardening.stages + [ImportStage(env: env, extensions: extensions, holds: importHolds)]
+        self.importHolds = importHolds
         self.planningExtensions = extensions
         self.staging = staging
         resourceGuard = guardActor

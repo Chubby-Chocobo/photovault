@@ -7,6 +7,8 @@ public final class FakeContentSource: ContentSource, @unchecked Sendable {
     private let lock = NSLock()
     private var files: [String: Data] = [:]
     private var online = true
+    private var revoked = false
+    private var failure: (any Error)?
     private var exportLog: [String] = []
 
     public init(id: SourceID = .folder()) { self.id = id }
@@ -17,13 +19,24 @@ public final class FakeContentSource: ContentSource, @unchecked Sendable {
         lock.withLock { files[Self.key(localId, type)] = data }
     }
 
+    /// Forgets every file, as when the provider no longer has them.
+    public func removeAll() { lock.withLock { files = [:] } }
+
     public func setOnline(_ value: Bool) { lock.withLock { online = value } }
+
+    /// The provider rejects the stored grant: every read throws `accessRevoked`.
+    public func setRevoked(_ value: Bool) { lock.withLock { revoked = value } }
+
+    /// Every read throws this error (nil clears it); for an adapter that misbehaves.
+    public func setFailure(_ error: (any Error)?) { lock.withLock { failure = error } }
 
     /// Local ids exported so far, in order.
     public var exportedLocalIds: [String] { lock.withLock { exportLog } }
 
     public func exportResource(_ locator: ResourceLocator, to destination: URL, control: ExportControl) async throws -> ExportedFile {
         let bytes: Data = try lock.withLock {
+            if let failure { throw failure }
+            guard !revoked else { throw SourceError.accessRevoked }
             guard online else { throw SourceError.unavailable }
             guard let data = files[Self.key(locator.localId, locator.type)] else { throw SourceError.fileMissing }
             exportLog.append(locator.localId)

@@ -13,6 +13,7 @@ final class InMemoryKeychainStore: KeychainStore, @unchecked Sendable {
     func read(account: String) throws -> Data? { lock.lock(); defer { lock.unlock() }; return items[account] }
     func write(_ data: Data, account: String) throws { lock.lock(); items[account] = data; lock.unlock() }
     func delete(account: String) throws { lock.lock(); items[account] = nil; lock.unlock() }
+    func accounts() throws -> [String] { lock.lock(); defer { lock.unlock() }; return items.keys.sorted() }
     var refreshToken: String? {
         (try? read(account: GoogleAuthSession.refreshAccount)).flatMap { String(data: $0, encoding: .utf8) }
     }

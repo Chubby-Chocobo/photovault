@@ -1,6 +1,6 @@
 # System architecture
 
-Last updated: 2026-11-09. Describes the code in this repository as built for PhotoVault 1.0.
+Last updated: 2026-11-10. Describes the code in this repository as built for PhotoVault 1.0.
 Spec: [photovault-spec-v1.md](../requirements/photovault-spec-v1.md). Decisions: [decisions/README.md](../decisions/README.md). Module and file inventory: [codebase-summary.md](./codebase-summary.md).
 
 PhotoVault is a sandboxed macOS menu-bar app (Swift 6, SwiftUI, GRDB) that copies the Photos library to one Google Drive root and to 0..n local or NAS folders. The app never deletes backup data at any destination.
@@ -28,17 +28,19 @@ flowchart TD
     Engine["PhotoVaultEngine<br/>sync cycle, workers, recovery"]
     Store["PhotoVaultStore<br/>GRDB schema and repositories"]
     Photos["PhotoVaultPhotos<br/>PhotoKit source and export"]
-    Drive["PhotoVaultDrive<br/>OAuth, Keychain, Drive REST"]
+    Drive["PhotoVaultDrive<br/>OAuth, Keychain, Drive REST, Picker import"]
+    Dropbox["PhotoVaultDropbox<br/>OAuth PKCE, Dropbox REST, folder import"]
     Local["PhotoVaultLocal<br/>local and NAS folders"]
     Core["PhotoVaultCore<br/>contracts and pure rules"]
     GRDB["GRDB.swift 7.12+"]
     TestSupport["PhotoVaultTestSupport<br/>fakes for tests"]
 
-    App --> AppSupport & Engine & Store & Photos & Drive & Local & Core
+    App --> AppSupport & Engine & Store & Photos & Drive & Dropbox & Local & Core
     AppSupport --> Engine & Core
     Engine --> Store & Core & GRDB
     Store --> Core & GRDB
     Photos & Drive & Local --> Core
+    Dropbox --> Drive & Core
     TestSupport --> Core
 ```
 
@@ -51,7 +53,8 @@ Edges are the dependencies declared in [Package.swift](../../Package.swift). The
 | `PhotoVaultCore` | Models, persisted entities, protocols (`Destination`, `PhotosSource`, `ContentSource`, `FolderImportSource`, `ReverseGeocoding`, `Clock`, `LogSink`), error classes, job state machine, eligibility, naming, layout, classification, sidecar builders, policies (backoff, token bucket, disk guard, place naming, view diff). No I/O. | `JobTransitions`, `Eligibility`, `CategoryClassifier`, `NameSanitizer`, `SidecarBuilder`, `TokenBucket`, `DiskGuardPolicy` |
 | `PhotoVaultStore` | GRDB `DatabasePool` in WAL mode, migrations `v1` to `v5`, repositories as stateless functions over `Database`, rolling `VACUUM INTO` backups. | `Store`, `Schema`, `JobRepository`, `DatabaseBackup` |
 | `PhotoVaultPhotos` | PhotoKit adapter (a request that delivers no data for 15 minutes is abandoned), streaming export (the writer with inline MD5 and SHA-256 lives in Core), header-only camera classification, ImageIO and AVFoundation metadata, `CLGeocoder` adapter. | `PhotoKitSource`, `HeaderClassifier`, `ImageIOMetadataReader`, `CLGeocoderReverseGeocoder` |
-| `PhotoVaultDrive` | OAuth 2.0 PKCE with a loopback redirect, refresh token in the Keychain, Drive v3 REST client, resumable upload, `GoogleDriveDestination`. | `GoogleAuthSession`, `OAuthClient`, `DriveAPI`, `ResumableUploader`, `GoogleDriveDestination` |
+| `PhotoVaultDrive` | OAuth 2.0 PKCE with a loopback redirect, refresh token in the Keychain, Drive v3 REST client, resumable upload, `GoogleDriveDestination`. Shared OAuth pieces (`HTTPTransport`, `PKCE`, `LoopbackRedirectServer`, `KeychainStore`) are used by the Dropbox module too. One-time import from Google Drive: the Picker flow (`GooglePickerFlow`, `drive.file` only) and `DriveImportSource`, a read-only `FolderImportSource` that lists picked files and folders and streams downloads. | `GoogleAuthSession`, `OAuthClient`, `DriveAPI`, `ResumableUploader`, `GoogleDriveDestination`, `GooglePickerFlow`, `DriveImportSource` |
+| `PhotoVaultDropbox` | One-time import from a Dropbox folder: PKCE sign-in on the fixed loopback port `53682`, Dropbox API client (`list_folder`, `files/download`), folder browser, `DropboxImportSource`. Read-only scopes. Depends on Core and Drive. | `DropboxAuth`, `DropboxClient`, `DropboxImportSource` |
 | `PhotoVaultLocal` | `LocalFolderDestination`: fd-relative writes, atomic no-overwrite placement, per-folder locks, `destination.json` marker. `LocalFolderSource`: a folder picked for a one-time import, read through a read-only bookmark (listing, hashing, copy), never written to. | `LocalFolderDestination`, `LocalFolderSource`, `AtomicFileWriter`, `FolderLockManager`, `DestinationMarker` |
 | `PhotoVaultEngine` | `SyncCoordinator` runs the sync cycle; `SourceRegistry` maps `asset.source_id` to the adapter that reads its bytes (`ContentSource`: Photos, or a folder import); `ImportStage` runs folder imports (list, read and hash, dedupe, ingest) inside the cycle; change tracking, scan, classify, export, staging, upload fan-out, edit gate, sidecars, views, moves, place naming, startup and destination recovery, integrity checks, instance lock. | `SyncCoordinator`, `EngineEnvironment`, `ExportWorker`, `UploadRunner`, `StartupRecovery` |
 | `PhotoVaultAppSupport` | Presentation logic without AppKit or SwiftUI: status and progress text (Vietnamese and English), notification policy, onboarding steps, settings form, rotating file log, `LogRedactor`, `TriggerDebouncer`. | `NotificationPolicy`, `LogRedactor`, `RotatingFileLog`, `StatusText` |
@@ -256,14 +259,17 @@ Schema: migrations `v1`, `v2-upload-intent`, `v3-snapshot-counters`, `v4-provisi
 
 One item holds the Google refresh token: service `com.annh.photovault.google`, data-protection keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, not synchronizable ([decision 0010](../decisions/0010-keychain-class.md)). Sign-out deletes the Keychain item first, even if revocation fails (`AuthSessionTests.signOutDeletesKeychainFirstEvenWhenRevokeFails`).
 
+Cloud imports add one item per import (`import-<sourceId>`, the refresh token of that pick or folder) and one for the Dropbox account used by the folder browser. Factory reset deletes them ([decision 0026](../decisions/0026-cloud-folder-imports.md), FR-122).
+
 ## Privacy boundaries
 
 What leaves the Mac:
 
 | Recipient | Data sent | Not sent |
 |---|---|---|
-| Google OAuth (`accounts.google.com`, `oauth2.googleapis.com`) | Authorization code exchange and token refresh, scopes `drive.file openid email`. Loopback redirect to `127.0.0.1` stays on the Mac. | Photos content |
+| Google OAuth (`accounts.google.com`, `oauth2.googleapis.com`) | Authorization code exchange and token refresh, scopes `drive.file openid email`. The Drive import Picker runs in the browser and returns the picked file ids to the loopback redirect. Loopback redirect to `127.0.0.1` stays on the Mac. | Photos content |
 | Google Drive API (`www.googleapis.com`) | Media bytes, sidecars, descriptions, folder and file names (names carry the original camera name, for example `2026-11-08 23.30.00_IMG_4821.HEIC`), place names in folder names, `appProperties` keys `pvAssetId`, `pvResType`, `pvKind`, `pvCategory`, `pvSchema`, `pvLogical`, `pvView`, `pvRoot`, `pvArchiveTZ`. Asset IDs longer than the 124-byte property limit are sent as a hash (`h:` plus 32 hex characters). | Local paths, bookmarks, tokens in logs |
+| Dropbox (`www.dropbox.com`, `api.dropboxapi.com`, `content.dropboxapi.com`) | Sign-in (PKCE, read-only scopes `files.metadata.read files.content.read account_info.read`), token refresh, `get_current_account`, `list_folder` for the folder browser and the import, `files/download` (served from `content.dropboxapi.com`) for each file of the chosen folder. Nothing is uploaded to Dropbox. | Local paths, tokens in logs, anything written back to Dropbox |
 | Apple geocoder through `CLGeocoder` | The centre of a 0.01° grid cell (`GeoCell.center`) and the display locale ([decision 0008](../decisions/0008-geocoding-privacy.md)) | Exact coordinates, asset identifiers, hidden or deleted assets |
 | Local and NAS folders | Media bytes, sidecars, the destination marker | Anything outside the folder the owner chose; access is through a security-scoped bookmark |
 | Apple iCloud through PhotoKit | Requests for originals with `isNetworkAccessAllowed = true`. This is inbound traffic for iCloud-only originals. | Nothing is uploaded to iCloud by the app |

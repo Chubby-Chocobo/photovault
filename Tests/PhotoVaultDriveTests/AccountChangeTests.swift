@@ -90,6 +90,7 @@ private struct FailingWriteKeychain: KeychainStore {
     func read(account: String) throws -> Data? { Data("refresh-A".utf8) }
     func write(_ data: Data, account: String) throws { throw DestinationError.transient(reason: "keychain") }
     func delete(account: String) throws {}
+    func accounts() throws -> [String] { [] }
 }
 
 @Suite struct StagedAccountChangeTests {
