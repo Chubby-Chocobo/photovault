@@ -140,17 +140,17 @@ private final class OpenedFlag: @unchecked Sendable {
 
     @Test func unopenableBrowserIsReported() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
-        let port = try await freeLoopbackPort()
+        // Port 0 takes any free port: nothing calls back here, and a port picked in advance can be taken meanwhile.
         await #expect(throws: DropboxAuthError.browserUnavailable) {
-            try await DropboxAuth(appKey: "K", transport: transport, openURL: { _ in false }, port: port).signIn()
+            try await DropboxAuth(appKey: "K", transport: transport, openURL: { _ in false }, port: 0).signIn()
         }
     }
 
     @Test func cancellingTheTaskStopsWaitingForTheBrowserAtOnce() async throws {
         let transport = StubTransport { _ in StubResponse(status: 500) }
-        let port = try await freeLoopbackPort()
         let opened = OpenedFlag()
-        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: port)
+        // Port 0 takes any free port: nothing calls back here, and a port picked in advance can be taken meanwhile.
+        let auth = DropboxAuth(appKey: "K", transport: transport, openURL: { _ in opened.set(); return true }, loopbackTimeout: 60, port: 0)
         let task = Task { try await auth.signIn() }
         #expect(await pollUntil { opened.value }, "the sign-in waits for the browser")
         let started = ContinuousClock.now

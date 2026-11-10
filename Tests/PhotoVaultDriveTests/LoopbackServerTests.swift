@@ -145,20 +145,20 @@ private enum RawSocket {
         _ = try await server.awaitCode()
         server.respond(success: true)
         _ = try await browser.value
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(await pollUntil { server.hasStoppedListening })
         await #expect(throws: (any Error).self) { _ = try await fetch(port, "/oauth2/callback?code=c2&state=st") }
     }
 
     @Test func idleConnectionIsClosedAfterTheConnectionTimeout() async throws {
-        // The connection is seen as open before the timeout closes it, even when this task runs late on a busy machine.
-        let server = try LoopbackRedirectServer(expectedState: "st", connectionTimeout: 5)
+        let server = try LoopbackRedirectServer(expectedState: "st", connectionTimeout: 1)
         let port = try await server.start()
         defer { server.cancel() }
         let fd = try #require(RawSocket.connect(host: "127.0.0.1", port: port))
         defer { close(fd) }
-        #expect(await pollUntil { server.openConnectionCount == 1 })
+        // The read waits for the server to close the connection, however late the timeout fires.
         let (data, closed) = RawSocket.readAll(fd)
         #expect(closed && data.isEmpty)
+        #expect(server.acceptedConnectionCount == 1, "the connection was accepted, then closed by the timeout")
         #expect(server.openConnectionCount == 0)
     }
 

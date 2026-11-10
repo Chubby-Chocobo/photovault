@@ -27,7 +27,12 @@ import Testing
         let url = try h.seedStaged("race")
         let store = h.store
         let held = HeldWrite()
-        let blocker = Task.detached { try store.write { _ in held.hold() } }
+        // The held write blocks its thread, so it runs on a thread of its own, not on the Swift concurrency pool.
+        let blocker = Task {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                Thread { continuation.resume(with: Result { try store.write { _ in held.hold() } }) }.start()
+            }
+        }
         #expect(await pollUntil { held.isHolding })
         let sweep = Task { try await staging.releaseUnneeded() }
         let waiting = await pollUntil { await staging.isReleasing(url.path) }

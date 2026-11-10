@@ -106,6 +106,22 @@ struct TriggerDebouncerTests {
         await debouncer.cancel()
     }
 
+    /// A signal whose quiet period would end after the burst's deadline fires at the deadline, not after it.
+    @Test func aQuietPeriodThatWouldOverrunTheDeadlineIsCutToIt() async throws {
+        let counter = Counter()
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 0.25, maxWait: 0.375, timer: time.source) { counter.increment() }
+        for _ in 0..<3 {
+            await debouncer.signal()
+            time.advance(by: 0.09375)
+        }
+        // The last signal came at 0.1875: its quiet period would end at 0.4375, the deadline is 0.375.
+        #expect(await pollUntil { time.waiting == [0.375] })
+        time.advance(by: 0.09375)
+        #expect(await pollUntil { counter.count == 1 })
+        #expect(time.now == 0.375)
+    }
+
     /// Signals arriving faster than the fire task can run must not keep cancelling the deadline fire.
     @Test func deadlineFireIsNotCancelledByLaterSignals() async throws {
         let counter = Counter()
@@ -136,6 +152,23 @@ struct TriggerDebouncerTests {
         #expect(await pollUntil { counter.count == 1 })
         await debouncer.signal()
         #expect(await pollUntil { time.waiting == [0.5] }, "a new burst, timed from its own signal")
+        time.advance(by: 0.25)
+        #expect(await pollUntil { counter.count == 2 })
+    }
+
+    /// A burst after a fire has its own deadline, counted from its own first signal.
+    @Test func aBurstAfterAFireStartsItsOwnDeadline() async throws {
+        let counter = Counter()
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 0.25, maxWait: 0.5, timer: time.source) { counter.increment() }
+        await debouncer.signal()
+        time.advance(by: 0.25)
+        #expect(await pollUntil { counter.count == 1 })
+        await debouncer.signal()
+        time.advance(by: 0.125)
+        await debouncer.signal()
+        // Second burst from 0.25: deadline 0.75, so the quiet period from 0.375 decides. The first burst's deadline (0.5) is gone.
+        #expect(await pollUntil { time.waiting == [0.625] })
         time.advance(by: 0.25)
         #expect(await pollUntil { counter.count == 2 })
     }

@@ -19,11 +19,6 @@ import Testing
         return (h, wrapper)
     }
 
-    /// Waits until `condition` holds (bounded, so a bug fails the test instead of hanging it).
-    private func eventually(_ condition: @Sendable () async -> Bool) async -> Bool {
-        await pollUntil(condition)
-    }
-
     @Test func aCommandIssuedDuringALongCycleRunsBetweenJobsAndNeverSeesAHalfFinishedUpload() async throws {
         let (h, wrapper) = try await harness()
         let coordinator = h.coordinator
@@ -38,7 +33,7 @@ import Testing
             guard fired.takeFirst() else { return }
             check.set(Task { try await coordinator.runIntegrityCheck(.googleDrive) })
             // The owner's request is queued while this upload is still in flight.
-            _ = await self.eventually { await coordinator.lane.hasWaitingCommands }
+            _ = await pollUntil { await coordinator.lane.hasWaitingCommands }
         }
         await h.run()
 
@@ -120,7 +115,7 @@ import Testing
         }
         let coordinator = h.coordinator
         let cycle = Task { await h.run() }
-        #expect(await eventually { entered.isSet })
+        #expect(await pollUntil { entered.isSet })
         await coordinator.destinationRemoved(.googleDrive)
         let outcome = await cycle.value
         guard case .completed = outcome else {
@@ -162,7 +157,7 @@ import Testing
         }
         let coordinator = h.coordinator
         let cycle = Task { await h.run() }
-        #expect(await eventually { entered.isSet })
+        #expect(await pollUntil { entered.isSet })
         try await coordinator.changeDriveRoot(.googleDrive, rootId: "root", rootName: "Camera Uploads", rootHasContent: false)
         let outcome = await cycle.value
         guard case .completed = outcome else {
@@ -207,7 +202,7 @@ import Testing
         h.photos.onFetch = {
             guard fired.takeFirst() else { return }
             check.set(Task { try await coordinator.runIntegrityCheck(.googleDrive) })
-            _ = await self.eventually { await coordinator.lane.hasWaitingCommands }
+            _ = await pollUntil { await coordinator.lane.hasWaitingCommands }
         }
         await h.run()
         _ = try await check.get()?.value
@@ -230,7 +225,7 @@ import Testing
         wrapper.beforeUpload = { _ in
             guard fired.takeFirst() else { return }
             check.set(Task { try await coordinator.runIntegrityCheck(.googleDrive) })
-            _ = await self.eventually { await coordinator.lane.hasWaitingCommands }
+            _ = await pollUntil { await coordinator.lane.hasWaitingCommands }
             // The one upload in flight fails, so the round ends without progress.
             throw DestinationError.itemRejected(reason: "rejected")
         }

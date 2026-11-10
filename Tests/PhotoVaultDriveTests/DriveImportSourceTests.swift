@@ -327,4 +327,15 @@ func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(fo
         #expect(rig.stub.requests.count >= 1, "the lookup did ask Drive")
         #expect(rig.stub.answered == 0, "and gave up while Drive had not answered")
     }
+
+    /// The public time limit is what the app uses: Drive never answers here, so only the limit can end the lookup.
+    @Test func theTimeLimitEndsALookupDriveNeverAnswers() async throws {
+        let rig = try ImportRig()
+        rig.stub.add(.init(id: "R", name: "My Drive", mime: DriveMime.folder, isRoot: true))
+        rig.stub.add(.init(id: "Y", name: "2024", mime: DriveMime.folder, parent: "R"))
+        rig.stub.holdAnswers()
+        defer { rig.stub.releaseAnswers() }
+        #expect(await rig.source(["Y"]).pickedLocations(timeout: .milliseconds(1)) == nil)
+        #expect(rig.stub.answered == 0)
+    }
 }
