@@ -205,9 +205,10 @@ extension AppModel {
     /// Lists the import as "waiting for its turn" and records it in a task of its own: the engine runs the start
     /// between sync passes, which can take long, and the owner may close the window meanwhile. Cancelling the
     /// queued entry cancels the start and deletes the stored sign-in; so does a start that fails.
-    private func enqueueImport(id: SourceID, kind: SourceKind, account: String, displayName: String, provider: String,
-                               location: ImportLocation? = nil, start: @escaping @MainActor () async throws -> SourceID) {
-        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date(), location: location))
+    func enqueueImport(id: SourceID, kind: SourceKind, account: String?, syncedProvider: SyncedCloudProvider? = nil, displayName: String,
+                       provider: String, location: ImportLocation? = nil, start: @escaping @MainActor () async throws -> SourceID) {
+        queuedImports.append(ImportQueue.snapshot(
+            id: id, kind: kind, account: account, syncedProvider: syncedProvider, displayName: displayName, now: Date(), location: location))
         queuedStarts[id] = Task { @MainActor [self] in
             defer {
                 queuedImports.removeAll { $0.id == id }
@@ -268,7 +269,7 @@ extension AppModel {
     /// The owner gave up waiting for the browser: the flow's task is cancelled, which closes its local listener.
     func cancelCloudFlow() { cloudFlowCancel?() }
 
-    private func didStartCloudImport(_ provider: String) {
+    func didStartCloudImport(_ provider: String) {
         env?.log.log(.info, category: "import", "\(provider) import started")
         requestSync(.manual)
         Task { await refreshSnapshot() }

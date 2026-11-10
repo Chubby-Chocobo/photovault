@@ -10,8 +10,8 @@ struct ImportsCard: View {
     @State private var confirming = false
 
     var body: some View {
-        let running = model.runningImports
-        if let item = running.first {
+        if let summary = ImportQueueLayout.popoverSummary(model.queueRows) {
+            let item = summary.head.item
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(ImportProgressText.menuTitle(folderName: item.displayName)).font(.subheadline.weight(.semibold))
@@ -23,11 +23,18 @@ struct ImportsCard: View {
                         .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                 }
                 Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
-                if ImportQueue.isQueued(item) {
+                if model.cancellingImports.contains(item.id) {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text(statusText(item)).font(.caption).foregroundStyle(.secondary)
+                        Text(ImportQueue.cancellingText).font(.caption).foregroundStyle(.secondary)
                     }
+                    Text(model.engineWaitReason).font(.caption2).foregroundStyle(.tertiary)
+                } else if let wait = model.queueWait(for: item) {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(wait.title).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(wait.reason).font(.caption2).foregroundStyle(.tertiary)
                 } else {
                     ProgressBar(fraction: ImportProgressText.fraction(item))
                         .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
@@ -36,7 +43,7 @@ struct ImportsCard: View {
                 if let line = CardActivityText.importJob(item.id, transfers: model.transfers, now: Date()) {
                     CardActivityLine(text: line, isBusy: true)
                 }
-                if !ImportQueue.isQueued(item) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
+                if !ImportQueue.isQueued(item), !model.cancellingImports.contains(item.id) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
                     .fixedSize(horizontal: false, vertical: true) }
                 if confirming {
                     HStack {
@@ -50,8 +57,8 @@ struct ImportsCard: View {
                     }
                     .controlSize(.small)
                 }
-                if let more = ImportProgressText.moreImports(running.count - 1) {
-                    Text(more).font(.caption2).foregroundStyle(.tertiary)
+                if let waiting = summary.waitingLine {
+                    Text(waiting).font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail)
                 }
             }
         }

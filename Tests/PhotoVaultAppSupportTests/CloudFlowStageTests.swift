@@ -103,3 +103,61 @@ import Testing
         #expect(CloudImportKeychain.orphanGrants(stored: [CloudTokenAccount.dropbox, CloudTokenAccount.dropboxEmail], knownImports: []).isEmpty)
     }
 }
+
+@Suite struct QueuedFolderImportTests {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func aSyncedFolderPickIsQueuedWithItsProviderLabelAndPath() {
+        let config = SourceConfig(account: "me@example.com", locationPaths: ["Google Drive/Trips"], syncedProvider: .googleDrive)
+        let item = ImportQueue.snapshot(
+            id: .folder(), kind: .localFolder, account: config.account, syncedProvider: config.syncedCloudProvider, displayName: "Trips", now: now,
+            location: ImportLocation.make(kind: .localFolder, config: config))
+        #expect(ImportQueue.isQueued(item) && PopoverJobVisibility.shows(importJob: item))
+        L10n.$override.withValue(.vi) {
+            #expect(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider) == "Google Drive (trên máy này) · me@example.com")
+            #expect(ImportProgressText.statusLabel(item) == "Chờ đến lượt")
+        }
+        #expect(item.location?.paths == ["Google Drive/Trips"] && item.displayName == "Trips")
+    }
+
+    @Test func aMacFolderPickIsQueuedAsAFolderOnThisMac() {
+        let config = SourceConfig(locationPaths: ["~/Pictures/Trip"])
+        let item = ImportQueue.snapshot(
+            id: .folder(), kind: .localFolder, account: nil, displayName: "Trip", now: now,
+            location: ImportLocation.make(kind: .localFolder, config: config))
+        L10n.$override.withValue(.vi) {
+            #expect(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider) == "Thư mục trên Mac")
+        }
+        #expect(item.location?.paths == ["~/Pictures/Trip"] && item.syncedProvider == nil)
+    }
+
+    @Test func theRealFolderImportReplacesItsQueuedEntry() {
+        let queued = ImportQueue.snapshot(id: .folder(), kind: .localFolder, account: nil, displayName: "Trip", now: now)
+        let real = ImportSnapshot(id: queued.id, displayName: "Trip", status: .scanning, createdAt: now)
+        #expect(ImportQueue.merged(queued: [queued], running: [real]) == [real])
+    }
+}
+
+@Suite struct QueueWaitTextTests {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func queued() -> ImportSnapshot {
+        ImportQueue.snapshot(id: .folder(), kind: .localFolder, account: nil, displayName: "X", now: now)
+    }
+
+    @Test func theReasonNamesWhatTheEngineIsDoing() {
+        L10n.$override.withValue(.vi) {
+            #expect(ImportQueue.waitReason(uploading: true) == "đang chờ app upload xong file đang chạy")
+            #expect(ImportQueue.waitReason(uploading: false) == "đang chờ lượt đồng bộ hiện tại")
+        }
+        L10n.$override.withValue(.en) {
+            #expect(ImportQueue.waitReason(uploading: true) == "waiting for the upload in progress to finish")
+            #expect(ImportQueue.waitReason(uploading: false) == "waiting for the current sync turn")
+        }
+    }
+
+    @Test func aCancelThatWaitsIsSaid() {
+        L10n.$override.withValue(.en) { #expect(ImportQueue.cancellingText == "Cancelling · waiting for its turn") }
+        L10n.$override.withValue(.vi) { #expect(ImportQueue.cancellingText == "Đang huỷ · chờ đến lượt") }
+    }
+}

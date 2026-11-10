@@ -94,13 +94,6 @@ public enum ImportProgressText {
         tr(vi: "Nhập từ “\(folderName)”", en: "Importing from “\(folderName)”")
     }
 
-    /// "+ 2 lần nhập khác"; nil when there is no other.
-    public static func moreImports(_ count: Int) -> String? {
-        guard count > 0 else { return nil }
-        let number = L10n.integer(count)
-        return tr(vi: "+ \(number) lần nhập khác", en: "+ \(number) more \(L10n.plural(count, one: "import", other: "imports"))")
-    }
-
     /// Imports that still have work (or wait for their folder), newest first.
     public static func running(_ imports: [ImportSnapshot]) -> [ImportSnapshot] { imports.filter(PopoverJobVisibility.shows(importJob:)) }
     public static func finished(_ imports: [ImportSnapshot]) -> [ImportSnapshot] { imports.filter { !PopoverJobVisibility.shows(importJob: $0) } }

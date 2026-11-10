@@ -10,6 +10,8 @@ extension SyncCoordinator {
     @discardableResult
     public func startImport(source: any FolderImportSource, kind: SourceKind, displayName: String, config: SourceConfig) async throws -> SourceID {
         try await exclusive {
+            // The owner cancelled while this waited for its turn: record nothing.
+            try Task.checkCancellation()
             try await refuseLegacyLayout()
             guard baseline.isTaken else { throw EngineError.notBaselined }
             let record = SourceRecord(

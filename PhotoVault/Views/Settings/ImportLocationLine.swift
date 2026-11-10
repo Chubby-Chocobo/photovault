@@ -61,7 +61,7 @@ struct ImportLocationLine: View {
                 .buttonStyle(.link).controlSize(.small)
             }
         }
-        .task(id: item.id) {
+        .task(id: ImportQueue.locationKey(item)) {
             if item.kind == .localFolder { folder = await model.resolveImportFolder(item.id) }
         }
     }

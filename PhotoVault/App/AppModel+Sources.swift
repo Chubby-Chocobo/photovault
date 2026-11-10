@@ -10,7 +10,9 @@ import PhotoVaultStore
 extension AppModel {
     var imports: [ImportSnapshot] { ImportQueue.merged(queued: queuedImports, running: snapshot?.imports ?? []) }
     var runningImports: [ImportSnapshot] { ImportProgressText.running(imports) }
-    var finishedImports: [ImportSnapshot] { ImportProgressText.finished(imports) }
+    var finishedImports: [ImportSnapshot] { ImportQueueLayout.finishedRows(imports) }
+    /// Running imports first, then the ones waiting for the engine, numbered.
+    var queueRows: [ImportQueueRow] { ImportQueueLayout.queueRows(imports) }
 
     /// Import needs the first baseline, because the same cycle that scans Photos runs it.
     var canStartImport: Bool { phase == .running }
@@ -98,17 +100,23 @@ extension AppModel {
         let shown = SyncedCloudFolders.displayPath(pick.url.path, home: Self.realHome) ?? ImportLocationPath.mac(pick.url.path)
         let config = SourceConfig(
             bookmark: pick.bookmark, account: SyncedCloudFolders.account(ofPath: pick.url.path, home: Self.realHome), locationPaths: [shown], syncedProvider: synced)
-        Task {
-            do {
-                try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)
-                env.log.log(.info, category: "import", synced == nil ? "import started" : "synced cloud folder import started")
-                requestSync(.manual)
-                await refreshSnapshot()
-            } catch {
-                showError(error)
-            }
+        // Listed at once as "waiting for its turn": the engine records the import between sync passes, which can take
+        // long, and the start must survive the Settings window closing.
+        enqueueImport(
+            id: source.id, kind: .localFolder, account: config.account, syncedProvider: synced, displayName: name,
+            provider: synced == nil ? "folder" : "synced cloud folder", location: ImportLocation.make(kind: .localFolder, config: config)) {
+            try await env.coordinator.startImport(source: source, kind: .localFolder, displayName: name, config: config)
         }
     }
+
+    /// What a queued entry says while it waits: the status and why. The place in line is the row's badge only.
+    func queueWait(for item: ImportSnapshot) -> (title: String, reason: String)? {
+        guard ImportQueue.isQueued(item) else { return nil }
+        return (ImportProgressText.statusLabel(item), engineWaitReason)
+    }
+
+    /// Why a signed-in-again import or a cancel waits.
+    var engineWaitReason: String { ImportQueue.waitReason(uploading: !transfers.isEmpty) }
 
     func cancelImport(_ id: SourceID) {
         guard let env else { return }
@@ -118,7 +126,10 @@ extension AppModel {
             queuedImports.removeAll { $0.id == id }
             return
         }
+        // The cancel is a command that waits for the engine's turn; the row says so meanwhile.
+        cancellingImports.insert(id)
         Task {
+            defer { cancellingImports.remove(id) }
             do {
                 try await env.coordinator.cancelImport(id)
                 env.log.log(.info, category: "import", "import cancelled")

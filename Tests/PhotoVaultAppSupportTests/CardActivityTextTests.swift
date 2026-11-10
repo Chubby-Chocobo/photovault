@@ -144,6 +144,27 @@ struct CardActivityTextTests {
         #expect(shown.subtitle == "Đang upload IMG_1234.MOV · 50%")
     }
 
+    @Test func theHeaderAndTheCardPickTheSameImportWhenOthersWait() {
+        let older = SourceID.folder(), newest = SourceID.folder()
+        var two = snapshot(done: 0, total: 0)
+        two.imports = [
+            ImportSnapshot(id: newest, displayName: "New", status: .importing, createdAt: t0),
+            ImportSnapshot(id: older, displayName: "Old", status: .importing, createdAt: t0.addingTimeInterval(-60)),
+        ]
+        let waiting = ImportQueue.snapshot(id: .folder(), kind: .localFolder, account: nil, displayName: "Waiting", now: t0)
+        // The card heads with the first recorded import even though an entry waits (and the app lists waiting ones after it).
+        let cardHead = ImportQueueLayout.queueRows(ImportQueue.merged(queued: [waiting], running: two.imports)).first?.item.id
+        #expect(cardHead == newest)
+        let onNewest = vi { OverallStatusText.make(snapshot: two, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [transfer(source: newest, backfill: false)]) }
+        #expect(onNewest.subtitle == "Đang upload IMG_1234.MOV · 50%", "its full line is on the card, so the header is short")
+        let onOlder = vi { OverallStatusText.make(snapshot: two, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [transfer(source: older, backfill: false)]) }
+        #expect(onOlder.subtitle.contains("lên Google Drive"))
+        // Only a waiting entry: no transfer belongs to it, and the header keeps the full line.
+        let none = snapshot(done: 0, total: 0)
+        let plain = vi { OverallStatusText.make(snapshot: none, disk: .ok, settings: GlobalSettings(), now: t0, transfers: [transfer(backfill: false)]) }
+        #expect(plain.subtitle.contains("lên Google Drive"))
+    }
+
     @Test func theHeaderUsesTheShortLineWhileACardShowsTheFullOne() {
         let upload = transfer()
         let backfilling = snapshot(done: 10, total: 100)

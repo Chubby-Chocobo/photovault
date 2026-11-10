@@ -53,7 +53,8 @@ public enum CardActivityText {
         if PopoverJobVisibility.shows(backfill: snapshot), let main = TransferLineText.visible(backfillCandidates(transfers, now: now), now: now).first {
             ids.insert(main.id)
         }
-        if let newest = ImportProgressText.running(snapshot.imports).first,
+        // The same import the menu bar card heads with (recorded imports come before the ones waiting).
+        if let newest = ImportQueueLayout.queueRows(snapshot.imports).first?.item,
            let main = TransferLineText.visible(transfers.filter { $0.sourceId == newest.id }, now: now).first {
             ids.insert(main.id)
         }
