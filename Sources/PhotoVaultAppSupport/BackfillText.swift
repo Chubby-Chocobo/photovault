@@ -5,9 +5,9 @@ import PhotoVaultEngine
 /// Backfill is a one-time job. The menu bar shows it only while it runs; afterwards it is a record in
 /// Settings, in Recent activity and in one notification.
 public enum BackfillText {
-    /// Some asset with a backfill job is still unfinished.
+    /// The backfill card is shown (see `PopoverJobVisibility`).
     public static func isRunning(_ snapshot: EngineSnapshot) -> Bool {
-        snapshot.backfillTotalAssets > snapshot.backfillDoneAssets
+        PopoverJobVisibility.shows(backfill: snapshot)
     }
 
     /// The line under the Photos source in Settings › Nguồn; nil when there never was a backfill.

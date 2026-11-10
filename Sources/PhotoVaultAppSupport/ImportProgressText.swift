@@ -101,8 +101,8 @@ public enum ImportProgressText {
     }
 
     /// Imports that still have work (or wait for their folder), newest first.
-    public static func running(_ imports: [ImportSnapshot]) -> [ImportSnapshot] { imports.filter { $0.status.isOpen } }
-    public static func finished(_ imports: [ImportSnapshot]) -> [ImportSnapshot] { imports.filter { !$0.status.isOpen } }
+    public static func running(_ imports: [ImportSnapshot]) -> [ImportSnapshot] { imports.filter(PopoverJobVisibility.shows(importJob:)) }
+    public static func finished(_ imports: [ImportSnapshot]) -> [ImportSnapshot] { imports.filter { !PopoverJobVisibility.shows(importJob: $0) } }
 }
 
 /// The notification for a finished import. It may name the folder (it only appears on this Mac).
