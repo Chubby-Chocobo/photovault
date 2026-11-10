@@ -251,12 +251,14 @@ public actor SyncCoordinator {
         } else {
             overall = .idle
         }
-        return EngineSnapshot(
+        var snapshot = EngineSnapshot(
             overall: overall, scanState: raw.scan, destinations: raw.destinations, backfillDoneAssets: raw.backfill.done,
             backfillTotalAssets: raw.backfill.total, bytesUploaded: raw.bytes, etaSeconds: eta,
             pending: raw.totals.pending + raw.totals.uploading, deferred: raw.totals.deferred, skipped: raw.totals.skipped,
             missingRemote: raw.totals.missingRemote, updatedAt: now, imports: raw.imports,
             backfillCompletion: raw.backfillCompletion)
+        snapshot.nextRetryAt = raw.nextRetryAt
+        return snapshot
     }
 }
 

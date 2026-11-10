@@ -47,12 +47,13 @@ public final class TransferTracker: @unchecked Sendable {
     public var current: [TransferProgress] { lock.withLock { items } }
 
     /// Starts tracking one file. Publishes at once so a long first chunk is not invisible.
-    public func begin(kind: TransferKind, fileName: String, destinationName: String? = nil, accountEmail: String? = nil, bytesTotal: Int64?) -> Handle {
+    public func begin(kind: TransferKind, fileName: String, destinationName: String? = nil, accountEmail: String? = nil, sourceId: SourceID? = nil,
+                      isBackfill: Bool = false, bytesTotal: Int64?) -> Handle {
         let id = UUID()
         let now = clock.now
         lock.withLock {
             items.append(TransferProgress(
-                id: id, kind: kind, fileName: fileName, destinationName: destinationName, accountEmail: accountEmail,
+                id: id, kind: kind, fileName: fileName, destinationName: destinationName, accountEmail: accountEmail, sourceId: sourceId, isBackfill: isBackfill,
                 bytesTotal: bytesTotal, startedAt: now))
             publishLocked(at: now, force: items.count == 1)
         }
