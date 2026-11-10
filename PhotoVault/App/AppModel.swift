@@ -30,6 +30,10 @@ final class AppModel {
     var phase: Phase = .launching
     var env: AppEnvironment?
     var snapshot: EngineSnapshot?
+    /// Files being transferred now, and the time the status line was last worked out. In memory only.
+    var transfers: [TransferProgress] = []
+    var transferNow = Date()
+    @ObservationIgnored var transferClockTask: Task<Void, Never>?
     var destinations: [DestinationRecord] = []
     var persistedSettings = GlobalSettings()
     /// The Settings form edits this copy; it is saved once it validates.
@@ -91,6 +95,7 @@ final class AppModel {
         var scheduler: SyncScheduler
         var snapshotTask: Task<Void, Never>
         var pollTask: Task<Void, Never>
+        var transferTask: Task<Void, Never>
     }
 
     // MARK: Derived state
@@ -214,12 +219,22 @@ final class AppModel {
                 await self.refreshSnapshot()
             }
         }
-        runtime = Runtime(workspace: workspace, photosObserver: observer, scheduler: scheduler, snapshotTask: snapshots, pollTask: poll)
+        let transferUpdates = Task { [weak self] in
+            for await list in env.coordinator.transferUpdates() {
+                guard let self else { return }
+                self.show(transfers: list)
+            }
+        }
+        runtime = Runtime(
+            workspace: workspace, photosObserver: observer, scheduler: scheduler, snapshotTask: snapshots, pollTask: poll,
+            transferTask: transferUpdates)
     }
 
     func shutdown() {
         runtime?.snapshotTask.cancel()
         runtime?.pollTask.cancel()
+        runtime?.transferTask.cancel()
+        transferClockTask?.cancel()
         runtime?.scheduler.stop()
         runtime?.workspace.stop()
         runtime?.photosObserver.stop()

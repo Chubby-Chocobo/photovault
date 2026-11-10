@@ -11,6 +11,7 @@ struct MenuBarLabel: View {
         Image(systemName: symbol)
             .symbolRenderingMode(.hierarchical)
             .accessibilityLabel("PhotoVault")
+            .help(model.transferLine ?? "PhotoVault")
             .onChange(of: model.windowRequest, initial: true) { _, request in
                 guard let request else { return }
                 model.windowRequest = nil
