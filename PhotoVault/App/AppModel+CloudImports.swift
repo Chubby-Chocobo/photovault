@@ -207,7 +207,12 @@ extension AppModel {
             do {
                 try Task.checkCancellation()
                 _ = try await start()
-                if Task.isCancelled { try await env?.coordinator.cancelImport(id) }
+                // Recorded: a Cancel from here on must reach the engine, not this finished task.
+                queuedStarts[id] = nil
+                if Task.isCancelled {
+                    try await env?.coordinator.cancelImport(id)
+                    return
+                }
             } catch {
                 _ = env?.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 reportCloudFlowError(error)
@@ -285,7 +290,7 @@ extension AppModel {
             case .readAccessDenied:
                 showNotice(tr(
                     vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục (bước 2). Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
-                    en: "PhotoVault needs permission to see your Drive files to import a folder. Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
+                    en: "PhotoVault needs permission to see your Drive files to import a folder (step 2). Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
             case .pickAccessDenied:
                 showNotice(tr(
                     vi: "Bạn cần cho phép PhotoVault truy cập các file bạn chọn trong Drive. Hãy thử lại và giữ ô “Xem, chỉnh sửa, tạo và xóa các file cụ thể trong Google Drive” được chọn.",

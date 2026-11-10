@@ -81,7 +81,7 @@ public enum CloudImportText {
         tr(vi: "Chưa kiểm tra được tài khoản đang đăng nhập, nên chưa nhập. Hãy thử lại.", en: "The signed-in account could not be checked, so nothing was imported. Try again.")
     }
 
-    /// Shown while a browser sign-in is open.
+    /// Shown while Google's second consent is open.
     public static var waitingForReadStep: String {
         tr(vi: "Bước 2/2: cho phép đọc thư mục đã chọn trong trình duyệt…", en: "Step 2 of 2: allow reading the chosen folder in the browser…")
     }
@@ -89,6 +89,7 @@ public enum CloudImportText {
     public static var signedInWaiting: String {
         tr(vi: "Đã đăng nhập · Chờ đến lượt", en: "Signed in · Waiting for its turn")
     }
+    /// Shown while a browser sign-in is open.
     public static var waitingForBrowser: String { tr(vi: "Đang chờ đăng nhập trong trình duyệt…", en: "Waiting for sign-in in the browser…") }
 
     public static var accountUnverifiedNotice: String {
