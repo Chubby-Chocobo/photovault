@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import PhotoVaultCore
 import PhotoVaultStore
 import PhotoVaultTestSupport
@@ -43,6 +44,22 @@ import Testing
         let folder = try #require(await h.drive.folders.first { $0.name == "By lens" })
         #expect(folder.appProperties[AppPropertyKey.view] == "byLens")
         #expect(await h.drive.contractViolations.isEmpty)
+    }
+
+    @Test func aLensFolderKeepsItsFirstNameWhenAnotherSpellingArrives() async throws {
+        let h = try await harness()
+        await h.add(h.snapshot("sony1", daysAgo: 3), recordChange: false)
+        try await h.baseline(.googleDrive)
+        await h.settle()
+        await h.add(h.snapshot("sonylow2", daysAgo: 3))
+        await h.settle()
+        await h.add(h.snapshot("sony3", daysAgo: 3))
+        await h.settle()
+        let paths = await lensPaths(h)
+        #expect(paths.count == 3, "\(paths)")
+        #expect(paths.allSatisfy { $0.hasPrefix("By lens/FE 24-70/") }, "\(paths)")
+        #expect(await h.drive.operationLog.filter { $0 == .rename }.isEmpty, "no folder was renamed")
+        #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job WHERE op = 'renameFolder'") } == 0)
     }
 
     @Test func nothingIsCreatedWhileTheViewIsOff() async throws {

@@ -164,7 +164,7 @@ Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/M
 | Place names | on; home country `VN` | Country in English; places in Vietnam in Vietnamese without the province prefix ("Hà Nội"); abroad English with the native name ("Kyoto (京都市)"). See [privacy](#privacy). |
 | Sidecars, JSON and XMP | on, on | Can also be set per destination. |
 | Views: By device, By place, Favorites | on | Google Drive only. |
-| View: By lens | off | Google Drive only. Groups camera photos by the lens in EXIF; Apple names are shortened ("iPhone 15 Pro 6.86mm f/1.78"). |
+| View: By lens | off | Google Drive only. Groups camera photos by the lens in EXIF; phone names are shortened ("iPhone 15 Pro 6.86mm f1.78"); placeholder values such as "0.0 mm f/0.0" are ignored. |
 | Integrity check | every 7 days | |
 
 Sync modes:

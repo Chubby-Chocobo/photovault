@@ -8,7 +8,7 @@ A fourth Drive view, `By lens/<lens name>/<YYYY-MM-DD>/`, grouping camera photos
 
 | Topic | Chosen | Alternatives | Why | Review later |
 |---|---|---|---|---|
-| Lens name | EXIF LensModel, trimmed and whitespace-collapsed; Apple "X back ... camera R" becomes "X R", "X front ... camera R" becomes "X front R" | Raw EXIF; a lens table like device names | Apple strings are long and noisy, other lenses are already readable; no table to maintain | Owner asks for rename or merge |
+| Lens name | EXIF LensModel, trimmed and whitespace-collapsed; phone "X back ... camera R" becomes "X R", "X front ... camera R" becomes "X front R"; `f/N` written `fN`; placeholder values ignored | Raw EXIF; a lens table like device names | Apple strings are long and noisy, other lenses are already readable; no table to maintain | Owner asks for rename or merge |
 | Grouping key | Normalised name, lowercased, hashed like device groups | Raw string | Case and spacing variants collapse into one folder; logical path never carries a name | Same |
 | Membership | `camera` category with a non-empty lens model; deleted-from-Photos keeps its shortcut | Include other categories; "Unknown" folder | Same as By device; an Unknown folder is noise | - |
 | Default | `viewByLensEnabled` false; old settings JSON without the key decodes to false | On | No surprise item growth on My Drive | - |

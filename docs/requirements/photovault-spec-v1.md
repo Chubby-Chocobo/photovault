@@ -347,7 +347,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Shortcut trỏ theo ID nên không hỏng khi file di chuyển hoặc đổi tên.
 - Số item tăng theo mỗi view [VERIFY giới hạn My Drive] → Settings ước tính và cảnh báo.
 - Bật view → backfill từ DB. Tắt view → giữ nguyên cây. "Dựng lại view" = đưa cây về đúng trạng thái mong muốn.
-- Ảnh bị xoá khỏi Photos vẫn còn bản backup nên giữ shortcut ở mọi view (By device, Favorites, By place); view không tạo shortcut mới cho ảnh đã xoá.
+- Ảnh bị xoá khỏi Photos vẫn còn bản backup nên giữ shortcut ở mọi view (By device, Favorites, By place, By lens); view không tạo shortcut mới cho ảnh đã xoá.
 **FR-104 `By device/<Thiết bị>/YYYY-MM-DD/`:**
 - Thành viên: asset `camera` có `camera_model`; không có nhóm Unknown.
 - Khoá `make|model` chuẩn hoá. Tên mặc định `<Make> <Model>` (bỏ lặp hãng), cộng bảng `Resources/device-names.json` (ví dụ `ILCE-7M4` → `Sony A7 IV`; [VERIFY] từng mã).
@@ -361,8 +361,8 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Kết quả geocode cố định; nút "Làm mới địa danh" xoá cache rồi geocode lại.
 **FR-107 `By lens/<Ống kính>/YYYY-MM-DD/` (quyết định 0027):**
 - Thành viên: asset `camera` có `lens_model` không rỗng; không có thư mục Unknown. Ảnh đã xoá khỏi Photos vẫn giữ shortcut như các view khác.
-- Tên = EXIF LensModel đã chuẩn hoá: bỏ khoảng trắng thừa; chuỗi Apple `<máy> back <…> camera <phần còn lại>` thành `<máy> <phần còn lại>`, `<máy> front <…> camera <phần còn lại>` thành `<máy> front <phần còn lại>`; ống kính khác giữ nguyên. Tên được làm sạch như tên thư mục khác (FR-42).
-- Khoá nhóm = hash của tên chuẩn hoá viết thường, nên biến thể chỉ khác hoa/thường hay khoảng trắng gom vào một thư mục. Tên thư mục giữ như lúc tạo.
+- Tên = EXIF LensModel đã chuẩn hoá: bỏ khoảng trắng thừa; chuỗi điện thoại dạng `<máy> back <…> camera <phần còn lại>` (iPhone, Pixel…) thành `<máy> <phần còn lại>`, `<máy> front <…> camera <phần còn lại>` thành `<máy> front <phần còn lại>`; khẩu độ `f/N` viết `fN` (ví dụ `iPhone 15 Pro 6.86mm f1.78`) để tên không có `/`; ống kính khác giữ nguyên. Giá trị giữ chỗ (chỉ có dấu câu như `----`, hoặc `0.0 mm f/0.0`) coi như không có ống kính, không tạo thư mục. Tên được làm sạch như tên thư mục khác (FR-42).
+- Khoá nhóm = hash của tên thư mục (đã làm sạch, NFC, viết thường), nên biến thể chỉ khác hoa/thường hay khoảng trắng gom vào một thư mục và hai nhóm không bao giờ trùng tên thư mục. Tên thư mục giữ như lúc tạo: không bao giờ đổi tên (cả khi tạo hay chuyển shortcut).
 - Cài đặt `viewByLensEnabled`, **mặc định tắt** (JSON cũ không có khoá này đọc ra tắt). Bật/tắt/dựng lại theo FR-103. Đổi tên và gộp nhóm ống kính để sau.
 
 ### 4.13 Nguồn & nhập một lần (sửa đổi 2026-11-09, issue #17, quyết định 0024; bổ sung 2026-11-10, quyết định 0026)

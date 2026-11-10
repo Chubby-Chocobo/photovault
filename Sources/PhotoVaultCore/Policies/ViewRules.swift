@@ -26,7 +26,7 @@ public struct ViewContext: Sendable {
     }
 }
 
-/// Membership and location of an asset in each Drive view (FR-104..106).
+/// Membership and location of an asset in each Drive view (FR-104..107).
 public enum ViewRules {
     /// Views the asset belongs to, with its folder path in each. Assets without a placement day
     /// belong to none.

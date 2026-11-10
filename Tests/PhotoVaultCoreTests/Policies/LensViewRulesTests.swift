@@ -12,18 +12,37 @@ import Testing
     }
 
     @Test func appleBackCameraNamesLoseTheCameraWords() {
-        #expect(LensNameResolver.name(for: "iPhone 15 Pro back triple camera 6.86mm f/1.78") == "iPhone 15 Pro 6.86mm f/1.78")
-        #expect(LensNameResolver.name(for: "iPhone 12 back camera 4.2mm f/1.6") == "iPhone 12 4.2mm f/1.6")
-        #expect(LensNameResolver.name(for: "iPhone 15 Pro back dual wide camera 5.7mm f/1.6") == "iPhone 15 Pro 5.7mm f/1.6")
+        #expect(LensNameResolver.name(for: "iPhone 15 Pro back triple camera 6.86mm f/1.78") == "iPhone 15 Pro 6.86mm f1.78")
+        #expect(LensNameResolver.name(for: "iPhone 12 back camera 4.2mm f/1.6") == "iPhone 12 4.2mm f1.6")
+        #expect(LensNameResolver.name(for: "iPhone 15 Pro back dual wide camera 5.7mm f/1.6") == "iPhone 15 Pro 5.7mm f1.6")
     }
 
     @Test func appleFrontCameraKeepsFront() {
-        #expect(LensNameResolver.name(for: "iPhone 15 Pro front camera 2.69mm f/1.9") == "iPhone 15 Pro front 2.69mm f/1.9")
+        #expect(LensNameResolver.name(for: "iPhone 15 Pro front camera 2.69mm f/1.9") == "iPhone 15 Pro front 2.69mm f1.9")
     }
 
     @Test func otherLensesAreOnlyTidied() {
         #expect(LensNameResolver.name(for: "  FE 24-70mm   F2.8 GM \n") == "FE 24-70mm F2.8 GM")
         #expect(LensNameResolver.name(for: "Wide") == "Wide")
+    }
+
+    @Test func aperturesLoseTheSlashSoNamesNeedNoSanitising() {
+        #expect(LensNameResolver.name(for: "Pixel 7 Pro back camera 6.81mm f/1.85") == "Pixel 7 Pro 6.81mm f1.85")
+        #expect(LensNameResolver.name(for: "Lens F/2.8") == "Lens F2.8")
+        #expect(LensNameResolver.name(for: "iPhone 15 Pro back triple camera 6.86mm f/1.78")?.contains("/") == false)
+    }
+
+    @Test func placeholderLensValuesAreNotLenses() {
+        for value in ["----", "-", "...", " -- ", "0.0 mm f/0.0", "0 mm f/0", "0.0mm f/0.0"] {
+            #expect(LensNameResolver.name(for: value) == nil, "\(value)")
+            #expect(LensNameResolver.key(for: value) == nil)
+        }
+        #expect(LensNameResolver.name(for: "0.0 mm f/1.8") != nil)
+    }
+
+    @Test func spellingsThatShareAFolderNameShareAKey() {
+        #expect(LensNameResolver.key(for: "e\u{301} 50mm") == LensNameResolver.key(for: "\u{e9} 50mm"))
+        #expect(LensNameResolver.key(for: "Lens 1:2") == LensNameResolver.key(for: "Lens 1?2"))
     }
 
     @Test func blankLensHasNoName() {
@@ -40,7 +59,7 @@ import Testing
 
     @Test func pathUsesNormalisedNameAndKey() throws {
         let path = try #require(ViewRules.path(for: asset(lens: "iPhone 15 Pro back triple camera 6.86mm f/1.78"), in: .byLens, context: ViewContext()))
-        #expect(path == .byLens(groupKey: LensNameResolver.key(for: "iPhone 15 Pro 6.86mm f/1.78")!, lensName: "iPhone 15 Pro 6.86mm f/1.78", day: day))
+        #expect(path == .byLens(groupKey: LensNameResolver.key(for: "iPhone 15 Pro 6.86mm f1.78")!, lensName: "iPhone 15 Pro 6.86mm f1.78", day: day))
         #expect(path.view == .byLens)
     }
 
