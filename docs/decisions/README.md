@@ -41,5 +41,6 @@ Spec references use the FR, NFR, §, and T codes of [photovault-spec-v1.md](../r
 | [0028](0028-split-day-by-place.md) | Split a camera day into one folder per province | Accepted | FR-40, FR-81, FR-83, §8.2, §8.4, §8.7, §8.11, §8.15, T28 |
 | [0029](0029-photos-only-continuous-source.md) | Photos is the only continuous source; the extension mechanism is designed, not built | Accepted | §2, §8.1, §15, FR-110, FR-120 |
 | [0030](0030-drive-import-reads-folder-contents.md) | Google Drive import reads folder contents with drive.readonly; grant deleted when the import ends | Accepted | FR-119, FR-122, FR-123 |
+| [0031](0031-import-from-synced-cloud-folder.md) | Import from the Google Drive or Dropbox folder synced to this Mac; web flow as fallback with a warning | Accepted | FR-119, FR-120 |
 
 Adding a decision: copy the next free number, keep the same five sections, and link it from this table and from the affected spec or code notes. A `[VERIFY]` default that the code uses goes in a group file (0012–0014) or its own file, and its spike goes in [docs/spikes/](../spikes/README.md).
