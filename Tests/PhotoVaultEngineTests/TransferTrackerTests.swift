@@ -12,10 +12,13 @@ private final class Published: @unchecked Sendable {
 }
 
 @Suite struct TransferTrackerTests {
-    private func make(interval: TimeInterval = 0.5) -> (TransferTracker, TestClock, Published) {
+    /// The deferred flush never fires unless a test asks for the real one.
+    private func make(interval: TimeInterval = 0.5, realFlush: Bool = false) -> (TransferTracker, TestClock, Published) {
         let clock = TestClock()
         let published = Published()
-        let tracker = TransferTracker(clock: clock, minInterval: interval, onPublish: { published.add($0) })
+        let real: @Sendable (TimeInterval) async -> Void = { seconds in try? await Task.sleep(for: .seconds(seconds)) }
+        let never: @Sendable (TimeInterval) async -> Void = { _ in try? await Task.sleep(for: .seconds(3600)) }
+        let tracker = TransferTracker(clock: clock, minInterval: interval, onPublish: { published.add($0) }, sleep: realFlush ? real : never)
         return (tracker, clock, published)
     }
 
@@ -95,6 +98,39 @@ private final class Published: @unchecked Sendable {
         #expect(published.all.count == 2 && published.all.last?.count == 2)
         first.end()
         second.end()
+    }
+
+    @Test func aThrottledChangeIsFlushedAtTheEndOfTheWindowWithoutFurtherReports() async throws {
+        let (tracker, clock, published) = make(interval: 0.05, realFlush: true)
+        let long = tracker.begin(kind: .upload, fileName: "long", bytesTotal: 100)
+        clock.advance(by: 0.001)
+        let other = tracker.begin(kind: .upload, fileName: "other", bytesTotal: 100)
+        clock.advance(by: 0.001)
+        long.end()
+        // The ended file is gone from the current list at once, but the publish waits for the window.
+        #expect(tracker.current.map(\.fileName) == ["other"])
+        #expect(published.all.last?.map(\.fileName) == ["long"])
+        for _ in 0..<100 where published.all.last?.map(\.fileName) != ["other"] { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(published.all.last?.map(\.fileName) == ["other"])
+        let count = published.all.count
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(published.all.count == count, "nothing pending, nothing published")
+        other.end()
+    }
+
+    @Test func manyChangesInOneWindowScheduleOneFlush() async throws {
+        let (tracker, clock, published) = make(interval: 0.05, realFlush: true)
+        let first = tracker.begin(kind: .upload, fileName: "first", bytesTotal: 100)
+        var handles: [TransferTracker.Handle] = []
+        for index in 0..<50 {
+            clock.advance(by: 0.0001)
+            handles.append(tracker.begin(kind: .copy, fileName: "f\(index)", bytesTotal: 1))
+        }
+        for handle in handles { handle.end() }
+        try await Task.sleep(for: .milliseconds(300))
+        // The first begin, then one flush that shows the settled list.
+        #expect(published.all.count == 2 && published.all.last?.map(\.fileName) == ["first"], "\(published.all.count)")
+        first.end()
     }
 
     @Test func endIsIdempotentAndLateReportsAreIgnored() {
