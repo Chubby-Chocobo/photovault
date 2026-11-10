@@ -160,6 +160,8 @@ final class Harness: @unchecked Sendable {
         nas = FakeDestination(id: nasId, reservesIds: false)
         var t = EngineTuning()
         t.sleep = { _ in }
+        // A random wait can round to the frozen clock's now and let the same cycle retry at once.
+        t.backoffDelay = { Backoff().ceiling(forAttempt: $0) }
         t.classifyBatchSize = 10
         customTuning?(&t)
         tuning = t

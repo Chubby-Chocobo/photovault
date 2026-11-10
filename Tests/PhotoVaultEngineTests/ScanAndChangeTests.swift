@@ -255,6 +255,8 @@ import Testing
         #expect(progress.state == .complete)
         #expect(progress.scanned == 50_000)
         #expect(try h.assetCount() == 50_000)
-        #expect(elapsed < 240, "scan took \(elapsed) s")
+        // A cap against a runaway (quadratic) scan, not a speed target: about 13 s on a developer machine, but nearly
+        // 160 s on a loaded CI runner, too close to the 240 s this cap used to be.
+        #expect(elapsed < 900, "scan took \(elapsed) s")
     }
 }

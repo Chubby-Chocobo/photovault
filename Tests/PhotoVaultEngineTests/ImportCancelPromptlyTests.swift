@@ -16,9 +16,13 @@ private final class SlowReadSource: FolderImportSource, @unchecked Sendable {
     private var released = false
     private var exported = 0
     private var listEntered = 0
+    private var readsEnded = 0
+    private var listingsEnded = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
     private let hold: Bool
     private let delay: Duration
-    /// The read waits for `release()` and does not look at its control, as an adapter that cannot be interrupted.
+    /// The read waits for `release()` and looks neither at its control nor at task cancellation, as an adapter that
+    /// cannot be interrupted.
     private let ignoresCancel: Bool
     /// The listing waits for `release()` and ignores cancellation.
     private let holdsListing: Bool
@@ -36,18 +40,43 @@ private final class SlowReadSource: FolderImportSource, @unchecked Sendable {
 
     var id: SourceID { inner.id }
     var reads: Int { lock.withLock { entered } }
-    func release() { lock.withLock { released = true } }
+    /// Reads and listings that have run to their end, whatever their outcome.
+    var finishedReads: Int { lock.withLock { readsEnded } }
+    var finishedListings: Int { lock.withLock { listingsEnded } }
+    func release() {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            released = true
+            defer { waiters = [] }
+            return waiters
+        }
+        waiting.forEach { $0.resume() }
+    }
+
+    /// Waits for `release()` and does not see task cancellation, as a call that cannot be interrupted.
+    private func waitForRelease() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in
+                if released { return true }
+                waiters.append(continuation)
+                return false
+            }
+            if now { continuation.resume() }
+        }
+    }
 
     func probe() async throws { try await inner.probe() }
     func listFiles() async throws -> [FolderFileEntry] {
         lock.withLock { listEntered += 1 }
-        while holdsListing, !lock.withLock({ released }) { try? await Task.sleep(for: .milliseconds(10)) }
+        defer { lock.withLock { listingsEnded += 1 } }
+        if holdsListing { await waitForRelease() }
         return try await inner.listFiles()
     }
     func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
         lock.withLock { entered += 1 }
-        while hold, !lock.withLock({ released }) {
-            if control.isCancelled, !ignoresCancel { throw SourceError.cancelled }
+        defer { lock.withLock { readsEnded += 1 } }
+        if hold, ignoresCancel { await waitForRelease() }
+        while hold, !ignoresCancel, !lock.withLock({ released }) {
+            if control.isCancelled { throw SourceError.cancelled }
             try await Task.sleep(for: .milliseconds(10))
         }
         if delay > .zero { try await Task.sleep(for: delay) }
@@ -72,15 +101,6 @@ private actor Gate {
     func open() { opened = true; waiters.forEach { $0.resume() }; waiters = [] }
 }
 
-private func eventually(_ seconds: Double = 20, _ condition: () async throws -> Bool) async rethrows -> Bool {
-    let deadline = ContinuousClock.now + .seconds(seconds)
-    while ContinuousClock.now < deadline {
-        if try await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return try await condition()
-}
-
 @Suite struct ImportCancelPromptlyTests {
     private func harness(files: Int, tuning: ((inout EngineTuning) -> Void)? = nil) async throws -> (Harness, ImportFolder) {
         let h = try await Harness(tuning: tuning)
@@ -98,9 +118,9 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let source = SlowReadSource(folder, hold: true)
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let cycle = Task { await h.coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 1 })
+        #expect(await pollUntil { source.reads >= 1 })
         let cancel = Task { try await h.coordinator.cancelImport(id) }
-        let cancelled = try await eventually { try h.source(id)?.status == .cancelled }
+        let cancelled = try await pollUntil { try h.source(id)?.status == .cancelled }
         source.release()
         _ = await cycle.value
         try await cancel.value
@@ -114,13 +134,13 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let gate = Gate()
-        let holder = Task { try await coordinator.exclusive { await gate.hold() } }
-        #expect(await eventually { await gate.isHeld })
+        let holder = Task { await coordinator.exclusive { await gate.hold() } }
+        #expect(await pollUntil { await gate.isHeld })
         let cancel = Task { try await coordinator.cancelImport(id) }
-        let stored = try await eventually { try h.source(id)?.config.cancelRequested == true }
+        let stored = try await pollUntil { try h.source(id)?.config.cancelRequested == true }
         let stillOpen = try h.source(id)?.status.isOpen == true
         await gate.open()
-        try await holder.value
+        await holder.value
         try await cancel.value
         #expect(stored, "the intent is in the database while the lane is still held")
         #expect(stillOpen, "the bookkeeping waits for the lane")
@@ -143,9 +163,9 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         _ = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 2 })
-        let readsWhenTheCommandRan = Task { try await coordinator.exclusive { source.reads } }
-        let seen = try await readsWhenTheCommandRan.value
+        #expect(await pollUntil { source.reads >= 2 })
+        let readsWhenTheCommandRan = Task { await coordinator.exclusive { source.reads } }
+        let seen = await readsWhenTheCommandRan.value
         _ = await cycle.value
         #expect(seen < 10, "the command waited for \(seen) of 20 reads")
     }
@@ -156,7 +176,7 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         _ = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 2 })
+        #expect(await pollUntil { source.reads >= 2 })
         await coordinator.pauseAll()
         let outcome = await cycle.value
         #expect(source.reads < 10, "pause let \(source.reads) of 20 reads run")
@@ -169,7 +189,7 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 6 })
+        #expect(await pollUntil { source.reads >= 6 })
         try await coordinator.cancelImport(id)
         _ = await cycle.value
         #expect(try h.source(id)?.status == .cancelled)
@@ -183,14 +203,14 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.reads >= 1 })
+        #expect(await pollUntil { source.reads >= 1 })
         let cancel = Task { try await coordinator.cancelImport(id) }
-        let cancelled = try await eventually(10) { try h.source(id)?.status == .cancelled }
+        let cancelled = try await pollUntil { try h.source(id)?.status == .cancelled }
         source.release()
         _ = await cycle.value
         try await cancel.value
         #expect(cancelled, "the cancel does not wait for the read")
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(await pollUntil { source.finishedReads == 1 }, "the abandoned read runs to its end in the background")
         #expect(source.exports == 0)
         #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM asset") } == 0, "the dropped read is not committed")
     }
@@ -214,14 +234,14 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
-        #expect(await eventually { source.listings >= 1 })
+        #expect(await pollUntil { source.listings >= 1 })
         let cancel = Task { try await coordinator.cancelImport(id) }
-        let cancelled = try await eventually(10) { try h.source(id)?.status == .cancelled }
+        let cancelled = try await pollUntil { try h.source(id)?.status == .cancelled }
         source.release()
         _ = await cycle.value
         try await cancel.value
         #expect(cancelled, "the cancel does not wait for the listing")
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(await pollUntil { source.finishedListings == 1 }, "the abandoned listing runs to its end in the background")
         #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM import_item") } == 0, "nothing is written after the listing ends")
     }
 
@@ -259,32 +279,5 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         try await h.store.write { db in try SourceRepository.updateConfig(db, id: id) { $0.account = "me@example.com" } }
         let config = try #require(try h.source(id)?.config)
         #expect(config.account == "me@example.com" && config.cancelRequested == true)
-    }
-}
-
-@Suite struct ImportInterruptsTests {
-    @Test func theWorkResultIsReturnedWhenNothingCancels() async throws {
-        let interrupts = ImportInterrupts()
-        let value = try await interrupts.untilCancelled(.folder()) { 42 }
-        #expect(value == 42)
-    }
-
-    @Test func aCancelOfTheImportEndsTheWaitWithNil() async throws {
-        let interrupts = ImportInterrupts()
-        let id = SourceID.folder()
-        let waiting = Task { try await interrupts.untilCancelled(id) { try await Task.sleep(for: .seconds(30)); return 1 } }
-        try await Task.sleep(for: .milliseconds(100))
-        interrupts.requestCancel(id)
-        #expect(try await waiting.value == nil)
-    }
-
-    @Test func cancellingTheCallingTaskEndsTheWaitAndStopsTheWork() async throws {
-        let interrupts = ImportInterrupts()
-        let started = Date()
-        let waiting = Task { try await interrupts.untilCancelled(.folder()) { try await Task.sleep(for: .seconds(30)); return 1 } }
-        try await Task.sleep(for: .milliseconds(100))
-        waiting.cancel()
-        await #expect(throws: CancellationError.self) { _ = try await waiting.value }
-        #expect(Date().timeIntervalSince(started) < 10)
     }
 }

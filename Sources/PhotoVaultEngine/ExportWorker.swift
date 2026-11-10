@@ -294,7 +294,7 @@ actor ExportWorker {
                 }
             }
         case .itemLevel:
-            let delay = Backoff().delay(forAttempt: started.resource.exportAttempts)
+            let delay = env.tuning.backoffDelay(started.resource.exportAttempts)
             try await env.store.write { db in
                 let attempts = try ResourceRepository.failExport(
                     db, key: key, type: type, message: message, retryAt: now.addingTimeInterval(delay), now: now)

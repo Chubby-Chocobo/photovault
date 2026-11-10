@@ -14,6 +14,7 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 | 0.3.0 | 2026-11-10 | Nhập một lần từ thư mục Google Drive (Picker, `drive.file`) và từ thư mục Dropbox (#25) |
 | 0.4.0 | 2026-11-10 | By lens, tách ngày theo nơi chụp, nhập Drive đọc được nội dung thư mục (xem bảng dưới) |
 | 0.5.0 | 2026-11-10 | Nhập từ thư mục Google Drive/Dropbox đồng bộ trên máy (không còn cảnh báo "chưa xác minh"); dòng trạng thái hiện file đang chuyển; hàng đợi nhập dạng danh sách; Huỷ nhập có hiệu lực ngay; đường dẫn đầy đủ trong lịch sử nhập |
+| 0.5.1 | 2026-11-10 | Chỉ bảo trì: test không còn phụ thuộc tốc độ máy hay thời gian chờ ngẫu nhiên, CI ổn định trên máy macOS của GitHub; thêm test cho phần huỷ nhập |
 
 ### 0.4.0 (phát hành 2026-11-10)
 
@@ -36,7 +37,7 @@ Chỉ Photos là nguồn liên tục ([quyết định 0029](../decisions/0029-p
 | 4 | Nguồn liên tục S3-compatible | Chưa lên lịch. Cần bộ chặn xoá hàng loạt |
 | 5 | Nguồn liên tục Flickr | Chưa lên lịch. Cần API key và secret từ owner |
 
-Việc tiếp theo đã có issue: tải đợt sau trong lúc upload đợt trước khi nhập từ cloud (#69); bổ sung test cho phần huỷ nhập (#68).
+Việc tiếp theo đã có issue: tải đợt sau trong lúc upload đợt trước khi nhập từ cloud (#69).
 
 Các mục khác trong spec §15, chưa lên lịch:
 

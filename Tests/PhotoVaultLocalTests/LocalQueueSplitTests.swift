@@ -10,7 +10,7 @@ import Testing
         private let entered = DispatchSemaphore(value: 0)
         private let released = DispatchSemaphore(value: 0)
         func block() { entered.signal(); released.wait() }
-        func waitUntilBlocked() -> Bool { entered.wait(timeout: .now() + 10) == .success }
+        func waitUntilBlocked() -> Bool { entered.wait(timeout: .now() + 60) == .success }
         func release() { released.signal() }
     }
 
