@@ -48,16 +48,9 @@ enum FolderPicker {
         return Pick(url: url, bookmark: bookmark, volumeName: nil)
     }
 
-    enum SyncedChoice {
-        case picked(Pick)
-        /// The owner pressed "Dùng trình duyệt thay thế" in the panel.
-        case useBrowser
-        case cancelled
-    }
-
-    /// Opens at the provider's synced folder on this Mac. Read-only like `chooseImportFolder`; the panel offers the
-    /// browser sign-in as a second way when `offerBrowser`. Throws `BookmarkFailed` when the pick cannot be kept.
-    static func chooseSyncedFolder(provider: SyncedCloudProvider, startAt: URL, offerBrowser: Bool) throws -> SyncedChoice {
+    /// Opens at the provider's synced folder on this Mac. Read-only like `chooseImportFolder`. nil when the owner
+    /// cancels; throws `BookmarkFailed` when the pick cannot be kept.
+    static func chooseSyncedFolder(provider: SyncedCloudProvider, startAt: URL) throws -> Pick? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -66,19 +59,10 @@ enum FolderPicker {
         panel.directoryURL = startAt
         panel.message = SyncedCloudText.panelTitle(provider)
         panel.prompt = tr(vi: "Nhập", en: "Import")
-        let handler = BrowserInsteadHandler(panel: panel)
-        // The browser flow needs the build's Google client id or Dropbox key; without them the button would only fail.
-        if offerBrowser {
-            let button = NSButton(title: SyncedCloudText.useBrowserInstead, target: handler, action: #selector(BrowserInsteadHandler.choose))
-            button.bezelStyle = .rounded
-            panel.accessoryView = button
-        }
         NSApp.activate(ignoringOtherApps: true)
-        let response = panel.runModal()
-        if handler.chose { return .useBrowser }
-        guard response == .OK, let url = panel.url else { return .cancelled }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
         guard let bookmark = try? SecurityScopedBookmarkRoot.makeBookmark(for: url, readOnly: true) else { throw BookmarkFailed() }
-        return .picked(Pick(url: url, bookmark: bookmark, volumeName: nil))
+        return Pick(url: url, bookmark: bookmark, volumeName: nil)
     }
 
     /// The folder a stored bookmark points to now (it may have been renamed since).
@@ -86,19 +70,5 @@ enum FolderPicker {
     nonisolated static func resolvedURL(bookmark: Data) -> URL? {
         var stale = false
         return try? URL(resolvingBookmarkData: bookmark, options: SecurityScopedBookmarkRoot.resolutionOptions, relativeTo: nil, bookmarkDataIsStale: &stale)
-    }
-}
-
-/// Target of the panel's "use the browser" button: closes the panel and remembers why.
-@MainActor
-private final class BrowserInsteadHandler: NSObject {
-    private let panel: NSOpenPanel
-    private(set) var chose = false
-
-    init(panel: NSOpenPanel) { self.panel = panel }
-
-    @objc func choose() {
-        chose = true
-        panel.cancel(nil)
     }
 }
