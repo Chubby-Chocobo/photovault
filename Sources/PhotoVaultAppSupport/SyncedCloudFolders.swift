@@ -163,7 +163,11 @@ public enum ImportMenuChoices {
                      en: "Install Google Drive for desktop, or use a build with a Google client ID.")
                 : tr(vi: "Cài ứng dụng Dropbox, hoặc dùng bản build có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
                      en: "Install the Dropbox app, or use a build with a Dropbox app key (DROPBOX_APP_KEY).")
-            items = [Item(action: .browser, title: plain, help: why, isEnabled: false)]
+            // A disabled item may not show its tooltip, so the title carries the short reason.
+            let short = provider == .googleDrive
+                ? tr(vi: "cần cài Google Drive cho máy tính", en: "install Google Drive for desktop")
+                : tr(vi: "cần cài ứng dụng Dropbox", en: "install the Dropbox app")
+            items = [Item(action: .browser, title: "\(plain) (\(short))", help: why, isEnabled: false)]
         }
         if case .signedIn = state {
             let base = tr(vi: "Đăng xuất Dropbox", en: "Sign out of Dropbox")

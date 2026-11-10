@@ -54,10 +54,13 @@ import Testing
             let items = ImportMenuChoices.items(provider, appPresent: false, browserConfigured: false)
             #expect(items.count == 1 && !items[0].isEnabled)
             #expect(items[0].help.contains(provider == .googleDrive ? "Google" : "Dropbox"))
+            // The reason is in the title itself: a disabled menu item may not show its tooltip.
+            #expect(items[0].title == (provider == .googleDrive ? "Từ Google Drive… (cần cài Google Drive cho máy tính)" : "Từ Dropbox… (cần cài ứng dụng Dropbox)"))
         }
         en {
             let items = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: false)
-            #expect(items[0].title == "From Dropbox…")
+            #expect(items[0].title == "From Dropbox… (install the Dropbox app)")
+            #expect(ImportMenuChoices.items(.googleDrive, appPresent: false, browserConfigured: false)[0].title == "From Google Drive… (install Google Drive for desktop)")
         }
     }
 
