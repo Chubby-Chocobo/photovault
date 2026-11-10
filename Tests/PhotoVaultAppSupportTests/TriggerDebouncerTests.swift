@@ -1,4 +1,5 @@
 import Foundation
+import PhotoVaultTestSupport
 import Testing
 @testable import PhotoVaultAppSupport
 
@@ -9,70 +10,151 @@ private final class Counter: @unchecked Sendable {
     var count: Int { lock.withLock { value } }
 }
 
-/// Polls until `condition` holds or `timeout` passes; keeps timing tests stable on a loaded machine.
-private func eventually(timeout: Duration = .seconds(30), _ condition: () -> Bool) async throws {
-    let start = ContinuousClock.now
-    while !condition(), start.duration(to: .now) < timeout { try await Task.sleep(for: .milliseconds(10)) }
+/// Time that moves only when the test says so, so a slow or loaded machine cannot make a fire early or late.
+/// A sleep ends once the time reaches its deadline, or throws when its task is cancelled.
+private final class ManualTime: @unchecked Sendable {
+    private struct Sleeper { var deadline: TimeInterval; var continuation: CheckedContinuation<Void, any Error> }
+    private let lock = NSLock()
+    private var current: TimeInterval = 0
+    private var sleepers: [UUID: Sleeper] = [:]
+    private var cancelled: Set<UUID> = []
+    private var started = 0
+
+    var source: TriggerDebouncer.TimeSource {
+        TriggerDebouncer.TimeSource(now: { self.now }, sleep: { try await self.sleep(until: $0) })
+    }
+
+    var now: TimeInterval { lock.withLock { current } }
+    /// The deadlines of the sleeps still waiting, earliest first.
+    var waiting: [TimeInterval] { lock.withLock { sleepers.values.map(\.deadline).sorted() } }
+    /// How many sleeps were started, cancelled ones included.
+    var sleeps: Int { lock.withLock { started } }
+
+    func advance(by seconds: TimeInterval) {
+        let due = lock.withLock { () -> [CheckedContinuation<Void, any Error>] in
+            current += seconds
+            let ready = sleepers.filter { $0.value.deadline <= current }
+            ready.keys.forEach { sleepers[$0] = nil }
+            return ready.values.map(\.continuation)
+        }
+        due.forEach { $0.resume() }
+    }
+
+    private func sleep(until deadline: TimeInterval) async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                let outcome = lock.withLock { () -> Result<Void, any Error>? in
+                    started += 1
+                    if cancelled.remove(id) != nil { return .failure(CancellationError()) }
+                    if current >= deadline { return .success(()) }
+                    sleepers[id] = Sleeper(deadline: deadline, continuation: continuation)
+                    return nil
+                }
+                if let outcome { continuation.resume(with: outcome) }
+            }
+        } onCancel: {
+            let waiting = lock.withLock { () -> Sleeper? in
+                guard let sleeper = sleepers.removeValue(forKey: id) else { cancelled.insert(id); return nil }
+                return sleeper
+            }
+            waiting?.continuation.resume(throwing: CancellationError())
+        }
+    }
 }
 
+/// Lets tasks that were woken run; used only where nothing must happen, so it can never cause a failure.
+private func settle() async {
+    for _ in 0..<50 { await Task.yield() }
+}
+
+/// The times are binary fractions, so the sums the tests compare are exact.
 struct TriggerDebouncerTests {
     @Test func burstFiresOnceAfterQuietPeriod() async throws {
         let counter = Counter()
-        // Generous quiet period: on a loaded CI runner a 20 ms sleep can take far longer.
-        let debouncer = TriggerDebouncer(quiet: 1, maxWait: 10) { counter.increment() }
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 1, maxWait: 10, timer: time.source) { counter.increment() }
         for _ in 0..<5 {
             await debouncer.signal()
-            try await Task.sleep(for: .milliseconds(20))
+            time.advance(by: 0.125)
         }
-        #expect(counter.count == 0)
-        try await eventually { counter.count == 1 }
+        // Only the last signal's fire is left, one quiet period after it.
+        #expect(await pollUntil { time.waiting == [1.5] })
+        time.advance(by: 0.75)
+        await settle()
+        #expect(counter.count == 0, "the quiet period has not passed")
+        time.advance(by: 0.125)
+        #expect(await pollUntil { counter.count == 1 })
+        time.advance(by: 20)
+        await settle()
         #expect(counter.count == 1)
+        #expect(time.waiting.isEmpty)
     }
 
     @Test func maxWaitForcesFireDuringEndlessBurst() async throws {
         let counter = Counter()
-        let debouncer = TriggerDebouncer(quiet: 0.2, maxWait: 0.35) { counter.increment() }
-        let start = ContinuousClock.now
-        while start.duration(to: .now) < .milliseconds(700) {
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 0.25, maxWait: 0.375, timer: time.source) { counter.increment() }
+        // A signal every 0.0625 s never leaves a quiet gap; the burst fires 0.375 s after its first signal anyway.
+        for _ in 0..<10 {
             await debouncer.signal()
-            try await Task.sleep(for: .milliseconds(30))
+            time.advance(by: 0.0625)
         }
-        try await eventually { counter.count >= 1 }
-        #expect(counter.count >= 1)
+        #expect(await pollUntil { counter.count == 1 })
+        await settle()
+        #expect(counter.count == 1, "the burst that followed has reached neither its quiet period nor its deadline")
         await debouncer.cancel()
     }
 
     /// Signals arriving faster than the fire task can run must not keep cancelling the deadline fire.
     @Test func deadlineFireIsNotCancelledByLaterSignals() async throws {
         let counter = Counter()
-        let debouncer = TriggerDebouncer(quiet: 0.05, maxWait: 0.1) { counter.increment() }
-        let start = ContinuousClock.now
-        while start.duration(to: .now) < .milliseconds(400) {
-            await debouncer.signal()
-            await Task.yield()
-        }
-        try await eventually { counter.count >= 1 }
-        #expect(counter.count >= 1)
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 0.5, maxWait: 1, timer: time.source) { counter.increment() }
+        await debouncer.signal()
+        time.advance(by: 0.25)
+        await debouncer.signal()
+        time.advance(by: 0.25)
+        await debouncer.signal()
+        #expect(await pollUntil { time.waiting == [1] && time.sleeps == 3 }, "the fire is pinned to the deadline")
+        for _ in 0..<50 { await debouncer.signal() }
+        await settle()
+        #expect(time.sleeps == 3 && time.waiting == [1], "later signals keep the pinned fire instead of replacing it")
+        // The deadline passes and signals keep coming before the woken fire task gets to run.
+        time.advance(by: 0.5)
+        for _ in 0..<200 { await debouncer.signal() }
+        #expect(await pollUntil { counter.count >= 1 })
         await debouncer.cancel()
     }
 
     @Test func separateBurstsFireSeparately() async throws {
         let counter = Counter()
-        let debouncer = TriggerDebouncer(quiet: 0.05, maxWait: 0.5) { counter.increment() }
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 0.25, maxWait: 0.5, timer: time.source) { counter.increment() }
         await debouncer.signal()
-        try await eventually { counter.count == 1 }
-        #expect(counter.count == 1)
+        time.advance(by: 0.25)
+        #expect(await pollUntil { counter.count == 1 })
         await debouncer.signal()
-        try await eventually { counter.count == 2 }
-        #expect(counter.count == 2)
+        #expect(await pollUntil { time.waiting == [0.5] }, "a new burst, timed from its own signal")
+        time.advance(by: 0.25)
+        #expect(await pollUntil { counter.count == 2 })
     }
 
     @Test func cancelDropsPendingFire() async throws {
         let counter = Counter()
-        let debouncer = TriggerDebouncer(quiet: 0.1, maxWait: 1) { counter.increment() }
+        let time = ManualTime()
+        let debouncer = TriggerDebouncer(quiet: 0.25, maxWait: 1, timer: time.source) { counter.increment() }
         await debouncer.signal()
         await debouncer.cancel()
-        try await Task.sleep(for: .milliseconds(300))
+        time.advance(by: 5)
+        await settle()
         #expect(counter.count == 0)
+        #expect(time.waiting.isEmpty)
+        // The debouncer still works afterwards, and only the new burst fires.
+        await debouncer.signal()
+        time.advance(by: 0.25)
+        #expect(await pollUntil { counter.count == 1 })
+        await settle()
+        #expect(counter.count == 1)
     }
 }
