@@ -56,15 +56,6 @@ private final class SteppingExecutor: TaskExecutor, @unchecked Sendable {
     }
 }
 
-private func eventually(_ seconds: Double = 10, _ condition: () async throws -> Bool) async rethrows -> Bool {
-    let deadline = ContinuousClock.now + .seconds(seconds)
-    while ContinuousClock.now < deadline {
-        if try await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return try await condition()
-}
-
 /// The import stage checks for a cancel at four places besides the read and the listing it abandons. Each check only saves
 /// work the cancel would undo, so these tests drive the stage's steps on their own, without the cancel's bookkeeping that
 /// follows a pass, and look at what the step itself did.
@@ -127,8 +118,8 @@ private func eventually(_ seconds: Double = 10, _ condition: () async throws -> 
         return record
     }
 
-    @Test func aListingThatArrivesAfterTheCancelRecordsNoFile() async throws {
-        guard #available(macOS 15.0, *) else { return }
+    @Test @available(macOS 15.0, *)
+    func aListingThatArrivesAfterTheCancelRecordsNoFile() async throws {
         let executor = SteppingExecutor()
         let interrupts = Box<ImportInterrupts?>(nil)
         let job = Box<SourceID?>(nil)
@@ -204,7 +195,7 @@ private func eventually(_ seconds: Double = 10, _ condition: () async throws -> 
             withUnsafeCurrentTask { $0?.cancel() }
             _ = try await stage.list(source, folder)
         }
-        let ended = await eventually { returned.get() }
+        let ended = await eventually(10) { returned.get() }
         #expect(ended, "the stage does not hang on a wait that ended before it began")
         guard ended else { return }
         await #expect(throws: CancellationError.self) { try await listing.value }

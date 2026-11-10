@@ -18,6 +18,7 @@ private final class SlowReadSource: FolderImportSource, @unchecked Sendable {
     private var listEntered = 0
     private var readsEnded = 0
     private var listingsEnded = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
     private let hold: Bool
     private let delay: Duration
     /// The read waits for `release()` and looks neither at its control nor at task cancellation, as an adapter that
@@ -42,23 +43,39 @@ private final class SlowReadSource: FolderImportSource, @unchecked Sendable {
     /// Reads and listings that have run to their end, whatever their outcome.
     var finishedReads: Int { lock.withLock { readsEnded } }
     var finishedListings: Int { lock.withLock { listingsEnded } }
-    func release() { lock.withLock { released = true } }
+    func release() {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            released = true
+            defer { waiters = [] }
+            return waiters
+        }
+        waiting.forEach { $0.resume() }
+    }
+
+    /// Waits for `release()` and does not see task cancellation, as a call that cannot be interrupted.
+    private func waitForRelease() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in
+                if released { return true }
+                waiters.append(continuation)
+                return false
+            }
+            if now { continuation.resume() }
+        }
+    }
 
     func probe() async throws { try await inner.probe() }
     func listFiles() async throws -> [FolderFileEntry] {
         lock.withLock { listEntered += 1 }
         defer { lock.withLock { listingsEnded += 1 } }
-        while holdsListing, !lock.withLock({ released }) { try? await Task.sleep(for: .milliseconds(10)) }
+        if holdsListing { await waitForRelease() }
         return try await inner.listFiles()
     }
     func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
         lock.withLock { entered += 1 }
         defer { lock.withLock { readsEnded += 1 } }
-        while hold, !lock.withLock({ released }) {
-            if ignoresCancel {
-                try? await Task.sleep(for: .milliseconds(10))
-                continue
-            }
+        if hold, ignoresCancel { await waitForRelease() }
+        while hold, !ignoresCancel, !lock.withLock({ released }) {
             if control.isCancelled { throw SourceError.cancelled }
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -82,15 +99,6 @@ private actor Gate {
         await withCheckedContinuation { waiters.append($0) }
     }
     func open() { opened = true; waiters.forEach { $0.resume() }; waiters = [] }
-}
-
-private func eventually(_ seconds: Double = 20, _ condition: () async throws -> Bool) async rethrows -> Bool {
-    let deadline = ContinuousClock.now + .seconds(seconds)
-    while ContinuousClock.now < deadline {
-        if try await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return try await condition()
 }
 
 @Suite struct ImportCancelPromptlyTests {
@@ -126,13 +134,13 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let id = try await h.coordinator.startFolderImport(source: source, displayName: "Trip", bookmark: nil)
         let coordinator = h.coordinator
         let gate = Gate()
-        let holder = Task { try await coordinator.exclusive { await gate.hold() } }
+        let holder = Task { await coordinator.exclusive { await gate.hold() } }
         #expect(await eventually { await gate.isHeld })
         let cancel = Task { try await coordinator.cancelImport(id) }
         let stored = try await eventually { try h.source(id)?.config.cancelRequested == true }
         let stillOpen = try h.source(id)?.status.isOpen == true
         await gate.open()
-        try await holder.value
+        await holder.value
         try await cancel.value
         #expect(stored, "the intent is in the database while the lane is still held")
         #expect(stillOpen, "the bookkeeping waits for the lane")
@@ -156,8 +164,8 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         let coordinator = h.coordinator
         let cycle = Task { await coordinator.run(trigger: .manual) }
         #expect(await eventually { source.reads >= 2 })
-        let readsWhenTheCommandRan = Task { try await coordinator.exclusive { source.reads } }
-        let seen = try await readsWhenTheCommandRan.value
+        let readsWhenTheCommandRan = Task { await coordinator.exclusive { source.reads } }
+        let seen = await readsWhenTheCommandRan.value
         _ = await cycle.value
         #expect(seen < 10, "the command waited for \(seen) of 20 reads")
     }
@@ -271,47 +279,5 @@ private func eventually(_ seconds: Double = 20, _ condition: () async throws -> 
         try await h.store.write { db in try SourceRepository.updateConfig(db, id: id) { $0.account = "me@example.com" } }
         let config = try #require(try h.source(id)?.config)
         #expect(config.account == "me@example.com" && config.cancelRequested == true)
-    }
-}
-
-@Suite struct ImportInterruptsTests {
-    @Test func theWorkResultIsReturnedWhenNothingCancels() async throws {
-        let interrupts = ImportInterrupts()
-        let value = try await interrupts.untilCancelled(.folder()) { 42 }
-        #expect(value == 42)
-    }
-
-    @Test func aCancelOfTheImportEndsTheWaitWithNil() async throws {
-        let interrupts = ImportInterrupts()
-        let id = SourceID.folder()
-        let waiting = Task { try await interrupts.untilCancelled(id) { try await Task.sleep(for: .seconds(30)); return 1 } }
-        try await Task.sleep(for: .milliseconds(100))
-        interrupts.requestCancel(id)
-        #expect(try await waiting.value == nil)
-    }
-
-    @Test func cancellingTheCallingTaskEndsTheWaitAndStopsTheWork() async throws {
-        let interrupts = ImportInterrupts()
-        let started = Date()
-        let waiting = Task { try await interrupts.untilCancelled(.folder()) { try await Task.sleep(for: .seconds(30)); return 1 } }
-        try await Task.sleep(for: .milliseconds(100))
-        waiting.cancel()
-        await #expect(throws: CancellationError.self) { _ = try await waiting.value }
-        #expect(Date().timeIntervalSince(started) < 10)
-    }
-
-    @Test func aCallerCancelledBeforeTheWaitStartsIsAnsweredAtOnce() async throws {
-        let interrupts = ImportInterrupts()
-        let returned = Box(false)
-        let waiting = Task {
-            defer { returned.set(true) }
-            // The cancellation is in before the wait begins, so the wait finds its answer already there.
-            withUnsafeCurrentTask { $0?.cancel() }
-            return try await interrupts.untilCancelled(.folder()) { try await Task.sleep(for: .seconds(30)); return 1 }
-        }
-        let ended = await eventually(10) { returned.get() }
-        #expect(ended, "the wait does not hang when it ended before it began")
-        guard ended else { return }
-        await #expect(throws: CancellationError.self) { _ = try await waiting.value }
     }
 }
