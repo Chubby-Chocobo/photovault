@@ -57,13 +57,36 @@ struct TransferLineTextTests {
         #expect(vi { line([missing]) }?.contains("@") == false)
     }
 
+    @Test func aLongTransferShowsElapsedTimeSoItVisiblyMovesBetweenChunks() {
+        func upload(_ seconds: TimeInterval) -> TransferProgress {
+            item(.upload, to: "Drive", done: 262_144, total: 2 * gib, startedAgo: seconds)
+        }
+        #expect(vi { line([upload(9)]) }?.hasSuffix("(0%)") == true)
+        #expect(vi { line([upload(10)]) } == "Đang upload IMG_1234.MOV lên Drive · 256 KB / 2,0 GB (0%) · 0:10")
+        #expect(vi { line([upload(125)]) }?.hasSuffix(" · 2:05") == true)
+        #expect(en { line([upload(3725)]) }?.hasSuffix(" · 1:02:05") == true)
+        let two = vi { line([upload(125), item(.copy, "b", to: "NAS", done: 1, total: 2, startedAgo: 5)]) }
+        #expect(two?.hasSuffix(" · 2:05 · +1 file khác") == true, "\(two ?? "")")
+    }
+
+    @Test func anExportThatHasReceivedNoBytesIsAnICloudDownload() {
+        let waiting = item(.exportFromPhotos, done: 0, total: 3 * gib, startedAgo: 2)
+        #expect(vi { line([waiting]) } == "Đang tải IMG_1234.MOV từ iCloud")
+        #expect(en { line([waiting]) } == "Downloading IMG_1234.MOV from iCloud")
+        let long = item(.exportFromPhotos, done: 0, total: nil, startedAgo: 95)
+        #expect(vi { line([long]) } == "Đang tải IMG_1234.MOV từ iCloud · 1:35")
+        // Once bytes arrive it is an export again.
+        let moving = item(.exportFromPhotos, done: gib, total: 3 * gib, startedAgo: 95)
+        #expect(vi { line([moving]) } == "Đang xuất IMG_1234.MOV từ Photos · 1,0 / 3,0 GB (33%) · 1:35")
+    }
+
     @Test func differentUnitsKeepBothAndAnUnknownTotalShowsOnlyBytesDone() {
         let small = item(.upload, to: "Drive", done: 300 << 20, total: 2 * gib)
         #expect(vi { line([small]) } == "Đang upload IMG_1234.MOV lên Drive · 300 MB / 2,0 GB (14%)")
         let unknown = item(.download(.dropbox), done: 1_500 << 20, total: nil)
         #expect(vi { line([unknown]) } == "Đang tải IMG_1234.MOV từ Dropbox · 1,5 GB")
         let notStarted = item(.exportFromPhotos, done: 0, total: nil)
-        #expect(vi { line([notStarted]) } == "Đang xuất IMG_1234.MOV từ Photos")
+        #expect(vi { line([notStarted]) } == "Đang tải IMG_1234.MOV từ iCloud")
     }
 
     @Test func bytesPastTheTotalAreClampedAfterARetry() {
