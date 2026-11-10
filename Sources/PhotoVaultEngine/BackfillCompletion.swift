@@ -17,13 +17,15 @@ public struct BackfillCompletionSummary: Sendable, Equatable {
 }
 
 /// A backfill ends once: the end is detected at the close of a drained cycle, and its marker, activity
-/// row and notification flag are written in one transaction. `completed_max_job` is the highest id of
-/// the (non-cancelled) backfill jobs at the last end. Job ids only grow, so a relaunch, a retried
-/// skipped file or a deleted finished job repeats or hides nothing, while a new backfill (a destination
-/// added or added again) creates higher ids and ends again.
+/// row and notification flag are written in one transaction. `completed_marks` maps each destination to
+/// the highest id of its (non-cancelled) backfill jobs at the last end. Job ids only grow, so a
+/// relaunch, a retried skipped file or a deleted finished job repeats or hides nothing, while a new
+/// backfill (a destination added or added again) creates higher ids and ends again. The marks are per
+/// destination because fan-out interleaves the ids of destinations: a destination the owner paused
+/// keeps its old mark, and what it uploads after it resumes is an end of its own.
 enum BackfillCompletion {
     enum Key {
-        static let completedMaxJob = "backfill.completed_max_job"
+        static let completedMarks = "backfill.completed_marks"
         static let completedAt = "backfill.completed_at"
         static let completedAssets = "backfill.completed_assets"
         static let completedBytes = "backfill.completed_bytes"
@@ -44,23 +46,25 @@ enum BackfillCompletion {
 
     /// Records the end of a backfill when one just finished.
     static func note(_ db: Database, drained: Bool, now: Date, settings: SettingsSnapshot) throws {
-        guard drained, let latest = try latestJobId(db), latest > (try recordedJobId(db)) else { return }
-        guard try isFinished(db, settings: settings) else { return }
-        let state = try counts(db, after: try recordedJobId(db))
+        guard drained else { return }
+        let marks = try recordedMarks(db) ?? [:]
+        let latest = try latestJobIds(db)
+        guard latest.contains(where: { $0.value > (marks[$0.key] ?? 0) }), try isFinished(db, settings: settings) else { return }
+        let state = try counts(db, after: marks)
         guard state.assets > 0 else { return }
-        try store(db, latestJob: latest, at: now, state: state, pending: true)
+        try store(db, marks: merged(marks, latest, db), at: now, state: state, pending: true)
         try ActivityRepository.record(db, ActivityEvent(at: now, kind: .milestone, message: activityText(assets: state.assets, bytes: state.bytes)))
     }
 
     /// A backfill that finished before the end was recorded: mark it without a notification or an
     /// activity row. Runs once per launch, before the first cycle's work.
     static func markEarlierBackfill(_ db: Database, settings: SettingsSnapshot) throws {
-        guard try KeyValueRepository.int(db, Key.completedMaxJob) == nil, let latest = try latestJobId(db),
-              try isFinished(db, settings: settings) else { return }
-        let state = try counts(db, after: 0)
-        guard state.assets > 0 else { return }
+        guard try recordedMarks(db) == nil, try isFinished(db, settings: settings) else { return }
+        let latest = try latestJobIds(db)
+        let state = try counts(db, after: [:])
+        guard !latest.isEmpty, state.assets > 0 else { return }
         let finishedAt = try Date.fetchOne(db, sql: "SELECT MAX(updated_at) FROM upload_job WHERE state = 'done' AND origin IN (\(origins))")
-        try store(db, latestJob: latest, at: finishedAt, state: state, pending: false)
+        try store(db, marks: merged([:], latest, db), at: finishedAt, state: state, pending: false)
     }
 
     static func acknowledgeNotification(_ db: Database) throws {
@@ -77,19 +81,34 @@ enum BackfillCompletion {
 
     // MARK: Queries
 
-    private static func recordedJobId(_ db: Database) throws -> Int64 {
-        Int64(try KeyValueRepository.int(db, Key.completedMaxJob) ?? 0)
+    /// nil until the first end (or the upgrade mark) was stored.
+    private static func recordedMarks(_ db: Database) throws -> [String: Int64]? {
+        guard let text = try KeyValueRepository.string(db, Key.completedMarks), let data = text.data(using: .utf8) else { return nil }
+        return try JSONDecoder().decode([String: Int64].self, from: data)
     }
 
-    /// Highest id of the backfill jobs of destinations the owner has not paused. A paused destination's
-    /// jobs are left out so that the work it does after it resumes is recorded as its own end.
-    private static func latestJobId(_ db: Database) throws -> Int64? {
-        let paused = try pausedDestinations(db)
-        let marks = paused.map { _ in "?" }.joined(separator: ", ")
-        let skip = paused.isEmpty ? "" : " AND destination_id NOT IN (\(marks))"
-        return try Int64.fetchOne(
-            db, sql: "SELECT MAX(id) FROM upload_job WHERE origin IN (\(origins)) AND state != 'cancelled'\(skip)",
-            arguments: StatementArguments(paused))
+    /// Highest non-cancelled backfill job id per destination the owner has not paused.
+    private static func latestJobIds(_ db: Database) throws -> [String: Int64] {
+        let paused = Set(try pausedDestinations(db))
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT destination_id, MAX(id) AS last FROM upload_job
+            WHERE origin IN (\(origins)) AND state != 'cancelled' GROUP BY destination_id
+            """)
+        var result: [String: Int64] = [:]
+        for row in rows {
+            let id: String = row["destination_id"]
+            if !paused.contains(id) { result[id] = row["last"] }
+        }
+        return result
+    }
+
+    /// The stored marks after an end: the active destinations move to their latest job, the others
+    /// (paused ones) keep their old mark, and destinations that no longer exist are dropped.
+    private static func merged(_ marks: [String: Int64], _ latest: [String: Int64], _ db: Database) throws -> [String: Int64] {
+        let existing = Set(try DestinationRepository.fetchAll(db).map(\.id.rawValue))
+        var result = marks.filter { existing.contains($0.key) }
+        for (id, last) in latest where existing.contains(id) { result[id] = last }
+        return result
     }
 
     private static func pausedDestinations(_ db: Database) throws -> [String] {
@@ -118,20 +137,36 @@ enum BackfillCompletion {
         }
     }
 
-    /// Photos with a finished backfill job after `jobId`, and the bytes those jobs uploaded.
-    private static func counts(_ db: Database, after jobId: Int64) throws -> (assets: Int, bytes: Int64) {
+    /// Photos with a finished backfill job past its destination's mark, and the bytes those jobs uploaded.
+    private static func counts(_ db: Database, after marks: [String: Int64]) throws -> (assets: Int, bytes: Int64) {
+        let ordered = marks.sorted { $0.key < $1.key }
+        var arguments: [any DatabaseValueConvertible] = []
+        var terms: [String] = []
+        for (id, mark) in ordered {
+            terms.append("(j.destination_id = ? AND j.id > ?)")
+            arguments += [id, mark]
+        }
+        if ordered.isEmpty {
+            terms.append("1")
+        } else {
+            terms.append("j.destination_id NOT IN (\(ordered.map { _ in "?" }.joined(separator: ", ")))")
+            arguments += ordered.map(\.key)
+        }
+        let past = "(" + terms.joined(separator: " OR ") + ")"
         let assets = try Int.fetchOne(db, sql: """
-            SELECT COUNT(DISTINCT asset_key) FROM upload_job WHERE state = 'done' AND origin IN (\(origins)) AND id > ?
-            """, arguments: [jobId]) ?? 0
+            SELECT COUNT(DISTINCT j.asset_key) FROM upload_job j WHERE j.state = 'done' AND j.origin IN (\(origins)) AND \(past)
+            """, arguments: StatementArguments(arguments)) ?? 0
         let bytes = try Int64.fetchOne(db, sql: """
             SELECT COALESCE(SUM(b.bytes), 0) FROM job_bytes b JOIN upload_job j ON j.id = b.job_id
-            WHERE j.origin IN (\(origins)) AND j.id > ?
-            """, arguments: [jobId]) ?? 0
+            WHERE j.origin IN (\(origins)) AND \(past)
+            """, arguments: StatementArguments(arguments)) ?? 0
         return (assets, bytes)
     }
 
-    private static func store(_ db: Database, latestJob: Int64, at date: Date?, state: (assets: Int, bytes: Int64), pending: Bool) throws {
-        try KeyValueRepository.set(db, Key.completedMaxJob, Int(latestJob))
+    private static func store(_ db: Database, marks: [String: Int64], at date: Date?, state: (assets: Int, bytes: Int64), pending: Bool) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        try KeyValueRepository.set(db, Key.completedMarks, String(decoding: try encoder.encode(marks), as: UTF8.self))
         try KeyValueRepository.set(db, Key.completedAt, date)
         try KeyValueRepository.set(db, Key.completedAssets, state.assets)
         try KeyValueRepository.set(db, Key.completedBytes, Int(state.bytes))

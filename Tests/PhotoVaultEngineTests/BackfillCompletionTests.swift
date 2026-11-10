@@ -70,7 +70,7 @@ import Testing
         let h = try await finishedBackfill()
         let settings = await h.env.settingsSnapshot()
         try h.write { db in
-            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMaxJob, nil)
+            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMarks, nil)
             try db.execute(sql: "DELETE FROM activity")
             try BackfillCompletion.note(db, drained: false, now: Date(), settings: settings)
         }
@@ -128,7 +128,7 @@ import Testing
         let h = try await finishedBackfill()
         let finishedAt = try h.read { db in try Date.fetchOne(db, sql: "SELECT MAX(updated_at) FROM upload_job WHERE state = 'done'") }
         try h.write { db in
-            for key in [BackfillCompletion.Key.completedMaxJob, BackfillCompletion.Key.completedAt, BackfillCompletion.Key.completedAssets,
+            for key in [BackfillCompletion.Key.completedMarks, BackfillCompletion.Key.completedAt, BackfillCompletion.Key.completedAssets,
                         BackfillCompletion.Key.completedBytes, BackfillCompletion.Key.notifyPending] {
                 try KeyValueRepository.set(db, key, nil)
             }
@@ -174,7 +174,7 @@ import Testing
 
         // The same state as an upgrade: no marker yet, the backfill long finished.
         try h.write { db in
-            for key in [BackfillCompletion.Key.completedMaxJob, BackfillCompletion.Key.completedAt, BackfillCompletion.Key.completedAssets,
+            for key in [BackfillCompletion.Key.completedMarks, BackfillCompletion.Key.completedAt, BackfillCompletion.Key.completedAssets,
                         BackfillCompletion.Key.completedBytes, BackfillCompletion.Key.notifyPending] {
                 try KeyValueRepository.set(db, key, nil)
             }
@@ -193,7 +193,7 @@ import Testing
         let h = try await finishedBackfill()
         let settings = await h.env.settingsSnapshot()
         try h.write { db in
-            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMaxJob, nil)
+            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMarks, nil)
             try db.execute(sql: "DELETE FROM activity")
             try db.execute(sql: "UPDATE asset SET category_provisional = 1 WHERE asset_key = (SELECT MIN(asset_key) FROM asset)")
             try BackfillCompletion.note(db, drained: true, now: Date(), settings: settings)
@@ -248,7 +248,7 @@ import Testing
         let h = try await finishedBackfill()
         let settings = await h.env.settingsSnapshot()
         try h.write { db in
-            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMaxJob, nil)
+            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMarks, nil)
             try db.execute(sql: "UPDATE upload_job SET state = 'skipped' WHERE id = (SELECT MAX(id) FROM upload_job)")
             try BackfillCompletion.note(db, drained: true, now: Date(), settings: settings)
         }
@@ -285,7 +285,7 @@ import Testing
         let settings = await h.env.settingsSnapshot()
         #expect(!settings.settings.includeHidden)
         try h.write { db in
-            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMaxJob, nil)
+            try KeyValueRepository.set(db, BackfillCompletion.Key.completedMarks, nil)
             try db.execute(sql: "DELETE FROM activity")
             try db.execute(sql: "UPDATE asset SET category_provisional = 1, is_hidden = 1 WHERE asset_key = (SELECT MIN(asset_key) FROM asset)")
             try BackfillCompletion.note(db, drained: true, now: Date(), settings: settings)
@@ -293,20 +293,36 @@ import Testing
         #expect(try rows(h).count == 1)
     }
 
-    @Test func workDoneAfterAPausedDestinationResumesIsRecordedOnce() async throws {
+    @Test(arguments: [true, false])
+    func workDoneAfterAPausedDestinationResumesIsRecordedOnce(pauseNAS: Bool) async throws {
         let h = try await harness()
         try h.addNAS(scope: .full)
-        try h.write { db in try DestinationRepository.setStatus(db, id: h.nasId, status: .paused(.userPaused), now: h.clock.now) }
+        let paused = pauseNAS ? h.nasId : DestinationID.googleDrive
+        let other = pauseNAS ? DestinationID.googleDrive : h.nasId
+        try h.write { db in try DestinationRepository.setStatus(db, id: paused, status: .paused(.userPaused), now: h.clock.now) }
         for index in 0..<3 { await h.add(h.snapshot("old\(index)", daysAgo: 5), recordChange: false) }
         try await h.baseline(.googleDrive, h.nasId)
         await h.settle()
-        #expect(try rows(h).count == 1, "Drive finished; the paused NAS does not hold the end")
+        #expect(try rows(h).count == 1, "the other destination finished; the paused one does not hold the end")
+        let ids = try h.read { db in
+            (try Int64.fetchOne(db, sql: "SELECT MIN(id) FROM upload_job WHERE destination_id = ?", arguments: [paused.rawValue]),
+             try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM upload_job WHERE destination_id = ?", arguments: [other.rawValue]))
+        }
+        #expect(try #require(ids.0) < #require(ids.1), "the jobs of both destinations are interleaved")
         try await h.coordinator.acknowledgeBackfillNotification()
 
-        try h.write { db in try DestinationRepository.setStatus(db, id: h.nasId, status: .active, now: h.clock.now) }
+        try h.write { db in try DestinationRepository.setStatus(db, id: paused, status: .active, now: h.clock.now) }
         await h.settle()
-        #expect(try rows(h).count == 2, "the NAS's three files are a backfill of their own")
+        #expect(try rows(h).count == 2, "what the resumed destination uploads is a backfill of its own")
         await h.settle()
         #expect(try rows(h).count == 2)
+
+        try h.write { db in try DestinationRepository.remove(db, id: h.nasId) }
+        await h.coordinator.destinationRemoved(h.nasId)
+        await h.env.destinations.add(h.nas)
+        try h.addNAS(scope: .full)
+        try await h.coordinator.destinationAdded(h.nasId)
+        await h.settle()
+        #expect(try rows(h).count == 3)
     }
 }
