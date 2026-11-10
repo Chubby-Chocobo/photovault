@@ -109,10 +109,10 @@ extension AppModel {
         }
     }
 
-    /// What a queued entry says while it waits: its place in line and why. nil for an entry that is not queued.
+    /// What a queued entry says while it waits: the status and why. The place in line is the row's badge only.
     func queueWait(for item: ImportSnapshot) -> (title: String, reason: String)? {
-        guard let position = ImportQueue.position(of: item.id, queued: queuedImports) else { return nil }
-        return (ImportQueue.waitTitle(position), ImportQueue.waitReason(uploading: !transfers.isEmpty))
+        guard ImportQueue.isQueued(item) else { return nil }
+        return (ImportProgressText.statusLabel(item), engineWaitReason)
     }
 
     /// Why a signed-in-again import or a cancel waits.

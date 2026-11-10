@@ -145,29 +145,6 @@ import Testing
         ImportQueue.snapshot(id: .folder(), kind: .localFolder, account: nil, displayName: "X", now: now)
     }
 
-    @Test func positionCountsOnlyQueuedEntriesInOrder() {
-        let a = queued(), b = queued(), c = queued()
-        let real = ImportSnapshot(id: .folder(), displayName: "R", status: .scanning, createdAt: now)
-        #expect(ImportQueue.position(of: b.id, queued: [a, b, c]) == ImportQueue.Position(index: 2, total: 3))
-        #expect(ImportQueue.position(of: real.id, queued: [a, b, c]) == nil)
-    }
-
-    @Test func aLoneEntryHasNoOrdinal() {
-        L10n.$override.withValue(.vi) {
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 1, total: 1)) == "Chờ đến lượt")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 2, total: 3)) == "Chờ đến lượt · thứ 2")
-        }
-        L10n.$override.withValue(.en) {
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 1, total: 1)) == "Waiting for its turn")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 1, total: 2)) == "Waiting for its turn · 1st in line")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 2, total: 4)) == "Waiting for its turn · 2nd in line")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 3, total: 4)) == "Waiting for its turn · 3rd in line")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 4, total: 4)) == "Waiting for its turn · 4th in line")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 11, total: 12)) == "Waiting for its turn · 11th in line")
-            #expect(ImportQueue.waitTitle(ImportQueue.Position(index: 22, total: 22)) == "Waiting for its turn · 22nd in line")
-        }
-    }
-
     @Test func theReasonNamesWhatTheEngineIsDoing() {
         L10n.$override.withValue(.vi) {
             #expect(ImportQueue.waitReason(uploading: true) == "đang chờ app upload xong file đang chạy")

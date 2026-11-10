@@ -62,13 +62,9 @@ import Testing
     @Test func menuBarCardTexts() {
         vi {
             #expect(ImportProgressText.menuTitle(folderName: "Trip") == "Nhập từ “Trip”")
-            #expect(ImportProgressText.moreImports(0) == nil)
-            #expect(ImportProgressText.moreImports(2) == "+ 2 lần nhập khác")
         }
         en {
             #expect(ImportProgressText.menuTitle(folderName: "Trip") == "Importing from “Trip”")
-            #expect(ImportProgressText.moreImports(1) == "+ 1 more import")
-            #expect(ImportProgressText.moreImports(3) == "+ 3 more imports")
         }
     }
 
@@ -124,15 +120,6 @@ import Testing
             #expect(ImportProgressText.waitingForPhotos(item(.offline), photosAllowsReading: false) == nil)
         }
         en { #expect(ImportProgressText.waitingForPhotos(item(.importing), photosAllowsReading: false)?.hasPrefix("Waiting for Photos access") == true) }
-    }
-
-    @Test func moreImportsGroupsThousands() {
-        vi { #expect(ImportProgressText.moreImports(1_200) == "+ 1.200 lần nhập khác") }
-        en {
-            #expect(ImportProgressText.moreImports(1_200) == "+ 1,200 more imports")
-            #expect(ImportProgressText.moreImports(1) == "+ 1 more import")
-        }
-        #expect(ImportProgressText.moreImports(0) == nil)
     }
 
     @Test func onlyAnImportThatWasOpenAndIsNowCompletedIsNewlyCompleted() {

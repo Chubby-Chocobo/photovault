@@ -92,4 +92,21 @@ import Testing
         let summary = try! #require(ImportQueueLayout.popoverSummary(ImportQueueLayout.queueRows([queued("A")])))
         #expect(summary.head.isQueued && summary.waitingLine == nil)
     }
+
+    @Test func thePopoverCountsRunningAndWaitingApart() {
+        let rows = ImportQueueLayout.queueRows(ImportQueue.merged(queued: [queued("A"), queued("B")], running: [running("R1"), running("R2")]))
+        let summary = try! #require(ImportQueueLayout.popoverSummary(rows))
+        #expect(summary.head.item.displayName == "R1" && summary.runningCount == 1 && summary.waitingCount == 2)
+        L10n.$override.withValue(.vi) { #expect(summary.waitingLine == "+1 đang chạy, +2 đang chờ: A, B") }
+        L10n.$override.withValue(.en) { #expect(summary.waitingLine == "+1 running, +2 waiting: A, B") }
+        let onlyRunning = try! #require(ImportQueueLayout.popoverSummary(ImportQueueLayout.queueRows([running("R1"), running("R2")])))
+        L10n.$override.withValue(.en) { #expect(onlyRunning.waitingLine == "+1 running") }
+    }
+
+    @Test func theLocationLookupRerunsWhenTheEntryIsRecorded() {
+        let entry = queued("A")
+        let recorded = ImportSnapshot(id: entry.id, displayName: "A", status: .scanning, createdAt: t0)
+        #expect(ImportQueue.locationKey(entry) != ImportQueue.locationKey(recorded))
+        #expect(ImportQueue.locationKey(recorded) == ImportQueue.locationKey(recorded))
+    }
 }

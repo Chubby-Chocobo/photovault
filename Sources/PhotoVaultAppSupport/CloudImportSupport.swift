@@ -216,26 +216,8 @@ public enum ImportQueue {
         }
     }
 
-    public struct Position: Equatable, Sendable {
-        /// 1-based place among the queued entries.
-        public var index: Int
-        public var total: Int
-        public init(index: Int, total: Int) { self.index = index; self.total = total }
-    }
-
-    /// Where `id` stands among the entries waiting for the engine; nil when it is not one of them.
-    public static func position(of id: SourceID, queued: [ImportSnapshot]) -> Position? {
-        let waiting = queued.filter(isQueued)
-        guard let index = waiting.firstIndex(where: { $0.id == id }) else { return nil }
-        return Position(index: index + 1, total: waiting.count)
-    }
-
-    /// "Chờ đến lượt", with the place when several wait: "Chờ đến lượt · thứ 2".
-    public static func waitTitle(_ position: Position) -> String {
-        let base = tr(vi: "Chờ đến lượt", en: "Waiting for its turn")
-        guard position.total > 1 else { return base }
-        return base + " · " + tr(vi: "thứ \(position.index)", en: "\(ordinal(position.index)) in line")
-    }
+    /// Changes when a queued entry becomes the recorded import, so a lookup keyed on it runs again for the source row.
+    public static func locationKey(_ item: ImportSnapshot) -> String { "\(item.id.rawValue)|\(isQueued(item))" }
 
     /// Why the start waits: a transfer is running (the engine yields between files), or the current sync pass.
     public static func waitReason(uploading: Bool) -> String {

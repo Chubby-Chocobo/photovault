@@ -242,6 +242,8 @@ Settings › **Nguồn** (Sources) › **Nhập ảnh…** (Import photos…) �
 
 ### From Google Drive or Dropbox
 
+An import you have just picked is listed in Settings › Nguồn › Hàng đợi nhập ("Import queue") as waiting for its turn until the running sync reaches a safe point. A pick that is still waiting is forgotten if the app quits first (nothing is stored for it yet): pick the folder again.
+
 Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or **Từ Dropbox…** starts the import. The row and the menu bar card show the account email.
 
 - **Preferred: the desktop app.** If **Google Drive for desktop** (or the **Dropbox** app) is installed, the **Nhập ảnh…** menu lists **Google Drive trên máy này…** (or **Dropbox trên máy này…**), which opens a folder chooser at `~/Library/CloudStorage` ("Chọn thư mục Google Drive (đồng bộ trên máy này)"). Choose the account folder (`GoogleDrive-<email>`) and then "My Drive" or a subfolder; Dropbox's folder is `Dropbox`. The import is then a normal Mac-folder import: no sign-in, no Google "chưa xác minh" screen, subfolders included. The row reads "Google Drive (trên máy này) · <email>" or "Dropbox (trên máy này)". When this build also has the Google client ID (or the Dropbox key), a separate item **Google Drive qua trình duyệt…** (**Dropbox qua trình duyệt…**) opens the browser flow below, for an account that is not synced on this Mac. With only one way available the menu shows a single **Từ Google Drive…** / **Từ Dropbox…** item for it ([decision 0031](docs/decisions/0031-import-from-synced-cloud-folder.md)).

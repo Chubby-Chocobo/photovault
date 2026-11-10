@@ -22,15 +22,22 @@ public struct ImportQueueRow: Equatable, Identifiable, Sendable {
 /// What the popover card shows: the first row with its progress and a short line about the rest.
 public struct ImportQueuePopoverSummary: Equatable, Sendable {
     public var head: ImportQueueRow
+    /// Other imports the engine already runs.
+    public var runningCount: Int
+    /// Entries that truly wait for the engine.
     public var waitingCount: Int
-    /// Up to two names of the rows after the head.
+    /// Up to two names of the waiting entries.
     public var waitingNames: [String]
 
-    /// "+3 đang chờ: A, B…"; nil when nothing else waits.
+    /// "+1 đang chạy, +2 đang chờ: A, B…"; nil when nothing else is there.
     public var waitingLine: String? {
-        guard waitingCount > 0 else { return nil }
-        let names = waitingNames.joined(separator: ", ") + (waitingCount > waitingNames.count ? "…" : "")
-        return tr(vi: "+\(waitingCount) đang chờ: \(names)", en: "+\(waitingCount) waiting: \(names)")
+        var parts: [String] = []
+        if runningCount > 0 { parts.append(tr(vi: "+\(runningCount) đang chạy", en: "+\(runningCount) running")) }
+        if waitingCount > 0 {
+            let names = waitingNames.joined(separator: ", ") + (waitingCount > waitingNames.count ? "…" : "")
+            parts.append(tr(vi: "+\(waitingCount) đang chờ: \(names)", en: "+\(waitingCount) waiting: \(names)"))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 }
 
@@ -62,7 +69,10 @@ public enum ImportQueueLayout {
     public static func popoverSummary(_ rows: [ImportQueueRow]) -> ImportQueuePopoverSummary? {
         guard let head = rows.first else { return nil }
         let rest = rows.dropFirst()
-        return ImportQueuePopoverSummary(head: head, waitingCount: rest.count, waitingNames: rest.prefix(2).map(\.item.displayName))
+        let waiting = rest.filter(\.isQueued)
+        return ImportQueuePopoverSummary(
+            head: head, runningCount: rest.count - waiting.count, waitingCount: waiting.count,
+            waitingNames: waiting.prefix(2).map(\.item.displayName))
     }
 }
 
