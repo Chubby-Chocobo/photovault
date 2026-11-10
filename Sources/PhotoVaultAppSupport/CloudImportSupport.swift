@@ -199,8 +199,20 @@ public struct CloudFlowTracker: Sendable {
 public enum ImportQueue {
     static let reason = "queued"
 
-    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date) -> ImportSnapshot {
-        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now)
+    public static func snapshot(id: SourceID, kind: SourceKind, account: String?, displayName: String, now: Date,
+                                location: ImportLocation? = nil) -> ImportSnapshot {
+        ImportSnapshot(id: id, kind: kind, account: account, statusReason: reason, displayName: displayName, status: .scanning, createdAt: now,
+                       location: location)
+    }
+
+    /// The queue with `location` set on the entry `id` (a Drive walk finishing after the import was queued).
+    public static func setting(_ location: ImportLocation?, for id: SourceID, in items: [ImportSnapshot]) -> [ImportSnapshot] {
+        items.map { item in
+            guard item.id == id else { return item }
+            var copy = item
+            copy.location = location
+            return copy
+        }
     }
 
     public static func isQueued(_ item: ImportSnapshot) -> Bool { item.status == .scanning && item.statusReason == reason }

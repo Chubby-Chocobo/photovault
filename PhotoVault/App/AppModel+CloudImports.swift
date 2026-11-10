@@ -30,15 +30,22 @@ extension AppModel {
             let source = env.cloud.driveSource(id: id, pickedIds: picked.pickedIds, initial: (picked.accessToken, picked.expiresAt))
             let folderName = await source.singlePickedFolderName()
             let name = CloudImportText.googleDisplayName(singleFolderName: folderName, pickedCount: picked.pickedIds.count)
-            let config = SourceConfig(
+            var config = SourceConfig(
                 account: email, remoteItems: picked.pickedIds,
                 sidecarName: CloudImportText.googleSidecarName(singleFolderName: folderName, pickedCount: picked.pickedIds.count))
             if Task.isCancelled {
                 _ = env.cloud.deleteTokens(accounts: [CloudTokenAccount.importGrant(id)])
                 throw CancellationError()
             }
-            enqueueImport(id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") {
-                try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
+            enqueueImport(
+                id: id, kind: .googleDrive, account: email, displayName: name, provider: "google drive") { [self] in
+                // The walk runs here, after the sign-in row has left its browser step; it never fails the import.
+                let locations = await source.pickedLocations()
+                try Task.checkCancellation()
+                config.locationPaths = locations?.paths
+                config.locationURL = locations?.webURL
+                queuedImports = ImportQueue.setting(ImportLocation.make(kind: .googleDrive, config: config), for: id, in: queuedImports)
+                return try await env.coordinator.startImport(source: source, kind: .googleDrive, displayName: name, config: config)
             }
         }
     }
@@ -96,7 +103,9 @@ extension AppModel {
         let name = CloudImportText.dropboxDisplayName(path: path)
         let source = env.cloud.dropboxSource(id: id, rootPath: path)
         let config = SourceConfig(account: email, remoteItems: [path], sidecarName: CloudImportText.dropboxSidecarName(path: path))
-        enqueueImport(id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox") {
+        enqueueImport(
+            id: id, kind: .dropbox, account: email, displayName: name, provider: "dropbox",
+            location: ImportLocation.make(kind: .dropbox, config: config)) {
             try await env.coordinator.startImport(source: source, kind: .dropbox, displayName: name, config: config)
         }
         return true
@@ -197,8 +206,8 @@ extension AppModel {
     /// between sync passes, which can take long, and the owner may close the window meanwhile. Cancelling the
     /// queued entry cancels the start and deletes the stored sign-in; so does a start that fails.
     private func enqueueImport(id: SourceID, kind: SourceKind, account: String, displayName: String, provider: String,
-                               start: @escaping @MainActor () async throws -> SourceID) {
-        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date()))
+                               location: ImportLocation? = nil, start: @escaping @MainActor () async throws -> SourceID) {
+        queuedImports.append(ImportQueue.snapshot(id: id, kind: kind, account: account, displayName: displayName, now: Date(), location: location))
         queuedStarts[id] = Task { @MainActor [self] in
             defer {
                 queuedImports.removeAll { $0.id == id }

@@ -82,6 +82,8 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
     /// Upload jobs of this import that finished, and all that will or did upload (every destination).
     public var filesUploaded: Int
     public var filesTotal: Int
+    /// Where the import came from. Shown in the app only; never written to logs or the activity list.
+    public var location: ImportLocation?
 
     public var isFinished: Bool { !status.isOpen }
 
@@ -89,8 +91,9 @@ public struct ImportSnapshot: Sendable, Equatable, Identifiable {
         id: SourceID, kind: SourceKind = .localFolder, account: String? = nil, statusReason: String? = nil,
         displayName: String, status: SourceStatus, createdAt: Date, finishedAt: Date? = nil, found: Int = 0,
         processed: Int = 0, imported: Int = 0, duplicates: Int = 0, unsupported: Int = 0, failed: Int = 0,
-        filesUploaded: Int = 0, filesTotal: Int = 0
+        filesUploaded: Int = 0, filesTotal: Int = 0, location: ImportLocation? = nil
     ) {
+        self.location = location
         self.id = id
         self.kind = kind
         self.account = account

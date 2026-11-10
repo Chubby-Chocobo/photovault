@@ -43,7 +43,8 @@ extension AppModel {
         let name = pick.url.lastPathComponent
         Task {
             do {
-                try await env.coordinator.startFolderImport(source: source, displayName: name, bookmark: pick.bookmark)
+                try await env.coordinator.startFolderImport(
+                    source: source, displayName: name, bookmark: pick.bookmark, locationPath: ImportLocationPath.mac(pick.url.path))
                 env.log.log(.info, category: "import", "import started")
                 requestSync(.manual)
                 await refreshSnapshot()
