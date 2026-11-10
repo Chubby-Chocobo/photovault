@@ -6,7 +6,7 @@ Personal macOS menu-bar app. It backs up the Photos library (originals and edits
 
 ## Upgrading from 0.1.0
 
-Version 0.2.0 files photos in a new folder layout (one folder per day under `Camera Uploads`, `Screenshots` and `Saved`; see [Folder layout](#folder-layout)). Backup data is never moved or deleted, so an old backup is not converted: you start over with a new root folder.
+Version 0.2.0 files photos in a new folder layout (one folder per day under `Camera Uploads`, `Screenshots` and `Saved`; see [Folder layout](#folder-layout)). Backup data is never deleted, and an old layout is not migrated, so an old backup is not converted: you start over with a new root folder.
 
 If you already have a 0.1.0 backup:
 
@@ -17,7 +17,7 @@ If you already have a 0.1.0 backup:
 
 Why: [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md) and [decision 0025](docs/decisions/0025-old-layout-block-and-reset.md).
 
-**Do not downgrade after 0.4.0.** 0.4.0 adds a database migration and files a day's photos in several folders; 0.3.0 and earlier do not know the new column and would put sidecar changes in the wrong folder. Builds from 0.4.0 on refuse to open a database written by a newer build.
+**Do not downgrade after 0.4.0.** 0.4.0 adds a database migration and files a day's photos in several folders; 0.3.0 and earlier do not know the new column and would put sidecar changes in the wrong folder, and 0.2.0 cannot read cloud import sources. Builds from 0.4.0 on refuse to open a database written by a newer build.
 
 Other references: the full spec is [docs/requirements/photovault-spec-v1.md](docs/requirements/photovault-spec-v1.md) (copy of GitHub issue #1), decisions are in [docs/decisions/](docs/decisions/README.md), and the sidecar format is in [docs/sidecar-schema.md](docs/sidecar-schema.md).
 
@@ -127,7 +127,7 @@ Personal Team profiles expire. If Xcode reports the profile as expired, sign aga
 
 ## Folder layout
 
-Every destination gets the same tree under its root (default name `PhotoVault`); the three views exist on Drive only and hold shortcuts, not copies.
+Every destination gets the same tree under its root (default name `PhotoVault`). The views (By device, By place, Favorites, and By lens when it is turned on) exist on Drive only and hold shortcuts, not copies. A phone lens name is shortened, for example `iPhone 15 Pro 6.86mm f1.78` ([FR-107](docs/requirements/photovault-spec-v1.md)).
 
 ```
 PhotoVault/
@@ -201,7 +201,7 @@ Keep `privacy.html` true to what the app does: when the app starts using new Goo
 - **No client-side encryption.** Files in Drive and on the NAS are stored as plain files. Google encrypts data at rest on its side; the app adds no encryption of its own.
 - **Hidden photos are not uploaded** by default.
 - **Tokens** are stored only in the macOS Keychain on this Mac, in the data-protection keychain, which is not synced. That includes the Dropbox account and one token per Drive or Dropbox import.
-- **Dropbox and Google Drive imports** read only what you choose: the folder you pick in Dropbox, or the files and folders you pick in Google's Picker (the import sign-in asks for `drive.file` and `drive.readonly`; the backup destination stays on `drive.file`). Nothing is written back to either service. An import's sign-in is deleted from the Keychain when the import is finished and its files are uploaded.
+- **Dropbox and Google Drive imports** read only what you choose: the folder you pick in Dropbox, or the files and folders you pick in Google's Picker (the import sign-in asks for `drive.file` and `drive.readonly`; the backup destination stays on `drive.file`). Nothing is written back to either service. An import's sign-in is deleted from the Keychain once the import is finished or cancelled and no file of it is still waiting to upload.
 - **Permissions:** Photos (read), network, and the folders you pick. Dropbox access is read-only. The app does not ask for Full Disk Access and does not read `Photos Library.photoslibrary` directly.
 
 ## Using the app
@@ -223,8 +223,8 @@ If a crowded menu bar hides the icon, open PhotoVault again (Spotlight, Finder o
 - **digiKam** looks for `file.ext.xmp`. The app writes `<stem>.xmp`, so digiKam does not find it by default.
 - **RAW and JPEG share one sidecar pair** (`<stem>.json` and `<stem>.xmp`).
 - **Drive views add shortcuts.** Shortcuts count toward My Drive's item limit (the limit is [VERIFY] in M0-3). The app trashes only shortcuts it created; backup files are never touched.
-- **Drive imports from 0.3.0 may be empty.** Those imports only had `drive.file` and could not read inside a picked folder. Import the folder again ([decision 0030](docs/decisions/0030-drive-import-reads-folder-contents.md)). Reading inside folders with `drive.readonly` needs a run on a real account to confirm.
-- **The Drive Picker sign-in is not yet confirmed end to end** on a real account ([decision 0026](docs/decisions/0026-cloud-folder-imports.md)).
+- **Drive imports from 0.3.0 may be empty.** Those imports only had `drive.file` and could not read inside a picked folder. Import the folder again ([decision 0030](docs/decisions/0030-drive-import-reads-folder-contents.md)).
+- **Nested folders under `drive.readonly` are not yet confirmed on a real account.** The Picker sign-in with the loopback redirect was confirmed by the 0.3.0 live run ([decision 0026](docs/decisions/0026-cloud-folder-imports.md)). Listing a picked folder and its subfolders is what the owner is testing now ([decision 0030](docs/decisions/0030-drive-import-reads-folder-contents.md)).
 - **Cloud imports download each file twice:** once to read its date and hash, and once for the backup. A large Drive or Dropbox import uses twice the download traffic.
 - **Imports use file metadata.** Screenshots are recognised by the EXIF marker iOS and macOS write; screen recordings and screenshots from other tools go to `Camera Uploads`. A Live Photo pair is joined only when both files carry Apple's content identifier.
 - **Backfill is slow by design.** It runs at 20 GB per hour on power, and Photos downloads each original first (spec §8.5).
@@ -244,16 +244,16 @@ Settings › **Nguồn** (Sources) › **Nhập ảnh…** (Import photos…) �
 Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or **Từ Dropbox…** starts the import. The row and the menu bar card show the account email.
 
 - **Google Drive:** a short sheet explains what to pick. The browser then opens Google's Picker. Sign in with the Google account that holds the photos; it can differ from your backup account. Pick photos, videos and/or folders. Google asks to "see and download all your Google Drive files" (read only) and shows the unverified-app warning for a personal app. The app reads only what you pick and everything below picked folders, subfolders included.
-  - When the import is finished and its files are uploaded, the app deletes this sign-in from this Mac. The permission itself stays in your Google account until you remove it at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Adding a backup destination later, or uploading a file again after the destination lost it, asks you to sign in again ("Đăng nhập lại").
+  - When the import is finished or cancelled and no file of it is still waiting to upload, the app deletes this sign-in from this Mac. The permission itself stays in your Google account until you remove it at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Adding a backup destination later, or uploading a file again after the destination lost it, asks you to sign in again ("Đăng nhập lại").
   - The consent screen shows the Drive permissions as separate boxes. Keep "See and download all your Google Drive files" ticked, or the app refuses the sign-in.
   - Google Workspace (school or work) accounts may not be able to use the import: an admin can block restricted scopes. Personal accounts are what this was tested for.
   - If the import finds no photos or videos, it says so (in Settings and in the notification) and, for Google Drive, tells you to import again (Import photos… › From Google Drive…).
 - **Dropbox:** sign in once in the browser, then choose a folder in PhotoVault's folder browser, or the whole Dropbox. Needs the App key ([Dropbox setup](#dropbox-setup)).
 - **Cần đăng nhập lại** (sign in again): Google or Dropbox revoked the access, or the token is missing. An open import shows this and waits; so does a finished import whose files are still needed for a backup. Use the sign-in action on that import to continue. Sign in with the same account the import reads from: another account is refused with a notice and changes nothing. For Google, the new pick is added to the old one.
-- **Signing out of the Google backup destination** also revokes the app's access for that Google account, so imports from the same account then wait and show "Cần đăng nhập lại". Imports from another Google account keep their own grant until you remove the app's access in that account ([myaccount.google.com/permissions](https://myaccount.google.com/permissions)) or use Start over, which deletes the tokens on this Mac. For Dropbox, remove the app at [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps).
+- **Signing out of the Google backup destination** also revokes the app's access for that Google account, so imports from the same account then wait and show "Cần đăng nhập lại". An import from another Google account keeps its sign-in on this Mac until the import is finished or cancelled and no file of it is still waiting to upload; the app then deletes that sign-in from this Mac. The Google permission itself stays in the account until you remove the app's access at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Start over deletes all the tokens on this Mac.
+- **Dropbox** imports follow the same rule: the app deletes an import's sign-in from this Mac once the import is finished or cancelled and no file of it is still waiting to upload. The Dropbox account used by the folder browser keeps its sign-in until you sign out of Dropbox in the app or use Start over. The permission stays in your Dropbox account until you remove the app at [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps).
 - **Google's limit:** one Google account can hold 100 refresh tokens per OAuth client, and each Picker import creates one. Each "Đăng nhập lại" creates one too. After about 100 of them for the same account, Google drops the oldest, which may be the backup sign-in or an older import's grant; that one shows "Cần đăng nhập lại", and signing in again fixes it.
 - **A file that cannot be read now** (dropped connection, throttling, not enough free disk space) waits and is tried again while the rest of the import goes on: first after 30 seconds, then after twice as long each time, up to an hour. Files that never failed are read first, so a few stubborn files never hold the rest back. A group of files (a photo and its video, for example) is given up as a whole when it has failed at least 10 times over at least 24 hours while Google or Dropbox was answering; it is then counted under "lỗi" so the import can finish, and importing the folder again retries it. If only the downloads fail for more than a day while the service still answers other requests, files can be counted under "lỗi" too; import the folder again then.
-- **After a cloud import, do not go back to 0.2.0:** it cannot read the new source kinds and its sync cycles would fail.
 - Read-only: nothing in Drive or Dropbox is changed or deleted.
 
 ## Start over (factory reset)

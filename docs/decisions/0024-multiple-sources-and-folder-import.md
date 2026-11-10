@@ -1,6 +1,6 @@
 # 0024 Several sources, one layout: the source model and the one-time folder import
 
-- **Status:** Accepted
+- **Status:** Accepted; superseded in part by [0029](0029-photos-only-continuous-source.md) (continuous sources)
 - **Spec refs:** §2, §3, §8.1, §8.2, §8.4, §8.8, §8.12, §15 (amended); new FR-110 to FR-116 (§4.13)
 - **Review trigger:** a continuous non-Photos source lands (Dropbox, Flickr, another Google account), the owner reports a wrong "already backed up", or large imports crowd out new Photos uploads or drain the battery
 

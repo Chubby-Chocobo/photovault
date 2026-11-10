@@ -34,11 +34,12 @@
 
   <article>
     <h2>How PhotoVault uses your Google account</h2>
-    <p>When you connect Google Drive, PhotoVault asks only for:</p>
+    <p>When you connect Google Drive for backups, PhotoVault asks only for:</p>
     <ul>
       <li><strong>Access to files it creates in your Drive</strong> (<code>drive.file</code>). PhotoVault uploads your photos into its own backup folder and reads back only those files to check and resume backups. It cannot see, open or change any other file in your Drive.</li>
       <li><strong>Your email address</strong> (<code>openid</code>, <code>email</code>), to show which Google account is connected.</li>
     </ul>
+    <p>The backup itself uses only <code>drive.file</code>. A one-time import from Google Drive asks for one more permission, <code>drive.readonly</code> (read only), so PhotoVault can read the files and folders you pick in Google's Picker. It never writes to your Drive, and the app deletes that import's sign-in from your Mac once the import is finished or cancelled and no file of it is still waiting to upload.</p>
     <p>This data stays between your Mac and Google. Details are in the <a href="/privacy">Privacy Policy</a>.</p>
   </article>
 </main>

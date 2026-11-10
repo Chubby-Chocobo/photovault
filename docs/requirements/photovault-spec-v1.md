@@ -28,7 +28,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 5. Không upload trùng, kể cả khi mất DB hoặc library bị rebuild. Chịu được crash, sleep, mất mạng, NAS bị ngắt.
 6. Không làm đầy ổ Mac.
 7. Phát hiện backup bị mất; không im lặng.
-8. Quyền tối thiểu: Photos (không Full Disk Access), `drive.file`, Dropbox chỉ đọc, chỉ thư mục hoặc file do owner chọn.
+8. Quyền tối thiểu: Photos (không Full Disk Access), `drive.file` cho đích backup; nhập Google Drive thêm `drive.readonly` (chỉ đọc, quyết định 0030); Dropbox chỉ đọc; chỉ thư mục hoặc file do owner chọn.
 9. Nhiều nguồn, cùng một cách tổ chức: Photos là nguồn liên tục duy nhất (sửa đổi 2026-11-10, quyết định 0029); có thể nhập một lần từ một thư mục trên Mac, Google Drive hoặc Dropbox (sửa đổi 2026-11-10, quyết định 0026). Cơ chế để thêm nguồn liên tục sau này được thiết kế nhưng chưa làm, xem [continuous-source-extension](../architecture/continuous-source-extension.md) (sửa đổi 2026-11-09, issue #17, quyết định 0024).
 **Phi mục tiêu:**
 - **Không bao giờ xoá dữ liệu backup** ở bất kỳ đích nào. Không sync hai chiều. Không sửa Photos library.
@@ -184,7 +184,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 ### 4.5 Layout & tên (mọi đích)
  
 **FR-40 Cấu trúc:**
-- `camera`: `<Root>/Camera Uploads/YYYY-MM-DD[ <Địa danh>]/` — mọi ngày có ảnh đều có thư mục riêng. Ngày có ảnh ở nhiều tỉnh/thành được tách thành mỗi tỉnh một thư mục `YYYY-MM-DD <Địa danh>` (FR-81, FR-83) (sửa đổi 2026-11-10, issue #27, quyết định 0028).
+- `camera`: `<Root>/Camera Uploads/YYYY-MM-DD[ <Địa danh>]/` — mọi ngày có ảnh đều có thư mục riêng. Ngày có ảnh ở nhiều tỉnh/thành được tách thành mỗi tỉnh một thư mục `YYYY-MM-DD <Địa danh>` (trừ FR-81: hai nhóm cùng tên dùng chung một thư mục; nhóm không tên, hộp bao > 300 km, dùng chung thư mục không tên) (FR-81, FR-83) (sửa đổi 2026-11-10, issue #27, quyết định 0028).
 - `<Root>/Screenshots/YYYY-MM-DD/` và `<Root>/Saved/YYYY-MM-DD/`: không địa danh.
 - Tên root mặc định: `PhotoVault`.
 - Không có ngày → `Unknown date/` trong từng nhánh.
@@ -297,7 +297,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
   - Nơi ở nước ngoài: tên tiếng Anh, kèm tên bản địa trong ngoặc khi khác ("Kyoto (京都市)").
 - **FR-83** Chỉ đặt tên và tách khi ngày đã kết thúc ≥ 6 giờ. Tập asset đổi → tính lại → đổi tên hoặc chuyển nhóm (thêm, đổi, bỏ địa danh; file đã backup được chuyển bằng `move_job`) (sửa đổi 2026-11-10, issue #27, quyết định 0028).
   - Chế độ chỉ-quốc-gia (`kv.place_country_only = 1`): ngày đã tách giữ nguyên (không đổi slot, tên hay tách thêm); ngày chưa tách đặt tên theo quy tắc một nơi. Hết chế độ → tính lại.
-  - Chỉ `PlaceNamer` đổi slot, trừ ảnh mới vào ngày đã tách (chưa có file): lấy slot theo khoá `en` của ô, không có thì theo asset gần nhất theo thời gian.
+  - Chỉ `PlaceNamer` đổi slot, và khôi phục (§8.15; đổi múi giờ lưu trữ xoá slot), trừ ảnh mới vào ngày đã tách (chưa có file): lấy slot theo khoá `en` của ô, không có thì theo asset gần nhất theo thời gian.
   - Thư mục phụ đã rỗng không bị xoá. Nhóm có tên còn nằm trên đĩa dưới dạng tên của thư mục khác (đổi tên chưa chạy xong) tạm ở lại thư mục hiện tại và ngày được tính lại sau.
 - **FR-84 Geocoding:**
   - Dùng `CLGeocoder.reverseGeocodeLocation(_:preferredLocale:)` (hoặc `MKMapItem.placemark`) sau protocol `ReverseGeocoding`; chấp nhận cảnh báo deprecated. `MKAddressRepresentations` **không** có `administrativeArea` nên không dùng được.
@@ -368,7 +368,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 - Kết quả geocode cố định; nút "Làm mới địa danh" xoá cache rồi geocode lại.
 **FR-107 `By lens/<Ống kính>/YYYY-MM-DD/` (quyết định 0027):**
 - Thành viên: asset `camera` có `lens_model` không rỗng; không có thư mục Unknown. Ảnh đã xoá khỏi Photos vẫn giữ shortcut như các view khác.
-- Tên = EXIF LensModel đã chuẩn hoá: bỏ khoảng trắng thừa; chuỗi điện thoại dạng `<máy> back <…> camera <phần còn lại>` (iPhone, Pixel…) thành `<máy> <phần còn lại>`, `<máy> front <…> camera <phần còn lại>` thành `<máy> front <phần còn lại>`; khẩu độ `f/N` viết `fN` (ví dụ `iPhone 15 Pro 6.86mm f1.78`) để tên không có `/`; ống kính khác giữ nguyên. Giá trị giữ chỗ (chỉ có dấu câu như `----`, hoặc `0.0 mm f/0.0`) coi như không có ống kính, không tạo thư mục. Tên được làm sạch như tên thư mục khác (FR-42).
+- Tên = EXIF LensModel đã chuẩn hoá: bỏ khoảng trắng thừa; chuỗi điện thoại dạng `<máy> back <…> camera <phần còn lại>` (iPhone, Pixel…) thành `<máy> <phần còn lại>`, `<máy> front <…> camera <phần còn lại>` thành `<máy> front <phần còn lại>`; khẩu độ `f/N` viết `fN` ở mọi ống kính (ví dụ `iPhone 15 Pro 6.86mm f1.78`, `EF 50mm f1.8 STM`) để tên không có `/`; ống kính khác chỉ được gọn khoảng trắng. Giá trị giữ chỗ (chỉ có dấu câu như `----`, hoặc `0.0 mm f/0.0`) coi như không có ống kính, không tạo thư mục. Tên được làm sạch như tên thư mục khác (FR-42).
 - Khoá nhóm = hash của tên thư mục (đã làm sạch, NFC, viết thường), nên biến thể chỉ khác hoa/thường hay khoảng trắng gom vào một thư mục và hai nhóm không bao giờ trùng tên thư mục. Tên thư mục giữ như lúc tạo: không bao giờ đổi tên (cả khi tạo hay chuyển shortcut).
 - Cài đặt `viewByLensEnabled`, **mặc định tắt** (JSON cũ không có khoá này đọc ra tắt). Bật/tắt/dựng lại theo FR-103. Đổi tên và gộp nhóm ống kính để sau.
 
@@ -381,7 +381,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
 **FR-114 Không trùng:** file là trùng khi khoá `x:` đã có hoặc khi một asset đang sống có resource cùng SHA-256. Khi chưa có hash, chỉ với asset Photos chưa export và chỉ khi ngày của file lấy từ EXIF/metadata video (không phải ngày file): cùng giây chụp, cùng tên gốc (không phân biệt hoa thường) và cùng kích thước ảnh (hai chiều theo thứ tự nào cũng được) hoặc thời lượng (±0,5 giây). Không bao giờ bỏ một file khác nội dung vì đoán. File trùng chỉ được đếm. Asset nhập là "mới đến" (`inserted_at` = lúc nhập, job `incremental`).
 **FR-115 Huỷ:** ngừng nhập; file chưa quyết định → `cancelled`; asset của job có job chưa xong bị coi như đã xoá (job pending/deferred bị huỷ, file đã upload giữ nguyên). Nhập lại cùng thư mục sẽ nhặt lại phần thiếu.
 **FR-116 Tiến độ và tóm tắt:** Settings và menu bar hiện: đọc (đã xử lý / tìm thấy) và upload (job xong / job của import, mọi đích), số trùng, bỏ qua, lỗi. Khi xong có đúng một dòng trong Hoạt động gần đây (chỉ số, không tên) và một thông báo macOS (có thể nêu tên thư mục). Thư mục không truy cập được (ổ rút ra) giữ riêng job đó ở `offline` và tự tiếp tục; Photos không bị ảnh hưởng.
-**FR-119 Nhập từ Google Drive (quyết định 0026):** Settings › Nguồn › Nhập ảnh… › Từ Google Drive… mở luồng Google Picker trên trình duyệt: đăng nhập bằng tài khoản Google owner chọn (có thể khác tài khoản đích), đăng nhập qua loopback `127.0.0.1`, cùng client Desktop với đăng nhập Drive, scope `drive.file` và `drive.readonly` (quyết định 0030); đăng nhập của đích backup vẫn chỉ `drive.file`. Owner chọn file và/hoặc thư mục. App liệt kê file đã chọn và mọi thứ bên trong thư mục đã chọn (đệ quy mọi cấp, phân trang theo `nextPageToken`, gồm Shared drive); file vừa được chọn riêng vừa nằm trong thư mục đã chọn chỉ đọc một lần; thư mục chọn trùng nằm trong thư mục khác cũng chỉ duyệt một lần. Nếu Google không cấp `drive.readonly` (owner bỏ chọn ô đó) thì đăng nhập bị từ chối kèm thông báo và không lưu gì. Khi import xong hoặc bị huỷ và không còn upload nào của nó đang chờ, đang chạy, hoãn hay "thiếu ở đích" (re-upload sau này cũng cần đọc nguồn), app xoá token `import-<id>` và bỏ adapter; đích thêm sau đó, hoặc upload lại sau khi release, đi qua luồng "Đăng nhập lại" (FR-121). Chỉ token trên máy bị xoá; quyền trong tài khoản Google vẫn còn tới khi owner gỡ tại myaccount.google.com/permissions. Import không tìm thấy ảnh hay video nào đọc được vẫn kết thúc nhưng nói rõ lý do (FR-123). Bỏ qua Google Docs, shortcut, file trong thùng rác và file có `appProperties` khoá `pv…` (do app tải lên). Tên trùng trong cùng thư mục nhận đường dẫn khác nhau. Chỉ đọc: không ghi gì vào Drive của owner.
+**FR-119 Nhập từ Google Drive (quyết định 0026):** Settings › Nguồn › Nhập ảnh… › Từ Google Drive… mở luồng Google Picker trên trình duyệt: đăng nhập bằng tài khoản Google owner chọn (có thể khác tài khoản đích), đăng nhập qua loopback `127.0.0.1`, cùng client Desktop với đăng nhập Drive, scope `drive.file` và `drive.readonly` (quyết định 0030); đăng nhập của đích backup vẫn chỉ `drive.file`. Owner chọn file và/hoặc thư mục. App liệt kê file đã chọn và mọi thứ bên trong thư mục đã chọn (đệ quy tới tối đa 64 cấp thư mục; thư mục sâu hơn bị bỏ qua, không báo lỗi; phân trang theo `nextPageToken`, gồm Shared drive); file vừa được chọn riêng vừa nằm trong thư mục đã chọn chỉ đọc một lần; thư mục chọn trùng nằm trong thư mục khác cũng chỉ duyệt một lần. Nếu Google không cấp `drive.readonly` (owner bỏ chọn ô đó) thì đăng nhập bị từ chối kèm thông báo và không lưu gì. Khi import xong hoặc bị huỷ và không còn upload nào của nó đang chờ, đang chạy, hoãn hay "thiếu ở đích" (re-upload sau này cũng cần đọc nguồn), app xoá token `import-<id>` và bỏ adapter; đích thêm sau đó, hoặc upload lại sau khi release, đi qua luồng "Đăng nhập lại" (FR-121). Chỉ token trên máy bị xoá; quyền trong tài khoản Google vẫn còn tới khi owner gỡ tại myaccount.google.com/permissions. Import không tìm thấy ảnh hay video nào đọc được vẫn kết thúc nhưng nói rõ lý do (FR-123). Bỏ qua Google Docs, shortcut, file trong thùng rác và file có `appProperties` khoá `pv…` (do app tải lên). Tên trùng trong cùng thư mục nhận đường dẫn khác nhau. Chỉ đọc: không ghi gì vào Drive của owner.
 **FR-120 Nhập từ Dropbox (quyết định 0026):** owner đăng nhập Dropbox một lần (PKCE, redirect `http://localhost:53682/oauth2/callback`, chỉ `files.metadata.read`, `files.content.read`, `account_info.read`), rồi chọn thư mục hoặc toàn bộ Dropbox trong trình duyệt thư mục của app (chỉ hiện thư mục). Liệt kê đệ quy theo cursor, tải file stream xuống đĩa. Không có App key trong build thì mục Dropbox bị tắt kèm gợi ý, không crash.
 **FR-121 Mất quyền (quyết định 0026):** token bị thu hồi (`invalid_grant`, hoặc 401 vẫn lỗi sau một lần làm mới) → import đang mở chuyển `offline` với lý do "cần đăng nhập lại" và giữ job; hành động đăng nhập lại chạy lại luồng bắt đầu. Import đã đóng: job export chờ mỗi giờ, không ghi lỗi và không tính là sync thất bại; dòng import hiện "Đăng nhập lại" (`signInRequired`), và đăng nhập đúng tài khoản cũ thì các job chạy ngay ở chu kỳ sau. Cũng áp dụng khi mất token lúc khởi động (`invalid_client` tính như `invalid_grant`). File không còn trên nguồn trong khi nguồn vẫn trả lời thì vẫn bị bỏ qua (`resourceMissing`). Lỗi mạng không phải mất quyền: import đang mở giữ `offline` và tự tiếp tục (FR-116).
 **FR-122 Token (quyết định 0026):** mỗi import cloud giữ refresh token riêng trong Keychain (`import-<sourceId>`) và được đăng ký lại khi khởi động nếu token còn. Tài khoản Dropbox dùng để duyệt thư mục được lưu riêng. Đăng xuất hoặc đổi tài khoản không làm hỏng import đã xong. Token Google Drive (và Dropbox) của import bị xoá khi import đã đóng và mọi upload của nó đã kết thúc (FR-119). Bắt đầu lại (FR-117) xoá mọi token này.
@@ -407,7 +407,7 @@ Mỗi view bật/tắt riêng; thêm view mới = thêm rule.
   - Dùng Personal Team (Apple ID miễn phí) [VERIFY M0-4 thời hạn và entitlement]; chạy từ `/Applications/PhotoVault.app`.
   - Hardened Runtime + App Sandbox. Entitlement: `personal-information.photos-library`, `network.client`, `network.server` [VERIFY], `files.user-selected.read-write`, `files.bookmarks.app-scope`.
   - `NSPhotoLibraryUsageDescription`; `LSUIElement`. Không cần Location Services [VERIFY].
-- **Google Cloud** (owner tự làm, README hướng dẫn): bật Drive API → consent screen External + scope `drive.file`/`openid`/`email` → **Publish "In production"** (Testing thì refresh token hết hạn sau 7 ngày; "unverified app" là bình thường [VERIFY]) → OAuth client loại Desktop → secret đặt trong `Config/Secrets.xcconfig` (gitignored, có file `.example`).
+- **Google Cloud** (owner tự làm, README hướng dẫn): bật Drive API và Google Picker API → consent screen External + scope `drive.file`/`openid`/`email`, thêm `drive.readonly` (chỉ cho nhập Google Drive, quyết định 0030) → **Publish "In production"** (Testing thì refresh token hết hạn sau 7 ngày; "unverified app" là bình thường [VERIFY]) → OAuth client loại Desktop → secret đặt trong `Config/Secrets.xcconfig` (gitignored, có file `.example`).
 ## 7. Kiến trúc
  
 Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out → {GoogleDriveDestination, LocalFolderDestination}`. Thành phần phụ trợ:
@@ -499,7 +499,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 3. **Classify** → chốt placement. Sau đó **ImportStage** (sửa đổi 2026-11-09, quyết định 0024): với mỗi import job `scanning` — liệt kê thư mục, đọc từng nhóm file ngoài transaction, một transaction cho mỗi nhóm (loại trùng, tạo asset với category cuối cùng, placement, job), rồi `importing` → `completed` khi không còn file chờ và không còn job `pending`/`uploading`.
 4. **ExportWorker** — chỉ asset đã chốt placement, primary trước. Ưu tiên: incremental > refresh > reupload > backfill (mới nhất trước). Chỉ export khi có đích khả dụng cần. Rate limiter áp cho backfill **và** mọi lần export lại (`export_count ≥ 1`). Có disk guard. Sau khi export: hash + EXIF.
 5. Worker cổng chỉnh sửa.
-6. **Fan-out:** layout từ placement + `day_stat` (trong transaction), đảm bảo thư mục (actor; khoá thư mục ở local), upload, verify. Layout không phụ thuộc việc promote nên không có `move_job` vì tách ngày.
+6. **Fan-out:** layout từ placement + `day_stat` (trong transaction), đảm bảo thư mục (actor; khoá thư mục ở local), upload, verify. Layout không phụ thuộc việc promote nên promote không tạo `move_job`; chỉ tách ngày theo tỉnh (bước 9, FR-81) mới tạo `move_job`.
 7. Mọi job gốc của asset ở một đích đã kết thúc → job sidecar; mỗi lần có thêm resource `done` → tăng `target_gen` sidecar. Drive: tạo shortcut khi target `done`.
 8. MoveWorker.
 9. PlaceNamer → nhóm theo tỉnh, gán slot, `renameFolder` cho thư mục đổi tên, `moveFile` cho file đã backup đổi nhóm (sidecar kèm theo; tối đa 500 move mỗi đích mỗi lượt, `EngineTuning.maxMovesPerPass`) + làm mới sidecar/description + view `By place` (sửa đổi 2026-11-10, issue #27, quyết định 0028).
@@ -586,9 +586,9 @@ Deterministic (khoá sắp xếp, số định dạng cố định, không có t
   - khác target → trash + tạo
   - thừa → trash
   - `userRemoved` → giữ nguyên
-- Tên hiển thị từng cấp lấy từ `view_folder_group`/năm/tháng; đổi tên thì không đụng shortcut.
+- Tên hiển thị từng cấp lấy từ `view_folder_group` và ngày; đổi tên thì không đụng shortcut.
 - Thư mục view mang `pvLogical`/`pvView`, không chịu luật pause.
-- Năm/tháng lấy từ `placement_day`; asset không có ngày không thuộc view nào.
+- Ngày của thư mục view lấy từ `placement_day`; asset không có ngày không thuộc view nào.
 - Target bị `missingRemote` → tạo lại shortcut sau khi upload lại.
 - Kiểm tra toàn vẹn cũng list view: owner đã xoá → `userRemoved`; app tạo mà DB không biết → trash.
 - Ưu tiên trash/move > tạo; mọi job view đứng sau upload.
@@ -608,6 +608,8 @@ Tiền đề: scan `complete` + FR-53 xong.
    - Ngày tách (sửa đổi 2026-11-10, issue #27, quyết định 0028): mỗi thư mục ngày `camera` được gán đường dẫn logic bởi `DaySlotBinding`, cho mọi loại đích. Đích có app properties (Drive) được khôi phục trước; đích local chờ trong khi còn đích Drive cần khôi phục (trạng thái `paused(waitingForDrive)`), nhưng chỉ khi chờ đó có thể kết thúc: Drive còn truy cập được hoặc chỉ mất mạng tạm thời, đã đăng nhập, còn thư mục gốc, không có quyết định của owner đang mở, và tối đa 30 phút; ngoài các trường hợp đó đích local tự khôi phục với slot tạm. Danh sách local chỉ đoán được thư mục nào là thư mục chính: (1) theo id thư mục của một hàng `remote_folder` sẵn có; (2) theo tên hiển thị của slot đã biết (`day_stat`, `day_place`); (3) dự phòng: `pvLogical` trên Drive, thư mục đầu tiên theo khoá tên là `camera/<ngày>` trên local, còn lại `@r…`.
    - Không bao giờ re-point hàng mà thư mục của nó còn trong danh sách; chỉ hàng cũ (thư mục không còn, ví dụ CSDL phục hồi từ bản backup trước khi tách) được re-point. Ghi làm hai đường dẫn cùng một id, hoặc hai thư mục tranh một đường dẫn → bỏ qua, ghi nhật ký và báo một dòng hoạt động; file trong đó không được nhận vào lần khôi phục này: chúng ở nguyên chỗ cũ trên đích (không bao giờ bị xoá) và asset được upload lại vào thư mục đúng.
    - `place_slot` của asset lấy từ thư mục chứa file chính (không có thì thư mục chứa nhiều file nhất, hoà → thư mục chính), khi placement được đọc từ file hoặc ngày chưa từng tách trong CSDL này. Đổi múi giờ lưu trữ khi khôi phục xoá `day_place` và `place_slot`.
+   - **3d.** Ngày có slot tạm (đích local khôi phục một mình đã đoán thư mục chính, `ProvisionalSlots`): khi Drive được khôi phục sau đó và qua bước kiểm tra khớp, app gán lại hàng local, job, slot và rename/move đang mở theo slot của Drive (thư mục Drive theo slot giữ nhiều asset nhất, rồi theo tên). Thư mục Drive khác tên slot thì đổi tên, file không chuyển nếu hai đích giữ cùng asset.
+   - **3e.** Gán hai bước cho mọi đích: mọi thư mục của ngày được gán trước theo id và tên; thư mục lạ ở local được gán vào slot đã biết chứa nhiều asset nhất (theo asset key trong sidecar, `DaySlotBinding`), chỉ khi đó mới đoán (`@r…`) và cách đoán không bao giờ lấy đường dẫn của slot đã biết. Giới hạn: thư mục local tên lạ không có asset nào được nhận diện là phép đoán; file của nó có thể chuyển ở đích đó (không bao giờ ở Drive).
 4. Ghép file theo thứ tự:
    1. `pvAssetId`/`assetKey` (kể cả dạng `h:`, tra theo index hash) hoặc alias;
    2. cloud/local ID trong sidecar;
@@ -620,7 +622,7 @@ Tiền đề: scan `complete` + FR-53 xong.
  
 - Không backend/analytics/crash reporter.
 - Token chỉ ở Keychain; revoke khi đăng xuất.
-- Quyền: Photos, network, notification, thư mục do owner chọn; file Google Drive do owner chọn trong Picker (`drive.file`); Dropbox chỉ đọc. **Không** Full Disk Access, **không** đọc trực tiếp `Photos Library.photoslibrary`.
+- Quyền: Photos, network, notification, thư mục do owner chọn; file và thư mục Google Drive do owner chọn trong Picker (`drive.file`; khi nhập thêm `drive.readonly`, quyết định 0030); Dropbox chỉ đọc. **Không** Full Disk Access, **không** đọc trực tiếp `Photos Library.photoslibrary`.
 - Toạ độ làm tròn ~1 km gửi Apple (tắt được).
 - Sidecar chứa vị trí/album → nhắc owner cân nhắc rule theo đích.
 - Hidden mặc định không upload. Không mã hoá phía client (README nói rõ).
@@ -678,7 +680,7 @@ Tiền đề: scan `complete` + FR-53 xong.
 | T27 | Rule theo đích; ảnh tạm `camera` hoá ra `saved` vẫn đến đích chỉ nhận `saved` (kể cả khi đó là đích duy nhất) |
 | T27b | RAW+JPEG khi Drive không nhận RAW; Live Photo với 2 export song song → không kẹt |
 | T27c | NAS `newOnly` thêm sau khi Drive đang `full` |
-| T28 | Đà Lạt (iPhone + RAW không GPS) → có tên; đi 2 tỉnh → mỗi tỉnh một thư mục (nhóm lớn nhất giữ thư mục chính); import thêm vào ngày đã tách → vào đúng thư mục, không chuyển file (sửa đổi 2026-11-10, issue #27, quyết định 0028) |
+| T28 | Đà Lạt (iPhone + RAW không GPS) → có tên; đi 2 tỉnh → mỗi tỉnh một thư mục (nhóm lớn nhất giữ thư mục chính); import thêm vào ngày đã tách → file đã có không chuyển; ảnh mới có thể vào sai thư mục rồi được chuyển một lần khi `PlaceNamer` sửa lại (sửa đổi 2026-11-10, issue #27, quyết định 0028) |
 | T29 | Zalo/Safari → `Saved`; video drone không vào `Saved` |
 | T30 | JSON đúng theo đích; không ghi đè `.xmp` bị sửa ngoài hoặc `.xmp` Lightroom có sẵn; sidecar sinh lại khi edited xong |
 | T30b | Sửa 2 lần trong 1 phút khi đang upload → đích có bản cuối |
