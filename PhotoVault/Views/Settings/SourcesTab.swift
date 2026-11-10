@@ -46,6 +46,24 @@ struct SourcesTab: View {
         }
     }
 
+    /// The menu items for one provider: the synced folder on this Mac and/or the browser sign-in.
+    @ViewBuilder
+    private func providerItems(_ provider: SyncedCloudProvider, browserConfigured: Bool, openBrowser: @escaping () -> Void) -> some View {
+        ForEach(ImportMenuChoices.items(
+            provider, appPresent: model.syncedAvailable(provider), browserConfigured: browserConfigured,
+            dropbox: provider == .dropbox ? (model.dropboxSignedIn ? .signedIn(email: model.dropboxEmail) : .signedOut) : .notApplicable), id: \.title) { item in
+            Button(item.title) {
+                switch item.action {
+                case .syncedFolder: model.importFromSyncedFolder(provider)
+                case .browser: openBrowser()
+                case .signOut: model.signOutDropbox()
+                }
+            }
+            .disabled(!item.isEnabled || (item.action != .syncedFolder && item.action != .signOut && model.cloudFlowBusy))
+            .help(item.help)
+        }
+    }
+
     private func openDropboxBrowser() {
         Task { if await model.ensureDropboxSignedIn() { showDropboxBrowser = true } }
     }
@@ -103,25 +121,8 @@ struct SourcesTab: View {
             HStack {
                 Menu {
                     Button(tr(vi: "Từ thư mục trên Mac…", en: "From a folder on this Mac…")) { model.importFolder() }
-                    Button(tr(vi: "Từ Google Drive…", en: "From Google Drive…")) {
-                        if model.syncedAvailable(.googleDrive) {
-                            if model.importFromSyncedFolder(.googleDrive) == .useBrowser { showGoogleExplainer = true }
-                        } else {
-                            showGoogleExplainer = true
-                        }
-                    }
-                    .disabled(!(model.googleImportAvailable || model.syncedAvailable(.googleDrive)) || model.cloudFlowBusy)
-                    Button(tr(vi: "Từ Dropbox…", en: "From Dropbox…")) {
-                        if model.syncedAvailable(.dropbox) {
-                            if model.importFromSyncedFolder(.dropbox) == .useBrowser { openDropboxBrowser() }
-                        } else {
-                            openDropboxBrowser()
-                        }
-                    }
-                    .disabled(!(model.dropboxImportAvailable || model.syncedAvailable(.dropbox)) || model.cloudFlowBusy)
-                    .help(model.dropboxImportAvailable ? "" : tr(
-                        vi: "Bản này chưa có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
-                        en: "This build has no Dropbox app key (DROPBOX_APP_KEY)."))
+                    providerItems(.googleDrive, browserConfigured: model.googleImportAvailable) { showGoogleExplainer = true }
+                    providerItems(.dropbox, browserConfigured: model.dropboxImportAvailable) { openDropboxBrowser() }
                 } label: {
                     Label(tr(vi: "Nhập ảnh…", en: "Import photos…"), systemImage: "square.and.arrow.down")
                 }
@@ -132,20 +133,8 @@ struct SourcesTab: View {
                     Text(tr(vi: "Hoàn tất thiết lập ban đầu trước.", en: "Finish the first setup first.")).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                if model.dropboxImportAvailable || model.dropboxSignedIn {
-                    Text(model.dropboxAccountLine).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
-                if model.dropboxSignedIn {
-                    Button(tr(vi: "Đăng xuất Dropbox", en: "Sign out of Dropbox")) { model.signOutDropbox() }
-                        .controlSize(.small)
-                        .help(tr(vi: "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.", en: "Existing imports keep their own read access."))
-                }
             }
             if model.cloudFlowBusy { BrowserWaitRow(stage: model.cloudFlowStage, onCancel: model.cancelCloudFlow) }
-            if !model.dropboxImportAvailable {
-                Text(tr(vi: "Nhập từ Dropbox cần khoá ứng dụng Dropbox trong bản build này.", en: "Importing from Dropbox needs a Dropbox app key in this build."))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             let running = model.runningImports
             if running.isEmpty && model.finishedImports.isEmpty {
                 Text(tr(vi: "Chưa có lần nhập nào.", en: "No imports yet.")).font(.callout).foregroundStyle(.secondary)
