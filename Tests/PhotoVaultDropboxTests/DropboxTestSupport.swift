@@ -117,3 +117,12 @@ func tempDirectory() -> URL {
 func makeClient(tokens: StubTokens = StubTokens(), transport: any HTTPTransport = StubTransport { _ in .json([:]) }) -> DropboxClient {
     DropboxClient(tokens: tokens, transport: transport, sleep: { _ in })
 }
+
+/// A loopback port the system just handed out and released. A hard-coded port in the dynamic range can
+/// already be held by another connection on the machine, which made these tests fail now and then.
+func freeLoopbackPort() async throws -> UInt16 {
+    let probe = try LoopbackRedirectServer(expectedState: "probe")
+    let port = try await probe.start()
+    probe.cancel()
+    return port
+}
