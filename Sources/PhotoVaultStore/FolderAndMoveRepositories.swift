@@ -100,11 +100,12 @@ public enum MoveJobRepository {
         return state
     }
 
-    /// Startup: `failed → pending` with a fresh attempt count. A move that no longer applies (the file
-    /// already sits in its slot's folder) is discarded when it runs; the others get another try.
+    /// Startup: failed file moves `failed → pending` with a fresh attempt count. A move that no longer applies
+    /// (the file already sits in its slot's folder) is discarded when it runs; the others get another try.
+    /// Folder renames stay failed: a later rename queued from the name on disk would be overtaken by the old one.
     @discardableResult
     public static func rearmFailedOnStartup(_ db: Database) throws -> Int {
-        try db.execute(sql: "UPDATE move_job SET state = 'pending', attempts = 0 WHERE state = 'failed'")
+        try db.execute(sql: "UPDATE move_job SET state = 'pending', attempts = 0 WHERE state = 'failed' AND op = 'moveFile'")
         return db.changesCount
     }
 

@@ -105,4 +105,41 @@ import Testing
         #expect(order.first(where: { $0.operation == .moveFile })?.id != first)
         #expect(order.last(where: { $0.operation == .moveFile })?.id == first)
     }
+
+    @Test func aFailedFolderRenameIsNotQueuedAgainAtLaunch() async throws {
+        let h = try await prepare()
+        await h.settle(rounds: 8)
+        let main = "camera/\(day)"
+        let name = try #require(try h.read { db in
+            try String.fetchOne(db, sql: "SELECT display_name FROM remote_folder WHERE destination_id = 'gdrive' AND logical_path = ?", arguments: [main])
+        })
+        // A rename to "Bravo" ended failed; the day's name has since become "Charlie", queued from the name on disk.
+        try h.write { db in
+            let now = h.clock.now
+            try MoveJobRepository.insert(db, MoveJob(
+                destinationId: .googleDrive, operation: .renameFolder, subject: main, fromValue: name, toValue: "Bravo", state: .failed, attempts: 9, createdAt: now))
+            try MoveJobRepository.insert(db, MoveJob(
+                destinationId: .googleDrive, operation: .renameFolder, subject: main, fromValue: name, toValue: "Charlie", createdAt: now))
+        }
+        try await h.restart()
+        try await h.coordinator.start()
+        await h.settle(rounds: 4)
+        let folders = await h.drive.folders.map(\.name)
+        #expect(folders.contains("Charlie") && !folders.contains("Bravo"), "\(folders)")
+        #expect(try h.moveJobs(.failed, destination: .googleDrive).count == 1, "the failed rename stays as it was")
+    }
+
+    @Test func aMoveThatSucceedsEndsTheDestinationsRunOfFailures() async throws {
+        let h = try await prepareQueued()
+        let uploader = UploadRunner(env: h.env, staging: StagingManager(env: h.env))
+        let worker = MoveWorker(env: h.env, uploader: uploader)
+        await h.drive.failNext(.move, with: .rateLimited(retryAfter: nil), times: 3)
+        for _ in 0..<10 {
+            _ = try await worker.runPass()
+            h.clock.advance(by: 3600)
+        }
+        #expect(try h.moveJobs(.pending, destination: .googleDrive).isEmpty)
+        #expect(await uploader.consecutive(.googleDrive) == 0, "the next throttle starts its backoff from the beginning")
+        #expect(await !uploader.isBackedOff(.googleDrive))
+    }
 }

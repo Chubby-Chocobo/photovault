@@ -490,7 +490,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 - Ghi DB **trước** side effect.
 - Khởi động: resource `exporting` → `none`; job `uploading` → FR-44.
 - Job sidecar không cần resource.
-- `move_job`: pending → inProgress → done; > 8 lỗi → failed. Chỉ lỗi của chính move mới tính lần thử. Giới hạn tốc độ (403 rateLimitExceeded/userRateLimitExceeded, 429), lỗi máy chủ (5xx) và lỗi tạm thời đưa move về pending không tính lần thử, đích lùi lại (chung với upload) và lượt move của đích đó dừng. Move đã lỗi trước đó xếp sau các move chưa lỗi để không chặn trần 500. Khi khởi động, move `failed` được đặt lại pending (move không còn áp dụng vì file đã ở đúng thư mục thì bị bỏ qua).
+- `move_job`: pending → inProgress → done; > 8 lỗi → failed. Chỉ lỗi của chính move mới tính lần thử. Giới hạn tốc độ (403 rateLimitExceeded/userRateLimitExceeded, 429), lỗi máy chủ (5xx) và lỗi tạm thời đưa move về pending không tính lần thử, đích lùi lại (chung với upload) và lượt move của đích đó dừng. Move đã lỗi trước đó xếp sau các move chưa lỗi để không chặn trần 500. Khi khởi động, move file (`moveFile`) `failed` được đặt lại pending, đổi tên thư mục thì không (move không còn áp dụng vì file đã ở đúng thư mục thì bị bỏ qua).
 - `shortcut`: create/move/trash; đổi target → trash + tạo mới; `404` → `userRemoved`.
 ### 8.4 Một chu kỳ sync
  
