@@ -53,4 +53,14 @@ public enum AssetPlacementRepository {
         guard let stat = try DayStatRepository.fetch(db, day: day) else { throw StoreError.notFound("day_stat \(text)") }
         return stat
     }
+
+    /// Sets the extra day folder of an asset; nil puts it back in the main folder.
+    public static func setPlaceSlot(_ db: Database, key: AssetKey, slot: String?) throws {
+        try db.execute(sql: "UPDATE asset SET place_slot = ? WHERE asset_key = ?", arguments: [slot, key.rawValue])
+    }
+
+    /// Puts every asset back in its main day folder (timezone restore, before any file exists).
+    public static func clearPlaceSlots(_ db: Database) throws {
+        try db.execute(sql: "UPDATE asset SET place_slot = NULL WHERE place_slot IS NOT NULL")
+    }
 }

@@ -60,10 +60,11 @@ public enum MoveJobRepository {
         try Row.fetchOne(db, sql: "SELECT * FROM move_job WHERE id = ?", arguments: [id]).map(decode)
     }
 
-    public static func fetch(_ db: Database, destinationId: DestinationID, state: MoveJobState) throws -> [MoveJob] {
+    /// The oldest `limit` jobs (all of them when nil).
+    public static func fetch(_ db: Database, destinationId: DestinationID, state: MoveJobState, limit: Int? = nil) throws -> [MoveJob] {
         try Row.fetchAll(
-            db, sql: "SELECT * FROM move_job WHERE destination_id = ? AND state = ? ORDER BY id",
-            arguments: [destinationId.rawValue, state.rawValue]).map(decode)
+            db, sql: "SELECT * FROM move_job WHERE destination_id = ? AND state = ? ORDER BY id LIMIT ?",
+            arguments: [destinationId.rawValue, state.rawValue, limit ?? -1]).map(decode)
     }
 
     /// `pending → inProgress`.

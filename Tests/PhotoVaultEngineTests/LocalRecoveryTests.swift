@@ -129,7 +129,7 @@ import Testing
 
     // MARK: Crash safety
 
-    @Test(arguments: CrashPoint.allCases.filter { ![.afterFolderIdPersisted, .afterFileIdReserved, .afterFileIdPersisted, .afterSessionPersisted, .afterImportInspectBeforeCommit, .afterImportGroupCommit].contains($0) })
+    @Test(arguments: CrashPoint.allCases.filter { ![.afterFolderIdPersisted, .afterFileIdReserved, .afterFileIdPersisted, .afterSessionPersisted, .afterImportInspectBeforeCommit, .afterImportGroupCommit, .afterMoveStarted, .afterMoveBeforeCommit].contains($0) })
     func crashingAtEveryStepLeavesNoPartFileNoDuplicateAndNoSplitFolder(_ point: CrashPoint) async throws {
         let h = try await Harness { $0.maxConcurrentUploadsPerDestination = 1 }
         let (_, root, _) = try await h.useRealLocal()

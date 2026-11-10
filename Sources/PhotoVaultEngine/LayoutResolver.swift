@@ -14,12 +14,23 @@ struct UploadPlan: Sendable {
 }
 
 enum LayoutResolver {
-    static func chain(_ db: Database, placement: Placement, layout: any LayoutPolicy) throws -> [FolderLevel] {
+    /// The folders for an asset's files. A camera asset with a slot goes to the extra folder of its day;
+    /// every other asset (and a camera asset without a slot) goes to the main folder.
+    static func chain(_ db: Database, asset: AssetRecord, layout: any LayoutPolicy) throws -> [FolderLevel] {
+        guard let placement = asset.placement else { return [] }
         var placeName: String?
-        if placement.category == .camera, let day = placement.day.archiveDay, let stat = try DayStatRepository.fetch(db, day: day) {
-            placeName = stat.placeState == .named ? stat.placeName : nil
+        if placement.category == .camera, let day = placement.day.archiveDay {
+            if let slot = asset.placeSlot {
+                let name = try DayPlaceRepository.fetchAll(db, day: day).first { $0.slot == slot }?.placeName
+                return layout.folderChain(for: placement, placeName: name, slot: slot)
+            }
+            // A day that is waiting for its geocodes keeps the name it was given, so a folder created
+            // meanwhile is not left with the bare date.
+            if let stat = try DayStatRepository.fetch(db, day: day), stat.placeState == .named || stat.placeState == .waitingGeocode {
+                placeName = stat.placeName
+            }
         }
-        return layout.folderChain(for: placement, placeName: placeName)
+        return layout.folderChain(for: placement, placeName: placeName, slot: nil)
     }
 
     static func parentLogical(_ chain: [FolderLevel]) -> String { chain.last?.logicalPath ?? "" }
@@ -28,7 +39,7 @@ enum LayoutResolver {
         _ db: Database, job: UploadJob, resource: ResourceRecord, layout: any LayoutPolicy, nameBuilder: NameStemBuilder
     ) throws -> UploadPlan? {
         guard let asset = try AssetRepository.fetch(db, key: job.assetKey), let placement = asset.placement else { return nil }
-        let chain = try chain(db, placement: placement, layout: layout)
+        let chain = try chain(db, asset: asset, layout: layout)
         return UploadPlan(
             asset: asset, chain: chain, parentLogical: parentLogical(chain),
             fileName: nameBuilder.fileName(stem: placement.nameStem, resource: resource),
@@ -50,8 +61,8 @@ enum UploadCompletion {
             db, .uploadSucceeded(remoteId: remoteId, finalName: finalName, parent: uploadedParent, verifiedHash: verifiedHash),
             to: identity, now: now)
         if let jobId = job.id { try UploadIntentRepository.delete(db, jobId: jobId) }
-        if let asset = try AssetRepository.fetch(db, key: identity.assetKey), let placement = asset.placement {
-            let current = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: layout))
+        if let asset = try AssetRepository.fetch(db, key: identity.assetKey), asset.placement != nil {
+            let current = LayoutResolver.parentLogical(try LayoutResolver.chain(db, asset: asset, layout: layout))
             try MoveJobPlanner.enqueueMove(db, identity: identity, from: uploadedParent, to: current, now: now)
         }
         try DestinationRepository.markSuccess(db, id: identity.destinationId, at: now)

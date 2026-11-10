@@ -15,7 +15,7 @@ actor GeocodeScheduler {
     /// trip) answer with a country and no province, so a short run of them proves nothing; and once
     /// any answer carried a province the fields are known to work and the fallback never starts.
     private static let lostFieldThreshold = 10
-    private static let countryOnlyKey = "place_country_only"
+    static let countryOnlyKey = "place_country_only"
     /// Set when an `en` answer carried a province since the last refresh.
     private static let provinceSeenKey = "geo_province_seen"
     /// Answers fetched before this moment are asked for again (the owner's "Làm mới địa danh").

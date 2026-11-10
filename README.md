@@ -17,6 +17,8 @@ If you already have a 0.1.0 backup:
 
 Why: [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md) and [decision 0025](docs/decisions/0025-old-layout-block-and-reset.md).
 
+**Do not downgrade after 0.4.0.** 0.4.0 adds a database migration and files a day's photos in several folders; 0.3.0 and earlier do not know the new column and would put sidecar changes in the wrong folder. Builds from 0.4.0 on refuse to open a database written by a newer build.
+
 Other references: the full spec is [docs/requirements/photovault-spec-v1.md](docs/requirements/photovault-spec-v1.md) (copy of GitHub issue #1), decisions are in [docs/decisions/](docs/decisions/README.md), and the sidecar format is in [docs/sidecar-schema.md](docs/sidecar-schema.md).
 
 ## Requirements
@@ -131,6 +133,8 @@ Every destination gets the same tree under its root (default name `PhotoVault`);
 PhotoVault/
 ├── Camera Uploads/
 │   ├── 2026-04-26 Hà Nội/           one folder per day; the place is added 6 hours after the day ends
+│   ├── 2026-04-27 Hà Nội/           a day with photos in two provinces gets one folder per province
+│   ├── 2026-04-27 Ninh Bình/
 │   ├── 2026-10-02 Kyoto (京都市), Japan/
 │   └── Unknown date/
 ├── Screenshots/2026-04-26/
@@ -140,6 +144,8 @@ PhotoVault/
 ├── By lens/FE 24-70mm F2.8 GM/2026-04-26/   off by default
 └── Favorites/2026-04-26/
 ```
+
+A day with photos in several provinces is split once it ended at least 6 hours ago: the largest group keeps the day's folder, the others get their own, and files already backed up are moved ([decision 0028](docs/decisions/0028-split-day-by-place.md)). Photos you delete in Photos are not moved, so they stay in the folder they were in. Emptied folders stay. Running "Làm mới địa danh" can regroup days and move files again.
 
 Files are named `YYYY-MM-DD HH.mm.ss_<original name>`; an asset's original, RAW, Live Photo video, edited version and sidecars sit together. Updating from a build with the old `YYYY/MM` layout means starting over: see [Upgrading from 0.1.0](#upgrading-from-010) and [decision 0023](docs/decisions/0023-day-folders-and-place-name-rule.md).
 

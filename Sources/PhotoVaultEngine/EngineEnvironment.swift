@@ -29,6 +29,8 @@ public enum CrashPoint: String, CaseIterable, Sendable {
     case afterExportBeforeCommit
     case afterImportInspectBeforeCommit
     case afterImportGroupCommit
+    case afterMoveStarted
+    case afterMoveBeforeCommit
 }
 
 /// Test seam: `reach` may throw an `EngineAbort` error to emulate the process dying at `point`.
@@ -51,6 +53,8 @@ public struct EngineTuning: Sendable {
     public var stagingIdleExpiry: TimeInterval = 2 * 3600
     public var transientRetries = ErrorClassifier.transientRetries
     public var maxCycleIterations = 100_000
+    /// Pending moves one destination runs per pass; the cycle repeats rounds while there is progress.
+    public var maxMovesPerPass = 500
     /// Files of a folder import recorded per transaction while listing.
     public var importListBatch = 500
     /// Whole file groups of a folder import read and ingested per stage run.
