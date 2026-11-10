@@ -181,6 +181,17 @@ import Testing
         await #expect(throws: SourceError.unavailable) { try await makeClient(transport: transport).currentAccountEmail() }
     }
 
+    @Test func downloadReportsReceivedBytesToTheProgressSink() async throws {
+        let streamer = StubTransport { _ in StubResponse(status: 200, body: Data(repeating: 1, count: 4000)) }
+        let seen = Locked<Int64>(0)
+        let control = ExportControl()
+        control.setProgress(TransferSink { seen.set($0) })
+        let dir = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try await makeClient(transport: streamer).download(path: "/a.jpg", to: dir.appendingPathComponent("a"), control: control)
+        #expect(seen.value == 4000)
+    }
+
     @Test func cancellationStopsTheDownloadAndRemovesThePartialFile() async throws {
         let streamer = StubTransport { _ in StubResponse(status: 200, body: Data(repeating: 1, count: 4000)) }
         let control = ExportControl(checkpointBytes: 1, checkpoint: { _ in true })
@@ -197,4 +208,12 @@ final class LockedCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
     func increment() -> Int { lock.withLock { value += 1; return value } }
+}
+
+private final class Locked<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T { lock.withLock { stored } }
+    func set(_ value: T) { lock.withLock { stored = value } }
 }

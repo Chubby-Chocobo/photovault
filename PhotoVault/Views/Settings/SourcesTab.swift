@@ -26,6 +26,7 @@ struct SourcesTab: View {
         .sheet(isPresented: $showDropboxBrowser) { DropboxFolderSheet() }
         // Counted again with every snapshot, so the number follows the library while this tab is open.
         .task(id: model.snapshot?.updatedAt) { photosCount = await model.photosAssetCount() }
+        .task(id: "\(model.dropboxSignedIn)-\(model.cloudFlowBusy)") { await model.refreshDropboxEmail() }
         .confirmationDialog(
             tr(vi: "Huỷ lần nhập này?", en: "Cancel this import?"), isPresented: Binding(get: { confirmCancel != nil }, set: { if !$0 { confirmCancel = nil } }),
             titleVisibility: .visible
@@ -114,6 +115,9 @@ struct SourcesTab: View {
                     Text(tr(vi: "Hoàn tất thiết lập ban đầu trước.", en: "Finish the first setup first.")).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
+                if model.dropboxImportAvailable || model.dropboxSignedIn {
+                    Text(model.dropboxAccountLine).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
                 if model.dropboxSignedIn {
                     Button(tr(vi: "Đăng xuất Dropbox", en: "Sign out of Dropbox")) { model.signOutDropbox() }
                         .controlSize(.small)

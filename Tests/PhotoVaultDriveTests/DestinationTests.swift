@@ -80,6 +80,31 @@ final class Events: @unchecked Sendable {
         #expect(stored?.props["pvSchema"] == "1" && stored?.props["pvResType"] == "photo")
     }
 
+    @Test func progressIsReportedAfterEachAcknowledgedChunk() async throws {
+        let h = try await Harness.make(chunkSize: 256 * 1024)
+        let parent = try await h.folder("p")
+        var req = try await h.request(payload(600 * 1024), parent: parent)
+        let reports = Events()
+        req.progress = TransferSink { reports.add(String($0)) }
+        _ = try await h.destination.upload(req, onSession: { _ in })
+        #expect(reports.all == ["262144", "524288", "614400"])
+    }
+
+    @Test func resumedUploadReportsFromTheServerOffset() async throws {
+        let h = try await Harness.make(chunkSize: 256 * 1024)
+        let parent = try await h.folder("p")
+        var req = try await h.request(payload(700 * 1024), parent: parent)
+        let saved = Events()
+        await h.server.setPutFailures([.init(status: 503, storeBytes: true), .init(status: 503, storeBytes: false),
+                                       .init(status: 503, storeBytes: false), .init(status: 503, storeBytes: false)])
+        _ = try? await h.destination.upload(req) { saved.add($0.sessionRef) }
+        let checkpoint = SessionCheckpoint(sessionRef: saved.all[0], md5: req.content.md5, totalBytes: req.content.size)
+        let reports = Events()
+        req.progress = TransferSink { reports.add(String($0)) }
+        _ = try await h.destination.resumeUpload(req, session: checkpoint, onSession: { _ in })
+        #expect(reports.all.first == "262144" && reports.all.last == "716800", "\(reports.all)")
+    }
+
     @Test func transientChunkFailureProbesAndResumesFromServerOffset() async throws {
         let h = try await Harness.make(chunkSize: 256 * 1024)
         let parent = try await h.folder("p")

@@ -94,7 +94,10 @@ private struct OverallHeader: View {
         guard let snapshot = model.snapshot else {
             return OverallPresentation(title: tr(vi: "Đang kiểm tra…", en: "Checking…"), subtitle: "", tone: .ok, isWorking: false)
         }
-        return OverallStatusText.make(snapshot: snapshot, disk: model.diskState, settings: model.persistedSettings, now: Date())
+        // `transferNow` ticks while files move, which re-renders the line as a transfer passes its first second.
+        _ = model.transferNow
+        return OverallStatusText.make(
+            snapshot: snapshot, disk: model.diskState, settings: model.persistedSettings, now: Date(), transfers: model.transfers)
     }
 }
 

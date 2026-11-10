@@ -28,6 +28,16 @@ import Testing
         await #expect(throws: SourceError.accessRevoked) { try await authorizer.accessToken(forceRefresh: false) }
     }
 
+    @Test func theBrowsingAccountKeepsItsEmailBesideTheToken() async throws {
+        let keychain = MemoryKeychain()
+        let signIn = DropboxSignIn(accessToken: DropboxAccessToken(token: "AT", expiresAt: Date(timeIntervalSince1970: 3600)),
+                                   refreshToken: "RT", email: "me@example.com")
+        try await make(keychain, account: CloudTokenAccount.dropbox, transport: StubTransport { _ in StubResponse(status: 500) }).store(signIn)
+        #expect(try keychain.read(account: CloudTokenAccount.dropboxEmail) == Data("me@example.com".utf8))
+        try await make(keychain, account: "import-a", transport: StubTransport { _ in StubResponse(status: 500) }).store(signIn)
+        #expect(try keychain.accounts().sorted() == ["dropbox-account", "dropbox-account-email", "import-a"])
+    }
+
     @Test func storeKeepsRefreshTokenUnderItsAccountOnly() async throws {
         let keychain = MemoryKeychain()
         let authorizer = make(keychain, account: "import-a", transport: StubTransport { _ in StubResponse(status: 500) })

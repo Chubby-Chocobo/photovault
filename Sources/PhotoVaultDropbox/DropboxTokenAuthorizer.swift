@@ -30,6 +30,11 @@ public actor DropboxTokenAuthorizer: DropboxAccessTokenProviding {
     public func store(_ signIn: DropboxSignIn) throws {
         try Self.keychainCall { try keychain.write(Data(signIn.refreshToken.utf8), account: keychainAccount) }
         cached = signIn.accessToken
+        // The browsing account's e-mail is shown in Settings. Only a display line depends on it, so a failed
+        // write does not fail the sign-in; the app asks Dropbox again later.
+        if keychainAccount == CloudTokenAccount.dropbox {
+            try? keychain.write(Data(signIn.email.utf8), account: CloudTokenAccount.dropboxEmail)
+        }
     }
 
     public func accessToken(forceRefresh: Bool) async throws -> String {

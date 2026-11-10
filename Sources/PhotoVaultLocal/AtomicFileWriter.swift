@@ -16,7 +16,7 @@ final class AtomicFileWriter: Sendable {
 
     /// Returns the name of a fully written, synced and read-back-verified `.part` in `tmp`. Removes the
     /// `.part` itself on any failure. The caller must `discard` it after placing or giving up.
-    func stage(_ source: Source, expectedSHA256: String, in tmp: DirectoryHandle) throws -> String {
+    func stage(_ source: Source, expectedSHA256: String, progress: TransferSink? = nil, in tmp: DirectoryHandle) throws -> String {
         let name = UUID().uuidString + ".part"
         let active = ActivePartsRegistry.shared.parts(for: tmp)
         active.insert(name)  // before the file exists, so a concurrent sweep never sees an unmarked `.part`
@@ -32,7 +32,7 @@ final class AtomicFileWriter: Sendable {
             if !succeeded { discard(name, in: tmp) }
         }
         do {
-            let written = try copy(source, to: out)
+            let written = try copy(source, to: out, progress: progress)
             guard written == expectedSHA256 else { throw DestinationError.checksumMismatch(expected: expectedSHA256, actual: written) }
             try flush(out)
         } catch {
@@ -54,7 +54,7 @@ final class AtomicFileWriter: Sendable {
         ActivePartsRegistry.shared.parts(for: tmp).remove(name)
     }
 
-    private func copy(_ source: Source, to out: Int32) throws -> String {
+    private func copy(_ source: Source, to out: Int32, progress: TransferSink?) throws -> String {
         switch source {
         case .data(let data):
             try data.withUnsafeBytes { try FileHashing.writeAll(fd: out, $0) }
@@ -63,12 +63,13 @@ final class AtomicFileWriter: Sendable {
             let input = open(url.path, O_RDONLY | O_CLOEXEC)
             guard input >= 0 else { throw ErrorClassifier.destinationError(errno: errno) }
             defer { close(input) }
-            return try copyAndHash(from: input, to: out)
+            return try copyAndHash(from: input, to: out, progress: progress)
         }
     }
 
-    private func copyAndHash(from input: Int32, to out: Int32) throws -> String {
+    private func copyAndHash(from input: Int32, to out: Int32, progress: TransferSink?) throws -> String {
         var hasher = StreamingSHA256()
+        var written: Int64 = 0
         var buffer = [UInt8](repeating: 0, count: FileHashing.chunkSize)
         while true {
             let n = buffer.withUnsafeMutableBytes { read(input, $0.baseAddress, $0.count) }
@@ -82,6 +83,8 @@ final class AtomicFileWriter: Sendable {
                 hasher.update(chunk)
                 try FileHashing.writeAll(fd: out, chunk)
             }
+            written += Int64(n)
+            progress?.report(written)
         }
     }
 
