@@ -135,20 +135,32 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
         lock.withLock { connections.removeValue(forKey: ObjectIdentifier(connection)) != nil }
     }
 
+    private static let lineEnd = Data("\r\n".utf8)
+    private static let stateKey = Data("state=".utf8)
+    private static let callbackPrefix = Data("GET \(LoopbackRequestParser.callbackPath)".utf8)
+    /// Long enough that a `\r\n` or `state=` split across two reads is still found.
+    private static let scanOverlap = 8
+
     private func receive(_ connection: NWConnection, buffer: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: LoopbackRequestParser.readChunkBytes) { [weak self] data, _, isComplete, error in
             guard let self else { connection.cancel(); return }
+            let previousCount = buffer.count
             var buffer = buffer
             if let data { buffer.append(data) }
-            let text = String(decoding: buffer, as: UTF8.self)
-            let hasRequestLine = text.contains("\r\n")
-            let isCallback = text.hasPrefix("GET \(LoopbackRequestParser.callbackPath)")
+            // Only the bytes that just arrived are searched (plus a short overlap), so a long request costs one pass
+            // over its bytes instead of one full decode per chunk.
+            let fresh = buffer.index(buffer.startIndex, offsetBy: max(0, previousCount - Self.scanOverlap))..<buffer.endIndex
+            let hasRequestLine = buffer.range(of: Self.lineEnd, in: fresh) != nil
+            let isCallback = buffer.starts(with: Self.callbackPrefix)
             if buffer.count >= LoopbackRequestParser.maxRequestBytes, isCallback {
                 // A callback past the size limit that carries the expected state is the owner's selection, simply too
                 // long: it gets a readable page and ends the flow now. The state may come after the ids, so a long
                 // request is read on, up to a few times the limit, to find it. One without the state is a stray
                 // request: refused, and the flow keeps waiting.
-                if LoopbackRequestParser.carriesState(text, expectedState: self.expectedState) {
+                let mayCarryState = buffer.range(of: Self.stateKey, in: previousCount < LoopbackRequestParser.maxRequestBytes
+                    ? buffer.startIndex..<buffer.endIndex : fresh) != nil
+                if mayCarryState,
+                   LoopbackRequestParser.carriesState(String(decoding: buffer, as: UTF8.self), expectedState: self.expectedState) {
                     self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
                     self.finish(.failure(.requestTooLarge))
                 } else if hasRequestLine || isComplete || error != nil || buffer.count >= LoopbackRequestParser.strayRequestBytes {
@@ -157,7 +169,7 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
                     self.receive(connection, buffer: buffer)
                 }
             } else if hasRequestLine || isComplete || error != nil {
-                self.handle(text, on: connection)
+                self.handle(String(decoding: buffer, as: UTF8.self), on: connection)
             } else if buffer.count >= LoopbackRequestParser.maxRequestBytes {
                 // No request line within the size limit and not a browser redirect.
                 self.answer(connection, status: "400 Bad Request", body: "")
