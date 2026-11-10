@@ -18,10 +18,10 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 
 | Việc | Trạng thái |
 |---|---|
-| Xem By lens: nhóm ảnh theo ống kính trên Drive (issue #24, PR #30, FR-107, quyết định [0027](../decisions/0027-by-lens-view.md)) | Đã có trên nhánh phát hành |
-| Tách một ngày thành nhiều thư mục khi ảnh chụp ở nhiều nơi (issue #27, PR #35, quyết định [0028](../decisions/0028-split-day-by-place.md)) | Đã có trên nhánh phát hành |
-| Nhập từ thư mục Google Drive đọc được nội dung thư mục đã chọn (PR #34, quyết định [0030](../decisions/0030-drive-import-reads-folder-contents.md), `drive.readonly`) | Đã có trên nhánh phát hành; chờ owner kiểm tra trên tài khoản thật |
-| Phân loại chính xác ảnh đã lưu từ app khác, "Saved from <app>" (issue #31) | Mở, chưa làm |
+| Xem By lens: nhóm ảnh theo ống kính trên Drive (issue #24, PR #30, FR-107, quyết định [0027](../decisions/0027-by-lens-view.md)) | Đã phát hành |
+| Tách một ngày thành nhiều thư mục khi ảnh chụp ở nhiều nơi (issue #27, PR #35, quyết định [0028](../decisions/0028-split-day-by-place.md)) | Đã phát hành |
+| Nhập từ thư mục Google Drive đọc được nội dung thư mục đã chọn (PR #34, quyết định [0030](../decisions/0030-drive-import-reads-folder-contents.md), `drive.readonly`) | Đã phát hành; chờ owner kiểm tra trên tài khoản thật |
+| Phân loại chính xác ảnh đã lưu từ app khác, "Saved from <app>" (issue #31, nghiên cứu ở PR #37) | Đóng: không có tín hiệu chắc chắn để biết app nguồn; giữ nguyên FR-20 (ảnh chat vào `saved`, video vào `camera`) |
 
 ## Tương lai xa
 
