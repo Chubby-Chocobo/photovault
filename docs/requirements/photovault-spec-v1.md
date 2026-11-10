@@ -286,7 +286,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 ### 4.10 Địa danh cho thư mục ngày
  
 - **FR-80** Chỉ áp dụng cho thư mục ngày của nhánh `camera`.
-- **FR-81** Xét asset `camera` có GPS; không có asset nào có GPS → không đặt tên. Nhóm theo `isoCountryCode` + `administrativeArea`, so bằng **khoá locale `en`**; mỗi nhóm một thư mục, đặt tên theo FR-82 (sửa đổi 2026-11-10, issue #27, quyết định 0028).
+- **FR-81** Xét asset `camera` có GPS; không có asset nào có GPS → không đặt tên. Nhóm theo `isoCountryCode` + `administrativeArea`, so bằng **khoá locale `en`**; mỗi nhóm một thư mục, đặt tên theo FR-82. Thư mục chính thuộc nhóm đông nhất; hai nhóm bằng nhau thì thuộc nhóm có ảnh sớm nhất của ngày (không ưu tiên quốc gia); thư mục đã có vẫn giữ theo tên/khoá nên ngày đã tách không bị xáo (sửa đổi 2026-11-10, issue #27, quyết định 0028).
   - Asset không có GPS, ô không có tỉnh (biển), hoặc ảnh ẩn khi "upload ảnh ẩn" tắt vào nhóm của asset có định danh gần nhất theo thời gian chụp (bằng nhau → asset sớm hơn, rồi `asset_key` nhỏ hơn). Asset đã xoá không được xếp lại: giữ thư mục đang ở.
   - A → B → A là hai nhóm. Không có ngưỡng số ảnh tối thiểu. Hai nhóm cùng tên hiển thị dùng chung một thư mục; nhóm có hộp bao > 300 km không có tên (dùng chung thư mục không tên).
   - Nhóm lớn nhất giữ thư mục chính `camera/<ngày>`; nhóm khác là thư mục phụ `camera/<ngày>@<slot>` (slot ổn định theo khoá tỉnh).
@@ -491,7 +491,7 @@ Pipeline: `ChangeTracker → Classifier → SQLite → ExportWorker → fan-out 
 - Ghi DB **trước** side effect.
 - Khởi động: resource `exporting` → `none`; job `uploading` → FR-44.
 - Job sidecar không cần resource.
-- `move_job`: pending → inProgress → done; > 8 lỗi → failed.
+- `move_job`: pending → inProgress → done; > 8 lỗi → failed. Chỉ lỗi của chính move mới tính lần thử. Giới hạn tốc độ (403 rateLimitExceeded/userRateLimitExceeded, 429), lỗi máy chủ (5xx) và lỗi tạm thời đưa move về pending không tính lần thử, đích lùi lại (chung với upload) và lượt move của đích đó dừng. Move đã lỗi trước đó xếp sau các move chưa lỗi để không chặn trần 500. Khi khởi động, move file (`moveFile`) `failed` được đặt lại pending, đổi tên thư mục thì không (move không còn áp dụng vì file đã ở đúng thư mục thì bị bỏ qua).
 - `shortcut`: create/move/trash; đổi target → trash + tạo mới; `404` → `userRemoved`.
 ### 8.4 Một chu kỳ sync
  

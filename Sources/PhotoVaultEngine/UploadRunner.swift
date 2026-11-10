@@ -53,6 +53,10 @@ actor UploadRunner {
 
     func noteFailure(_ id: DestinationID) { consecutiveFailures[id, default: 0] += 1 }
 
+    /// True while a rate limit or server error keeps the destination quiet. Uploads and moves share it:
+    /// both spend the same quota.
+    func isBackedOff(_ id: DestinationID) -> Bool { (backoffUntil[id] ?? .distantPast) > env.clock.now }
+
     func backOff(_ id: DestinationID) {
         let delay = Backoff().delay(forAttempt: max(consecutiveFailures[id, default: 1] - 1, 0))
         backoffUntil[id] = env.clock.now.addingTimeInterval(delay)
@@ -109,7 +113,7 @@ actor UploadRunner {
     private func runDestination(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
-        if let until = backoffUntil[id], until > env.clock.now { return 0 }
+        if isBackedOff(id) { return 0 }
         let ensurer = ensurer(for: record, destination: destination)
         let limit = max(1, env.tuning.maxConcurrentUploadsPerDestination)
         var attempted = Set<Int64>()

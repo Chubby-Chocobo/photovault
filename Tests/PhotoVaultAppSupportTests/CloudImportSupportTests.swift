@@ -59,10 +59,13 @@ import Testing
             let drive = CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? ""
             #expect(drive.hasPrefix("Mục đã chọn không có ảnh hay video nào mà app đọc được."))
             #expect(drive.contains("Nhập ảnh… › Từ Google Drive…") && !drive.contains("đăng nhập lại"))
+            #expect(!drive.contains("bản cũ"), "a new import is never blamed on an older version")
         }
         en {
             #expect(CloudImportText.emptyImportNotice(snapshot(kind: .localFolder, status: .completed)) == "The selection had no photos or videos the app could read.")
-            #expect((CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? "").contains("Import photos… › From Google Drive…"))
+            let drive = CloudImportText.emptyImportNotice(snapshot(kind: .googleDrive, status: .completed)) ?? ""
+            #expect(drive.contains("Import photos… › From Google Drive…"))
+            #expect(!drive.contains("older versions"))
         }
     }
 

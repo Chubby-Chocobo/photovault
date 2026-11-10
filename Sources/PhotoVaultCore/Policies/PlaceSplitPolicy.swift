@@ -22,7 +22,7 @@ public enum PlaceSplitResult: Hashable, Sendable {
     case pending
     /// Cells whose geocode answers are still missing, sorted.
     case waitingGeocode([GeoCell])
-    /// Groups by member count (largest first), then key. `unassigned` are live assets without a
+    /// Groups by member count (largest first), then the earliest photo, then key. `unassigned` are live assets without a
     /// creation date; they keep their current folder.
     case groups([PlaceGroup], unassigned: [String])
 }
@@ -77,6 +77,8 @@ public enum PlaceSplitPolicy {
         }
 
         var groups: [PlaceGroup] = []
+        var earliest: [PlaceGroup: Date] = [:]
+        let createdAt = Dictionary(live.compactMap { a in a.creationDate.map { (a.id, $0) } }, uniquingKeysWith: min)
         var waiting: Set<GeoCell> = []
         for (key, anchors) in anchorsByKey {
             var sub = input
@@ -87,13 +89,22 @@ public enum PlaceSplitPolicy {
                 continue
             }
             let named = result.state == .named
-            groups.append(PlaceGroup(
+            let group = PlaceGroup(
                 key: named ? result.placeKey : nil, name: named ? result.placeName : nil,
-                state: named ? .named : .unnamed, members: (members[key] ?? []).sorted()))
+                state: named ? .named : .unnamed, members: (members[key] ?? []).sorted())
+            groups.append(group)
+            earliest[group] = group.members.compactMap { createdAt[$0] }.min()
         }
         if !waiting.isEmpty { return .waitingGeocode(waiting.sorted()) }
 
-        groups.sort { ($0.members.count, $1.key ?? "") > ($1.members.count, $0.key ?? "") }
+        // Largest first. Equal sizes: the group holding the day's earliest photo (the main folder goes there,
+        // whatever the country), then the key so that the order is total.
+        groups.sort { a, b in
+            if a.members.count != b.members.count { return a.members.count > b.members.count }
+            let (da, db) = (earliest[a] ?? .distantFuture, earliest[b] ?? .distantFuture)
+            if da != db { return da < db }
+            return (a.key ?? "") < (b.key ?? "")
+        }
         return .groups(groups, unassigned: unassigned.sorted())
     }
 

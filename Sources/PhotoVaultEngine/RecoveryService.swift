@@ -356,7 +356,7 @@ actor RecoveryService {
                 at: now, kind: .notice, destinationId: id,
                 message: tr(
                     vi: "Khôi phục: \(count) thư mục trùng đường dẫn nên không được ghép",
-                    en: "Recovery: \(count) \(L10n.plural(count, one: "folder", other: "folders")) claimed a path already in use and was left out")))
+                    en: "Recovery: \(L10n.integer(count)) \(L10n.plural(count, one: "folder claimed a path already in use and was", other: "folders claimed a path already in use and were")) left out")))
         }
     }
 

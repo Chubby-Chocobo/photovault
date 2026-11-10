@@ -156,6 +156,13 @@ private final class LockedPage: @unchecked Sendable {
         #expect(!transport.requests.contains { $0.url.host == "www.googleapis.com" }, "no Drive call is made with the narrower grant")
     }
 
+    @Test func aGrantWithoutTheFilePermissionIsRefusedWithItsOwnError() async throws {
+        let transport = server(scope: "https://www.googleapis.com/auth/drive.readonly")
+        await #expect(throws: PickerError.pickAccessDenied) {
+            try await flow(transport, opener: browser { _ in "&code=c&picked_file_ids=f1" }).run()
+        }
+    }
+
     @Test func aTokenResponseWithoutScopeCountsAsNoReadAccess() async throws {
         let transport = StubTransport { _ in .json(200, ["access_token": "a", "refresh_token": "r", "expires_in": 3600]) }
         await #expect(throws: PickerError.readAccessDenied) {

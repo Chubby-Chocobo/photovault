@@ -52,6 +52,27 @@ import Testing
 }
 
 @Suite struct AssetTests {
+    @Test func cameraAssetsWithARealLensExcludePlaceholders() throws {
+        let store = try Store.inMemory()
+        let lenses: [(String, String?, AssetCategory)] = [
+            ("a", "iPhone 15 Pro back camera 6.86mm f/1.78", .camera), ("b", "0.0 mm f/0.0", .camera), ("c", " - ", .camera),
+            ("d", "", .camera), ("e", nil, .camera), ("f", "iPhone 15 Pro back camera 6.86mm f/1.78", .camera),
+            ("g", "Some lens", .screenshot),
+        ]
+        try store.write { db in
+            for (id, lens, category) in lenses {
+                var asset = makeAsset(id, category: category)
+                asset.lensModel = lens
+                try AssetRepository.upsert(db, asset, timeZone: utc)
+            }
+            var deleted = makeAsset("h")
+            deleted.lensModel = "Gone lens"
+            try AssetRepository.upsert(db, deleted, timeZone: utc)
+            try db.execute(sql: "UPDATE asset SET deleted_at = ? WHERE asset_key = 'l:h'", arguments: [t0])
+        }
+        #expect(try store.read { try AssetRepository.countCameraWithLens($0) } == 2)
+    }
+
     @Test func roundTripsEveryField() throws {
         let store = try Store.inMemory()
         var asset = makeAsset("A", insertedAt: t0)
