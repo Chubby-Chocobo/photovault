@@ -10,18 +10,18 @@ import Testing
 /// A split day comes back from the destinations with no file moved and no folder renamed, whatever
 /// the destination, the order of recovery or the state of the database.
 @Suite struct SplitDayRecoveryTests {
-    private let day = organizationDay
-    private var daLatFolder: String { "\(day) Đà Lạt" }
-    private var hanoiFolder: String { "\(day) Hà Nội" }
+    let day = organizationDay
+    var daLatFolder: String { "\(day) Đà Lạt" }
+    var hanoiFolder: String { "\(day) Hà Nội" }
 
     /// Đà Lạt is the largest group, so its folder is the main one; "Hà Nội" sorts first by name.
-    private struct World {
+    struct World {
         var h: Harness
         var root: URL?
         var reader: DirectoryReader?
     }
 
-    private func world(drive: Bool, local: Bool, localFirst: Bool = false, daLatCount: Int = 10, hanoiCount: Int = 3, raw: Bool = false) async throws -> World {
+    func world(drive: Bool, local: Bool, localFirst: Bool = false, daLatCount: Int = 10, hanoiCount: Int = 3, raw: Bool = false) async throws -> World {
         let h = try await Harness.organized()
         try await h.update {
             $0.viewByDeviceEnabled = false
@@ -46,21 +46,21 @@ import Testing
     }
 
     /// The destinations get distinct creation times, which is what orders them in the cycle.
-    private func addDestinations(_ h: Harness, drive: Bool, local: Bool, localFirst: Bool) throws {
+    func addDestinations(_ h: Harness, drive: Bool, local: Bool, localFirst: Bool) throws {
         if localFirst, local { try h.addNAS(scope: .full); h.clock.advance(by: 1) }
         if drive { try h.addDrive(scope: .full); h.clock.advance(by: 1) }
         if !localFirst, local { try h.addNAS(scope: .full); h.clock.advance(by: 1) }
     }
 
     /// Drive files by id and path, so a move between two folders of the same name shows.
-    private func listing(_ w: World) async -> [String] {
+    func listing(_ w: World) async -> [String] {
         var result: [String] = []
         for file in await w.h.drive.files { result.append("drive:\(file.id):" + (await w.h.drive.path(of: file.id))) }
         if let root = w.root { result += treeListing(root).keys.filter { !$0.hasPrefix(".photovault") }.map { "local:" + $0 } }
         return result.sorted()
     }
 
-    private func expectUniqueDriveFolderNames(_ w: World, sourceLocation: SourceLocation = #_sourceLocation) async {
+    func expectUniqueDriveFolderNames(_ w: World, sourceLocation: SourceLocation = #_sourceLocation) async {
         let names = await w.h.drive.folders.filter { $0.id != "root" }.map { "\($0.parentId)/\($0.name)" }
         #expect(Set(names).count == names.count, "two Drive folders share a name: \(names)", sourceLocation: sourceLocation)
     }
@@ -72,7 +72,7 @@ import Testing
         }.sorted()
     }
 
-    private func expectNothingMoved(_ w: World, listing before: [String], places: [String], movesBefore: Int = 0, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+    func expectNothingMoved(_ w: World, listing before: [String], places: [String], movesBefore: Int = 0, sourceLocation: SourceLocation = #_sourceLocation) async throws {
         let h = w.h
         let after = await listing(w)
         #expect(after == before, "the listing is unchanged", sourceLocation: sourceLocation)
@@ -91,7 +91,7 @@ import Testing
         #expect(try h.jobs().allSatisfy { $0.state == .done }, sourceLocation: sourceLocation)
     }
 
-    private func recoverFresh(_ w: World, drive: Bool, local: Bool, localFirst: Bool = false) async throws {
+    func recoverFresh(_ w: World, drive: Bool, local: Bool, localFirst: Bool = false) async throws {
         try await w.h.loseDatabase(localContent: w.reader)
         try addDestinations(w.h, drive: drive, local: local, localFirst: localFirst)
         try await w.h.coordinator.beginBaseline(destinations: (drive ? [.googleDrive] : []) + (local ? [w.h.nasId] : []))

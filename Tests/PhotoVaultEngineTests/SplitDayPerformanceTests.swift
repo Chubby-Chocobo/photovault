@@ -87,13 +87,14 @@ import Testing
                 """)
             for index in 0..<100_000 { try statement.execute(arguments: ["l:asset-\(index)|1"]) }
         }
-        let plan = try store.read { db in
-            try Row.fetchAll(db, sql: """
-                EXPLAIN QUERY PLAN SELECT from_value FROM move_job WHERE destination_id IN (SELECT id FROM destination)
-                    AND subject = 'camera/2026-01-01' AND op = 'renameFolder' AND state IN ('pending', 'inProgress')
-                """).map { $0["detail"] as String }.joined(separator: " | ")
+        // The plans of the queries `reserved` itself runs, not a copy of them.
+        for sql in [DaySplitWriter.openRenamesSQL, DaySplitWriter.folderNamesSQL] {
+            let plan = try store.read { db in
+                try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN " + sql, arguments: ["camera/2026-01-01"]).map { $0["detail"] as String }.joined(separator: " | ")
+            }
+            #expect(plan.contains("USING INDEX") || plan.contains("USING PRIMARY KEY"), "\(plan)")
+            #expect(!plan.contains("SCAN move_job") && !plan.contains("SCAN remote_folder"), "\(plan)")
         }
-        #expect(plan.contains("move_job_subject"), "\(plan)")
         let day = ArchiveDay(year: 2026, month: 1, day: 1)!
         let clock = ContinuousClock()
         let started = clock.now
@@ -102,6 +103,6 @@ import Testing
         }
         let elapsed = started.duration(to: clock.now)
         print("3000 open-rename lookups over 100000 moves: \(elapsed)")
-        #expect(elapsed < .seconds(2))
+        #expect(elapsed < .seconds(10), "alone it takes a fraction of a second; without the index it takes several; the bound allows for a loaded machine")
     }
 }

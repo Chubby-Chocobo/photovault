@@ -19,6 +19,18 @@ import Testing
     }
     func updated(_ plan: DaySlotPlan, _ slot: String?) -> DaySlotUpdate? { plan.updated.first { $0.slot == slot } }
 
+    @Test func aFolderRecoveredWithoutAKeyIsRenamedWhenItsSlugIsTheGroupsOwn() {
+        let slot = DaySlotPolicy.slug(forKey: "HN")
+        let p = plan([main("DL", "Đà Lạt"), extra(slot, nil, "Hanoi City")], [group("DL", "Đà Lạt", ["1", "2"]), group("HN", "Hà Nội", ["3"])])
+        #expect(p.slotOfGroup == [nil, slot], "the folder is renamed, not left behind with a second one made")
+        #expect(updated(p, slot)?.name == "Hà Nội" && updated(p, slot)?.key == "HN")
+    }
+
+    @Test func aKeylessFolderWithAnotherSlugIsNotTakenForTheGroup() {
+        let p = plan([main("DL", "Đà Lạt"), extra("rabcdef012345", nil, "Hanoi City")], [group("DL", "Đà Lạt", ["1", "2"]), group("HN", "Hà Nội", ["3"])])
+        #expect(p.slotOfGroup[1] == DaySlotPolicy.slug(forKey: "HN"))
+    }
+
     @Test func unnamedMainTakesTheOnlyGroup() {
         let p = plan([main(nil, nil)], [group("K", "Đà Lạt")])
         #expect(p.slotOfGroup == [nil])

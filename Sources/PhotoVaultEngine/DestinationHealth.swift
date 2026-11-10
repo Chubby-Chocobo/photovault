@@ -3,7 +3,7 @@ import PhotoVaultCore
 import PhotoVaultStore
 
 /// Step 1 of the cycle for each destination: ask it for its availability and record the status.
-/// States that wait for the owner (`paused(userPaused)`, `paused(recovering)`, `paused(folderTrashed)`,
+/// States that wait for the owner (`paused(userPaused)`, `paused(recovering)`, `paused(waitingForDrive)`, `paused(folderTrashed)`,
 /// `paused(signedOut)`) are never overridden: the destination would only hit the same trashed folder
 /// again, or upload with a token the owner has not confirmed. Signing in again clears `signedOut`.
 struct DestinationHealth: Sendable {
@@ -12,7 +12,7 @@ struct DestinationHealth: Sendable {
     func refresh() async throws {
         let records = try await env.store.read { db in try DestinationRepository.fetchAll(db) }
         for record in records {
-            if [.paused(.userPaused), .paused(.recovering), .paused(.folderTrashed), .paused(.signedOut)].contains(record.status) {
+            if [.paused(.userPaused), .paused(.recovering), .paused(.waitingForDrive), .paused(.folderTrashed), .paused(.signedOut)].contains(record.status) {
                 continue
             }
             guard let destination = await env.destinations.destination(for: record.id) else { continue }

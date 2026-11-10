@@ -41,7 +41,7 @@ Camera Uploads/
 3. **Persist:** in the same transaction, `DaySplitWriter` writes `day_stat`, `day_place` and `asset.place_slot`, plus `move_job`s (`renameFolder` for changed names, `moveFile` for every job with a remote file whose asset changed slot).
 4. **Execute:** the next round's `MoveWorker` (`MoveWorker.swift:118`) resolves the target with the slot-aware `LayoutResolver.chain` and runs `FolderEnsurer.ensure`, which creates `camera/<day>@<slot>` with `pvLogical`. It then calls `destination.move` and `MoveCommit.file`. Sidecars are `upload_job`s with the same placement, so they move the same way.
 5. **Out:** the folders at Drive and the NAS, and one coalesced activity row per destination per hour (`MovePassActivity`).
-6. **Recovery** (any destination kind, any order):
+6. **Recovery** (any destination kind; Drive first, a local destination waits for it only while the wait can end):
    1. `RemoteInventoryLoader` lists the destination.
    2. `DaySlotBinding` binds each listed day folder: to an existing `remote_folder` row by remote id, then to a known slot by display name, then by fallback (Drive `pvLogical`; local name order, the main folder first and the others `r…`).
    3. `RecoveryWriter` adds only missing rows. It re-points only rows whose remote id is no longer listed, and refuses and reports two logical paths pointing at one remote id.
@@ -208,7 +208,7 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 ### A Drive backup added after a local recovery (lead addendum)
 - Chosen: Drive's `pvLogical` and folder ids are the truth. A local recovery that had to guess (fallback rule: first folder by name is the main one) marks the day provisional (`kv.slots_provisional:<day>`, `ProvisionalSlots`). When a Drive destination is recovered later (added later, or offline from the start), it skips binding by name for those days and binds by `pvLogical`; then the database is rebound to Drive's slots by display name: `remote_folder` rows and `upload_job.remote_logical_parent` of every destination, `asset.place_slot`, `day_stat` and `day_place` are rewritten in one transaction (two phases, so swaps work), and the flag is cleared. Drive files never move. The common case (Drive recovers first, local waits) needs no rebinding.
 - Tests: `aDriveBackupAddedAfterTheNASWasRecoveredRebindsTheNASToDrivesSlots`, `aDriveThatWasOfflineFromTheStartRebindsTheNASWhenItComesBack`; both assert zero `move_job`s, equal folder names on both destinations and the NAS rows on Drive's paths.
-- Known limit: a local folder whose name matches no Drive folder keeps its guessed path (or a fresh `r…` slot if a Drive folder claims it).
+- Known limit: a local folder whose name matches no Drive folder keeps its guessed path (or a fresh `r…` slot if a Drive folder claims it). When Drive is added after a NAS-only recovery and the names differ, the main group can move on Drive (up to the whole main group), not only the renamed folder; no names are duplicated and nothing is lost.
 - Review later: yes
 
 ### Engine review fixes (2026-11-10)
@@ -288,3 +288,13 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
   - I4: in-memory slot, primary-resource folder.
   - I5: tests E14 to E19, R7, a crash in the backlog, criterion 3.
   - M1 to M12, as in the phase files.
+
+### Verification review fixes (2026-11-10)
+- Local waits for Drive only while the wait can end: Drive flagged for recovery, not stalled (`signedOut`, `reauthRequired`, `rootMissing`, `rootTrashed`, `folderTrashed`, `userPaused`), no open owner decision, and for at most 30 minutes from the first wait (`kv.recovery_wait_since:<id>`, cleared when the recovery finishes). Otherwise the local destination recovers alone with provisional slots. While it waits its status is `paused(waitingForDrive)` ("Chờ khôi phục Google Drive" / "Waiting for Google Drive recovery"), which writes the one activity row.
+- Chosen over a fresh activity kind: a new `StatusReason` shows on the destination row and in the status-change row without further UI.
+- First start and Settings › add folder treat `waitingForDrive` as "continues by itself": no error, no "Try again". The app target has no unit test for it.
+- Pass 2 of `DaySlotPolicy` also matches a key-less recovered slot whose slug is `slug(forKey:)` of the group's key, so a folder renamed before the loss is renamed back, not emptied by 9 moves.
+- A rename that failed for good keeps its old name reserved, so a group named like it stays deferred and the day is re-marked dirty each evaluation. Intended: it prevents two folders with one name. No retry exists for failed moves.
+- `reserved` runs the same destination-filtered queries the test explains (`openRenamesSQL`, `folderNamesSQL`); the timing bound is 10 s.
+- The ordering in the recovery cycle (Drive first) is only an optimisation next to the wait; nothing tests it separately.
+- Review later: no

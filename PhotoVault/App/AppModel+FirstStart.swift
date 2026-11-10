@@ -187,6 +187,10 @@ extension AppModel {
                 // nothing is uploaded there before. The start itself is done.
                 showNotice(RecoveryCommandError.notReady(blocker).message + tr(vi: " Khôi phục sẽ tự chạy tiếp.", en: " Recovery will continue automatically."))
                 continue
+            } catch RecoveryCommandError.notReady(.waitingForDrive) {
+                // Committed already: the engine recovers it right after Drive, with no "try again".
+                showNotice(RecoveryCommandError.notReady(.waitingForDrive).message)
+                continue
             } catch RecoveryCommandError.needsOwnerDecision {
                 // The decision card in the menu bar takes over; the other destinations keep going.
                 continue

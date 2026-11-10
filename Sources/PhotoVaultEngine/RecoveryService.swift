@@ -12,6 +12,13 @@ actor RecoveryService {
     static let expectsKey = "recovery_expects:"
     static let enqueueKey = "recovery_enqueue:"
     private static let previousKey = "recovery_prev:"
+    private static let waitSinceKey = "recovery_wait_since:"
+    /// How long a local destination waits for Drive's recovery before it recovers alone.
+    static let driveWaitLimit: TimeInterval = 30 * 60
+    /// Drive states that end no time soon: a local destination does not wait for them.
+    private static let driveStalled: Set<StatusReason> = [
+        .signedOut, .reauthRequired, .rootMissing, .rootTrashed, .folderTrashed, .userPaused,
+    ]
     /// Share of the files found at the destination that must match before recovery goes on by itself.
     static let minimumMatchRatio = 0.5
 
@@ -87,10 +94,34 @@ actor RecoveryService {
         await env.destinations.destination(for: id)?.capabilities.supportsAppProperties == true
     }
 
-    /// A registered destination with app properties (Drive) that is still waiting for its recovery.
-    private func driveNeedsRecovery() async throws -> Bool {
-        let waiting = try await env.store.read { db in try DestinationRepository.fetchAll(db).filter(\.recoveryRequired).map(\.id) }
-        for id in waiting where await supportsAppProperties(id) { return true }
+    /// Whether a local destination should hold back for Drive's recovery (its `pvLogical` slots are the truth).
+    /// Only while that wait can end: Drive is reachable or briefly offline, signed in, its root is there and
+    /// no owner decision is open, and for at most `driveWaitLimit`. Otherwise the local destination recovers
+    /// with provisional slots, which `ProvisionalSlots` rebinds when Drive is recovered later.
+    private func mustWaitForDrive(_ record: DestinationRecord) async throws -> Bool {
+        let flagged = try await env.store.read { db in try DestinationRepository.fetchAll(db).filter(\.recoveryRequired) }
+        var blocking = false
+        for drive in flagged where await supportsAppProperties(drive.id) {
+            let decision = try await env.store.read { db in try KeyValueRepository.int(db, Self.decisionKey + drive.id.rawValue) == 1 }
+            if decision || drive.status.reason.map(Self.driveStalled.contains) == true { continue }
+            blocking = true
+        }
+        guard blocking else { return false }
+        let id = record.id
+        let now = env.clock.now
+        let since = try await env.store.read { db in try KeyValueRepository.int(db, Self.waitSinceKey + id.rawValue) }
+        guard let since else {
+            let owner = record.status == .paused(.userPaused)
+            try await env.store.write { db in
+                if owner { try KeyValueRepository.set(db, Self.previousKey + id.rawValue, 1) }
+                try KeyValueRepository.set(db, Self.waitSinceKey + id.rawValue, Int(now.timeIntervalSince1970))
+                try DestinationRepository.setStatus(db, id: id, status: .paused(.waitingForDrive), now: now)
+            }
+            env.log.log(.notice, category: "recovery", "destination=\(id) waits for the Drive recovery")
+            return true
+        }
+        guard now.timeIntervalSince1970 - TimeInterval(since) >= Self.driveWaitLimit else { return true }
+        env.log.log(.notice, category: "recovery", "destination=\(id) stopped waiting for the Drive recovery")
         return false
     }
 
@@ -98,11 +129,11 @@ actor RecoveryService {
 
     func recover(_ id: DestinationID) async throws -> RecoveryOutcome {
         guard !active.contains(id) else { return .notReady(.alreadyRunning) }
-        if !(await supportsAppProperties(id)), try await driveNeedsRecovery() { return .notReady(.waitingForDrive) }
-        active.insert(id)
-        defer { active.remove(id) }
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }),
               let destination = await env.destinations.destination(for: id) else { return .notReady(.unknownDestination) }
+        if !destination.capabilities.supportsAppProperties, try await mustWaitForDrive(record) { return .notReady(.waitingForDrive) }
+        active.insert(id)
+        defer { active.remove(id) }
         guard try await env.store.read({ db in try KeyValueRepository.scanState(db) }) == .complete else { return .notReady(.scanIncomplete) }
         do {
             try await backfill.runAll(force: true)
@@ -269,8 +300,8 @@ actor RecoveryService {
             try ActivityRepository.record(db, ActivityEvent(
                 at: now, kind: .notice, destinationId: id,
                 message: tr(
-                    vi: "Khôi phục: \(count) thư mục trùng đường dẫn nên không được ghép; các file trong đó không bị đụng tới",
-                    en: "Recovery: \(count) \(L10n.plural(count, one: "folder", other: "folders")) claimed a path already in use and was left out; its files are untouched")))
+                    vi: "Khôi phục: \(count) thư mục trùng đường dẫn nên không được ghép",
+                    en: "Recovery: \(count) \(L10n.plural(count, one: "folder", other: "folders")) claimed a path already in use and was left out")))
         }
     }
 
@@ -298,7 +329,7 @@ actor RecoveryService {
             let owner = try KeyValueRepository.int(db, Self.previousKey + id.rawValue) == 1
             try DestinationRepository.setStatus(db, id: id, status: owner ? .paused(.userPaused) : .active, now: now)
             try DestinationRepository.setRecoveryRequired(db, id: id, false)
-            for prefix in [Self.previousKey, Self.decisionKey, Self.expectsKey] { try KeyValueRepository.set(db, prefix + id.rawValue, nil) }
+            for prefix in [Self.previousKey, Self.decisionKey, Self.expectsKey, Self.waitSinceKey] { try KeyValueRepository.set(db, prefix + id.rawValue, nil) }
             try KeyValueRepository.set(db, Self.enqueueKey + id.rawValue, 1)
             try KeyValueRepository.set(db, RecoveryTriggers.probeKey + id.rawValue, 1)
             if verify { try RecoveryVerifier.schedule(db, destinationId: id) }

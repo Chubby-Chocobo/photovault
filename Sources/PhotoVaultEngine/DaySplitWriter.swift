@@ -83,14 +83,21 @@ enum DaySplitWriter {
     /// display name of its `remote_folder` rows, which also covers a rename that failed for good.
     /// The destination filter lets SQLite use `move_job_subject(destination_id, subject)`; finished moves are
     /// kept, so that table only grows.
+    static let openRenamesSQL = """
+        SELECT from_value FROM move_job
+        WHERE destination_id IN (SELECT id FROM destination) AND subject = ? AND op = 'renameFolder'
+          AND state IN ('pending', 'inProgress')
+        """
+    /// The destination filter lets SQLite use the primary key `(destination_id, logical_path)`.
+    static let folderNamesSQL = """
+        SELECT display_name FROM remote_folder
+        WHERE destination_id IN (SELECT id FROM destination) AND logical_path = ?
+        """
+
     static func reserved(_ db: Database, day: ArchiveDay, slot: String?) throws -> [String?] {
         let path = slot.map { DynamicLayout.slotLogicalPath(day: day, slot: $0) } ?? "camera/\(day)"
-        let folders = try String.fetchAll(db, sql: """
-            SELECT from_value FROM move_job
-            WHERE destination_id IN (SELECT id FROM destination) AND subject = ? AND op = 'renameFolder'
-              AND state IN ('pending', 'inProgress')
-            """, arguments: [path])
-            + String.fetchAll(db, sql: "SELECT display_name FROM remote_folder WHERE logical_path = ?", arguments: [path])
+        let folders = try String.fetchAll(db, sql: openRenamesSQL, arguments: [path])
+            + String.fetchAll(db, sql: folderNamesSQL, arguments: [path])
         let prefix = day.description + " "
         return folders.compactMap { folder in
             if folder == day.description { return .some(nil) }

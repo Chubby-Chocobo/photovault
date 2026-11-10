@@ -133,8 +133,8 @@ enum RecoveryCommandError: Error, Equatable {
         case .notReady(.alreadyRunning): tr(vi: "Đang khôi phục đích này.", en: "This destination is being recovered.")
         case .notReady(.waitingForDrive):
             tr(
-                vi: "Cần khôi phục Google Drive trước. Thử lại khi Drive đã khôi phục xong.",
-                en: "Google Drive must be recovered first. Try again once Drive has finished.")
+                vi: "Google Drive được khôi phục trước; đích này sẽ tự khôi phục ngay sau đó.",
+                en: "Google Drive is recovered first; this destination follows by itself.")
         }
     }
 }

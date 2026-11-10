@@ -44,7 +44,7 @@ public struct DaySlotPlan: Hashable, Sendable {
 /// Maps the groups of one day onto folders so that no two folders ever share a name, including names
 /// that are still on disk while a rename retries. Pure.
 ///
-/// Four passes, each over all groups in input order (largest first): by name, by key, the main
+/// Four passes, each over all groups in input order (largest first): by name, by key (or by the slug of the key for a recovered folder), the main
 /// folder, a new folder. Every pass starts with the name lookup, which is the only way to keep two
 /// folders from ending up with one directory.
 public enum DaySlotPolicy {
@@ -59,6 +59,13 @@ public enum DaySlotPolicy {
             let neverNamed = slot.slot == nil && slot.key == nil && slot.name == nil
             if !neverNamed || someGroupUnnamed { index[ck(slot.name)] = index[ck(slot.name)] ?? Ref(slot: slot.slot) }
             for reserved in slot.reservedNames { index[ck(reserved)] = index[ck(reserved)] ?? Ref(slot: slot.slot) }
+        }
+
+        /// A folder recovered from a destination has no key, but its slot is the slug of the key it was made for.
+        func matchesKey(_ slot: DaySlot, _ key: String) -> Bool {
+            if slot.key == key { return true }
+            guard slot.key == nil, let name = slot.slot, name.hasPrefix("p") else { return false }
+            return name == Self.slug(forKey: key, digits: name.count - 1)
         }
 
         var chosen = [Ref?](repeating: nil, count: groups.count)
@@ -85,7 +92,7 @@ public enum DaySlotPolicy {
 
         for g in groups.indices where chosen[g] == nil { _ = placeByName(g) }
         for g in groups.indices where chosen[g] == nil && !placeByName(g) {
-            guard let key = groups[g].key, let match = slots.first(where: { $0.key == key && owner[Ref(slot: $0.slot)] == nil })
+            guard let key = groups[g].key, let match = slots.first(where: { matchesKey($0, key) && owner[Ref(slot: $0.slot)] == nil })
             else { continue }
             take(g, Ref(slot: match.slot))
         }
