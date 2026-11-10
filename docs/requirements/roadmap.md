@@ -19,7 +19,8 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 | Việc | Trạng thái |
 |---|---|
 | Xem By lens: nhóm ảnh theo ống kính trên Drive (issue #24, PR #30, FR-107, quyết định [0027](../decisions/0027-by-lens-view.md)) | Đã có trên nhánh phát hành |
-| Tách một ngày thành nhiều thư mục khi ảnh chụp ở nhiều nơi (issue #27, quyết định 0028, chưa có trên nhánh này) | Đang làm trên nhánh `feat/27-split-day-by-place`, chưa merge |
+| Tách một ngày thành nhiều thư mục khi ảnh chụp ở nhiều nơi (issue #27, PR #35, quyết định [0028](../decisions/0028-split-day-by-place.md)) | Đã có trên nhánh phát hành |
+| Nhập từ thư mục Google Drive đọc được nội dung thư mục đã chọn (PR #34, quyết định [0030](../decisions/0030-drive-import-reads-folder-contents.md), `drive.readonly`) | Đã có trên nhánh phát hành; chờ owner kiểm tra trên tài khoản thật |
 | Phân loại chính xác ảnh đã lưu từ app khác, "Saved from <app>" (issue #31) | Mở, chưa làm |
 
 ## Tương lai xa
@@ -30,7 +31,7 @@ Chỉ Photos là nguồn liên tục ([quyết định 0029](../decisions/0029-p
 |---|---|---|
 | 1 | Nguồn liên tục Dropbox (issue #17) | Chưa lên lịch. Issue tạm dừng; kế hoạch và bản audit trên `feat/17-dropbox-continuous` |
 | 2 | Nguồn liên tục OneDrive | Chưa lên lịch |
-| 3 | Nguồn liên tục Drive của tài khoản Google khác | Chưa lên lịch. Cần spike về `drive.file` trước |
+| 3 | Nguồn liên tục Drive của tài khoản Google khác | Chưa lên lịch. Cần kiểm tra trên tài khoản thật rằng `drive.readonly` liệt kê được thư mục lồng nhau (quyết định 0030) |
 | 4 | Nguồn liên tục S3-compatible | Chưa lên lịch. Cần bộ chặn xoá hàng loạt |
 | 5 | Nguồn liên tục Flickr | Chưa lên lịch. Cần API key và secret từ owner |
 
