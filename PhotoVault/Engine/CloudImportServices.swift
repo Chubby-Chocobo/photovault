@@ -54,8 +54,8 @@ struct CloudImportServices: Sendable {
 
     // MARK: Google Drive
 
-    func pickerFlow() -> GooglePickerFlow {
-        GooglePickerFlow(config: googleConfig, transport: transport, openURL: Self.openURL)
+    func pickerFlow(onReadStep: @escaping @Sendable () -> Void = {}) -> GooglePickerFlow {
+        GooglePickerFlow(config: googleConfig, transport: transport, openURL: Self.openURL, onReadStep: onReadStep)
     }
 
     func driveSource(id: SourceID, pickedIds: [String], initial: (accessToken: String, expiresAt: Date)? = nil) -> DriveImportSource {

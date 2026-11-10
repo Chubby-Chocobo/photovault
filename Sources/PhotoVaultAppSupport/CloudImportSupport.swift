@@ -82,6 +82,9 @@ public enum CloudImportText {
     }
 
     /// Shown while a browser sign-in is open.
+    public static var waitingForReadStep: String {
+        tr(vi: "Bước 2/2: cho phép đọc thư mục đã chọn trong trình duyệt…", en: "Step 2 of 2: allow reading the chosen folder in the browser…")
+    }
     public static var waitingForBrowser: String { tr(vi: "Đang chờ đăng nhập trong trình duyệt…", en: "Waiting for sign-in in the browser…") }
 
     public static var accountUnverifiedNotice: String {

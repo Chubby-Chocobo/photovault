@@ -67,12 +67,13 @@ final class DropboxBrowserModel {
 
 /// Shown while a browser sign-in is open, so it never looks like nothing is happening.
 struct BrowserWaitRow: View {
+    var readStep = false
     var onCancel: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
-            Text(CloudImportText.waitingForBrowser).font(.caption).foregroundStyle(.secondary)
+            Text(readStep ? CloudImportText.waitingForReadStep : CloudImportText.waitingForBrowser).font(.caption).foregroundStyle(.secondary)
             Button(tr(vi: "Huỷ", en: "Cancel"), action: onCancel).controlSize(.small)
         }
     }

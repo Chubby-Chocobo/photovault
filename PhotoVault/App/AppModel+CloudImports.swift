@@ -17,7 +17,7 @@ extension AppModel {
     func importFromGoogleDrive() {
         guard let env, canStartImport, !cloudFlowBusy else { return }
         runCloudFlow { [self] in
-            let picked = try await env.cloud.pickerFlow().run()
+            let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
             // The account guard needs to know who signed in; without it nothing is stored and nothing starts.
             guard let email = picked.email?.trimmingCharacters(in: .whitespaces), !email.isEmpty else {
                 env.log.log(.info, category: "import", "google import not started: account unknown")
@@ -153,7 +153,7 @@ extension AppModel {
         switch item.kind {
         case .googleDrive:
             runCloudFlow { [self] in
-                let picked = try await env.cloud.pickerFlow().run()
+                let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
                 guard CloudImportText.isSameAccount(expected: item.account, signedIn: picked.email) else { return refuseOtherAccount(item) }
                 // Google lets the app keep reading what it could read before, so the new pick is added to the old one.
@@ -193,6 +193,10 @@ extension AppModel {
 
     // MARK: Shared
 
+    private var readStepNotifier: @Sendable () -> Void {
+        { [weak self] in Task { @MainActor in self?.cloudFlowReadStep = true } }
+    }
+
     /// Runs a browser flow as a task the owner can cancel while it waits for the browser.
     private func runCloudFlow(_ body: @escaping @MainActor () async throws -> Void) {
         cloudFlowBusy = true
@@ -206,6 +210,7 @@ extension AppModel {
         cloudFlowCancel = { task.cancel() }
         defer {
             cloudFlowBusy = false
+            cloudFlowReadStep = false
             cloudFlowCancel = nil
         }
         do { return try await task.value } catch {
@@ -248,12 +253,16 @@ extension AppModel {
             case .browserUnavailable: showNotice(Self.browserUnavailable, isError: true)
             case .readAccessDenied:
                 showNotice(tr(
-                    vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục. Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
+                    vi: "Bạn cần cho phép PhotoVault xem file trong Drive để nhập thư mục (bước 2). Hãy thử lại và giữ ô “Xem và tải xuống mọi file trên Google Drive” được chọn.",
                     en: "PhotoVault needs permission to see your Drive files to import a folder. Try again and keep “See and download all your Google Drive files” ticked."), isError: true)
             case .pickAccessDenied:
                 showNotice(tr(
                     vi: "Bạn cần cho phép PhotoVault truy cập các file bạn chọn trong Drive. Hãy thử lại và giữ ô “Xem, chỉnh sửa, tạo và xóa các file cụ thể trong Google Drive” được chọn.",
                     en: "PhotoVault needs permission for the Drive files you pick. Try again and keep “See, edit, create, and delete only the specific Google Drive files you use with this app” ticked."), isError: true)
+            case .accountMismatch:
+                showNotice(tr(
+                    vi: "Bước 2 dùng khác tài khoản Google. Hãy thử lại và chọn đúng tài khoản đã dùng để chọn thư mục.",
+                    en: "Step 2 used a different Google account. Try again and choose the same account you used to pick the folder."), isError: true)
             case .tokenMissing: showNotice(tr(vi: "Google không trả quyền truy cập. Hãy thử lại.", en: "Google did not grant access. Try again."), isError: true)
             }
         } else if let dropbox = error as? DropboxAuthError {

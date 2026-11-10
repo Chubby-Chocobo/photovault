@@ -92,17 +92,19 @@ public struct OAuthClient: Sendable {
         }
     }
 
-    public func exchange(code: String, verifier: String, redirectURI: String) async throws -> OAuthTokens {
+    /// - Parameter requiredScope: a scope the response must list (when it lists any); nil skips the check.
+    public func exchange(code: String, verifier: String, redirectURI: String,
+                         requiredScope: String? = OAuthClient.fileScope) async throws -> OAuthTokens {
         try await tokenRequest([("grant_type", "authorization_code"), ("code", code),
-                                ("code_verifier", verifier), ("redirect_uri", redirectURI)])
+                                ("code_verifier", verifier), ("redirect_uri", redirectURI)], requiredScope: requiredScope)
     }
 
     /// `invalid_grant` means the refresh token is dead: the user must sign in again.
     /// Any failure that is not invalid_grant, 401, 429, 5xx or a network problem means the stored
     /// grant cannot be used (bad client, scope dropped, malformed reply): destination-level `reauthRequired`.
-    public func refresh(refreshToken: String) async throws -> OAuthTokens {
+    public func refresh(refreshToken: String, requiredScope: String? = OAuthClient.fileScope) async throws -> OAuthTokens {
         do {
-            return try await tokenRequest([("grant_type", "refresh_token"), ("refresh_token", refreshToken)])
+            return try await tokenRequest([("grant_type", "refresh_token"), ("refresh_token", refreshToken)], requiredScope: requiredScope)
         } catch let error as DestinationError {
             switch error {
             case .reauthRequired, .unauthorized, .rateLimited, .server, .offline, .transient: throw error
@@ -119,6 +121,7 @@ public struct OAuthClient: Sendable {
     // MARK: Internals
 
     /// The `itemRejected` reason of a token response that lacks the `drive.file` permission.
+    public static let fileScope = "https://www.googleapis.com/auth/drive.file"
     static let fileScopeMissing = "drive.file scope not granted"
 
     private struct TokenResponse: Decodable {
@@ -129,7 +132,7 @@ public struct OAuthClient: Sendable {
         var scope: String?
     }
 
-    private func tokenRequest(_ fields: [(String, String)]) async throws -> OAuthTokens {
+    private func tokenRequest(_ fields: [(String, String)], requiredScope: String?) async throws -> OAuthTokens {
         var form = fields + [("client_id", config.clientID)]
         if let secret = config.clientSecret { form.append(("client_secret", secret)) }
         let (data, response) = try await perform(formRequest(OAuthConfig.tokenEndpoint), form: form)
@@ -137,7 +140,7 @@ public struct OAuthClient: Sendable {
         guard let decoded = try? JSONDecoder().decode(TokenResponse.self, from: data) else {
             throw DestinationError.itemRejected(reason: "token response malformed")
         }
-        if let scope = decoded.scope, !scope.split(separator: " ").contains("https://www.googleapis.com/auth/drive.file") {
+        if let required = requiredScope, let scope = decoded.scope, !scope.split(separator: " ").contains(Substring(required)) {
             throw DestinationError.itemRejected(reason: Self.fileScopeMissing)
         }
         return OAuthTokens(accessToken: decoded.access_token, refreshToken: decoded.refresh_token,
