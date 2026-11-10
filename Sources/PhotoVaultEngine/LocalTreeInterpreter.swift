@@ -112,6 +112,12 @@ struct SidecarDocument: Decodable, Sendable {
         var sha256: String?
     }
 
+    struct Camera: Decodable, Sendable, Equatable {
+        var make: String?
+        var model: String?
+        var lens: String?
+    }
+
     var assetKey: String
     var localIdentifier: String?
     var cloudIdentifier: String?
@@ -120,6 +126,7 @@ struct SidecarDocument: Decodable, Sendable {
     var pixelWidth: Int?
     var pixelHeight: Int?
     var duration: Double?
+    var camera: Camera?
     var resources: [Resource]
 
     /// nil unless `data` is a sidecar of this app.
