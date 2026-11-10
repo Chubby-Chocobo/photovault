@@ -101,10 +101,14 @@ public struct ImportItem: Hashable, Codable, Sendable {
     public var isPrimary: Bool
     public var dateSource: DateSource?
     public var reason: String?
+    /// Failed reads so far and the time of the first, while the file waits for a retry.
+    public var failCount: Int?
+    public var firstFailedAt: Date?
 
     public init(sourceId: SourceID, relativePath: String, groupKey: String, uti: String, sizeBytes: Int64,
                 createdAtFS: Date? = nil, modifiedAtFS: Date? = nil, state: ImportItemState = .pending,
-                assetKey: AssetKey? = nil, isPrimary: Bool = false, dateSource: DateSource? = nil, reason: String? = nil) {
+                assetKey: AssetKey? = nil, isPrimary: Bool = false, dateSource: DateSource? = nil, reason: String? = nil,
+                failCount: Int? = nil, firstFailedAt: Date? = nil) {
         self.sourceId = sourceId
         self.relativePath = relativePath
         self.groupKey = groupKey
@@ -117,5 +121,7 @@ public struct ImportItem: Hashable, Codable, Sendable {
         self.isPrimary = isPrimary
         self.dateSource = dateSource
         self.reason = reason
+        self.failCount = failCount
+        self.firstFailedAt = firstFailedAt
     }
 }

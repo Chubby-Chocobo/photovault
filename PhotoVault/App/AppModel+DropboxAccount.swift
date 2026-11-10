@@ -3,8 +3,6 @@ import PhotoVaultAppSupport
 import PhotoVaultCore
 
 extension AppModel {
-    var dropboxAccountLine: String { DropboxAccountText.line(signedIn: dropboxSignedIn, email: dropboxEmail) }
-
     /// Reads the stored e-mail of the Dropbox browsing account. A token from an older version has none: it
     /// is asked from Dropbox once and kept. Offline, the line shows "signed in" without it until next time.
     func refreshDropboxEmail() async {

@@ -114,7 +114,7 @@ extension ImportStage {
                 switch error {
                 case .busy:
                     if !givenUp {
-                        if let outcome = retryLater(source, group: groupKey) { return outcome }
+                        if let outcome = try await retryLater(source, group: group) { return outcome }
                         givenUp = true
                     }
                     failed[item.relativePath] = "read"
@@ -125,7 +125,7 @@ extension ImportStage {
                     // connection all the time; the file waits and is tried again.
                     if source.kind != .localFolder {
                         if !givenUp {
-                            if let outcome = retryLater(source, group: groupKey) { return outcome }
+                            if let outcome = try await retryLater(source, group: group) { return outcome }
                             givenUp = true
                         }
                     }
@@ -139,7 +139,7 @@ extension ImportStage {
                     // A synced folder's online-only file fails like a cloud read while the download cannot finish
                     // (offline, desktop app paused or signing in): it waits and is tried again.
                     if synced, ImportReadErrors.isTransient(code: code), !givenUp {
-                        if let outcome = retryLater(source, group: groupKey) { return outcome }
+                        if let outcome = try await retryLater(source, group: group) { return outcome }
                         givenUp = true
                     }
                     failed[item.relativePath] = "read"
@@ -156,9 +156,16 @@ extension ImportStage {
     /// Notes the failure: the group is left pending and tried again later, with a longer wait each time. Nil once
     /// it has failed often enough, for long enough, that it is given up (importing the folder again brings it back).
     /// The source's probe answered at the start of this pass, so the failure is the group's own, not an outage's.
-    private func retryLater(_ source: SourceRecord, group: String) -> GroupOutcome? {
-        let failure = holds.noteFailure(source.id, group: group, now: env.clock.now)
+    private func retryLater(_ source: SourceRecord, group: [ImportItem]) async throws -> GroupOutcome? {
+        let key = group.first?.groupKey ?? ""
+        let stored = group.compactMap { item in item.failCount.flatMap { tries in item.firstFailedAt.map { ImportHolds.Prior(tries: tries, first: $0) } } }
+        let prior = stored.max { $0.tries < $1.tries }.map { ImportHolds.Prior(tries: $0.tries, first: stored.map(\.first).min() ?? $0.first) }
+        let failure = holds.noteFailure(source.id, group: key, now: env.clock.now, prior: prior)
         if failure.giveUp { return nil }
+        let id = source.id
+        try await env.store.write { db in
+            try ImportItemRepository.recordFailure(db, sourceId: id, groupKey: key, count: failure.tries, first: failure.first)
+        }
         env.log.log(.info, category: "import", "source busy; import group waits")
         return .waitingForProvider(isFresh: failure.isFresh)
     }
@@ -176,6 +183,9 @@ extension ImportStage {
             var dirty = Set<ArchiveDay>()
             for entry in inputs {
                 try Self.commit(db, entry, context: context, extensions: extensions, dirty: &dirty)
+            }
+            for groupKey in Set(group.map(\.groupKey)) {
+                try ImportItemRepository.clearFailure(db, sourceId: id, groupKey: groupKey)
             }
             for (path, reason) in failed {
                 try ImportItemRepository.mark(db, sourceId: id, relativePath: path, state: .failed, assetKey: nil, isPrimary: false, dateSource: nil, reason: reason)

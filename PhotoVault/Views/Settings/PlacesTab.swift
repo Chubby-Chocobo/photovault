@@ -2,7 +2,7 @@ import PhotoVaultAppSupport
 import PhotoVaultCore
 import SwiftUI
 
-/// Settings › Địa danh & riêng tư (FR-81..85, FR-106).
+/// Settings › Địa danh (FR-81..85, FR-106).
 struct PlacesTab: View {
     @Environment(AppModel.self) private var model
     @State private var progress: AppQueries.GeocodeProgress?
