@@ -70,13 +70,13 @@ This phase adds the contract every continuous source implements, and the pure fu
    - Input:
      - `known: [KnownRemoteItem]` (`relativePath, remoteId?, remotePath?, remoteHash?, state, assetKey?, isPrimary`). This is the subset the engine fetched, including every folded `stem (n)` sibling of a wanted path.
      - `SourceChanges`.
-   - Output: `[RemoteItemAction]` ordered by `relativePath`, removals first within a path (removed → changed → moved → returned → reuse → insert). The cases are:
-     - `insert(file, relativePath)`: an unknown id. It takes its own path, or the first `stem (n).ext` not held (folded) by any non-removed row or by an earlier action of the plan.
+   - Output: `[RemoteItemAction]` ordered by base group (folded dir + stem), then `relativePath`, removals first within a path (removed → changed → moved → returned → reuse → insert). The cases are:
+     - `insert(file, relativePath)`: an unknown id. It takes its own path, or the first `stem (n)` free for every new member of its base group (folded dir + stem) among non-removed rows and earlier actions of the plan, so a new RAW+JPEG pair gets the same `n`.
      - `reuse(file, relativePath)`: an unknown id at the path of a removed row, or of a row this plan removes.
-     - `returned(file, relativePath, restore: AssetKey?)`: a known id whose row is removed. `restore` is the row's asset when the hash is unchanged and the row is an imported primary; otherwise the row goes back to pending.
+     - `returned(file, relativePath, restore: AssetKey?)`: a known id whose row is removed. `restore` is the row's asset when the hash is unchanged and the row kept an asset (primary or companion); otherwise the row goes back to pending.
      - `moved(relativePath, pathKey)`: a known live id with the same hash and a new `pathKey`, including a case-only rename.
      - `changed(file, relativePath, supersedes: AssetKey?)`: a known live id with a new hash. `supersedes` is set only for an imported primary.
-     - `removed(relativePath, supersedes: AssetKey?)`: a live row whose id is gone by `.item`, by `.tree` (exact key or `key + "/"` prefix), or by a complete listing, unless the id is listed in `files`.
+     - `removed(relativePath, supersedes: AssetKey?)`: a live row whose id is gone by `.item`, by `.tree` (exact key or `key + "/"` prefix), or by a complete listing, unless the id is listed in `files`. Also a live row whose `remotePath` equals a listed file's `pathKey` while its own id is different and not listed elsewhere: the file that now sits at that path replaced it (safe-save, delete + re-add, a provider that never reports the delete). The new id then becomes `reuse` of that row.
    - Applying the same changes to the resulting state gives no actions.
    - The large-removal brake is not here. The stage counts the `removed` actions.
 
@@ -97,7 +97,9 @@ This phase adds the contract every continuous source implements, and the pure fu
   - a removal plus the same id listed elsewhere gives `moved`;
   - a complete listing with an unlisted pending row gives `removed(supersedes: nil)`;
   - `changed` of a duplicate row or of a companion gives `supersedes: nil`;
-  - `returned` gives `restore` only with an unchanged hash;
+  - `returned` gives `restore` only with an unchanged hash, for a companion row as well as the primary;
+  - a live row at `/a/x.jpg` (id A) and a listed file at the same path key with id B, A not listed → `removed(A)` + `reuse(B)`, no `x (2).jpg`; the same with the feed also carrying `.tree("/a/x.jpg")`;
+  - an existing `IMG (2).JPG` and a new RAW+JPEG pair `IMG.CR2`/`IMG.JPG` at taken paths → both get `(3)`;
   - per-path order (a `removed(p)` before a `reuse(p)`);
   - idempotency;
   - one `.item` case.

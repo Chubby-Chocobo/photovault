@@ -14,6 +14,8 @@ sources:
   - "context: file:plans/261109-2045-17-multiple-sources/plan.md"
   - "context: file:plans/261110-0435-17-cloud-folder-imports/plan.md"
   - "context: file:plans/261110-0805-17-dropbox-continuous/reports/plan-audit-dropbox-continuous.md"
+  - "context: file:plans/261110-0805-17-dropbox-continuous/reports/plan-reaudit-dropbox-continuous.md"
+  - "context: file:docs/architecture/continuous-source-extension.md"
   - "spec: file:docs/requirements/photovault-spec-v1.md"
 authoritative: "tracker: github:Chubby-Chocobo/photovault#17"
 ---
@@ -22,7 +24,9 @@ authoritative: "tracker: github:Chubby-Chocobo/photovault#17"
 
 Owner (issue #17): Dropbox comes first among the long-lived sources. Flickr, S3 and OneDrive need only a mechanism on the roadmap. The UI keeps "Nguồn liên tục" (sources watched forever) apart from "Lần nhập" (one-time jobs). Rounds 1–2 (v0.2.0, v0.3.0) shipped the source model, folder/Drive/Dropbox one-time imports, `x:` content keys and the import pipeline.
 
-Revision 2 (2026-11-10) folds in the plan audit (`reports/plan-audit-dropbox-continuous.md`, 2 Critical, 8 Important, 11 Minor) with the lead's decisions; each is recorded under Decisions.
+Revision 2 (2026-11-10) folds in the plan audit (`reports/plan-audit-dropbox-continuous.md`, 2 Critical, 8 Important, 11 Minor) with the lead's decisions; each is recorded under Decisions. Revision 3 folds in the re-audit (`reports/plan-reaudit-dropbox-continuous.md`, 0 Critical, 6 Important, 15 Minor). Two lead defaults (modified file = new version, remove = cancel with the grant deleted) wait for the owner: see "Unresolved questions".
+
+The long-term design doc on branch `docs/future-continuous-sources` (`docs/architecture/continuous-source-extension.md`, R1–R15, roadmap `docs/requirements/roadmap.md`, decision 0029 "Photos-only continuous source") merges before this plan resumes; phase 07 updates those files instead of adding parallel ones.
 
 ## Outcome
 
@@ -32,7 +36,7 @@ Settings › Nguồn › **Nguồn liên tục** lists Photos and every watched 
 - N file chưa đọc được · thử lại mỗi ngày
 - Không kết nối được
 - Cần đăng nhập lại, with a button
-- Thư mục đã đổi trên Dropbox
+- Thư mục đã đổi trên Dropbox (detail: renamed, moved or deleted; remove and choose again)
 - Cần xác nhận, with **Xác nhận** and **Gỡ**
 - Chờ chỗ trống
 
@@ -53,10 +57,11 @@ cycle step 2 (.changes), ContinuousFeedStage, ≥ 60 s apart per source (manual 
      ▼  read known rows (by remote id, under removed path keys, folded wanted paths and their `stem (n)` siblings; all rows when complete)
   ContinuousChangePlanner.plan (pure) ─► per path, removals first: removed │ changed │ moved │ returned │ reuse │ insert
      ▼  brake: removals > max(50, 20 % of live rows) → offline "largeRemoval", commit nothing (owner confirms or removes)
-  tx per ~500 actions, split only between paths, compare-and-set per row; the last tx writes cursor + listed_at + watching
+  tx per ~500 actions, split only between groups (folded dir + stem), compare-and-set per row; the last tx writes cursor + listed_at + watching
   removed/changed primary of a live asset of this source ─► AssetHandover.retire: deleted_at, local_id retired, jobs recomputed,
-      other live rows (any open source) holding the asset → pending, so the next ingest revives it with no upload
-  daily (and after a complete listing, and on sign-in): failed rows → pending
+      other live rows (any open source) holding the asset → pending (an `importing` one-time import goes back to `scanning`),
+      so the next ingest revives it with no upload; cancelImport hands over the same way
+  failed rows → pending 24 h after they failed (at once after a complete listing or a sign-in)
 
 cycle steps 3–9, ImportStage (unchanged pipeline, reader seam), only while transfers are allowed (network/power rules):
   groups whose newest member was seen ≥ 1 h ago (or in the first listing) ─► inspect(remoteId) → sha256, metadata, content hash
@@ -75,7 +80,7 @@ UploadRunner / SidecarPlanner / views: unchanged
 | 04 | [Engine: ingest, export, commands, snapshot](phase-04-engine-ingest-export-commands.md) | pending | L | 03 | ImportStage, ExportWorker, transfer gate, recovery, commands, snapshot |
 | 05 | [Dropbox continuous adapter](phase-05-dropbox-continuous-adapter.md) | pending | M | 01 | Sources/PhotoVaultDropbox, Dropbox tests |
 | 06 | [App: Nguồn liên tục UI, menu bar, scheduler](phase-06-app-continuous-sources-ui.md) | pending | M | 04, 05 | PhotoVault/**, AppSupport text, guard, Keychain sweep |
-| 07 | [Docs: spec, decision 0029, provider guide, roadmap](phase-07-docs-provider-guide.md) | pending | S | 06 | docs/**, README.md, site/** |
+| 07 | [Docs: spec, next free decision, extension doc, roadmap](phase-07-docs-provider-guide.md) | pending | S | 06 | docs/**, README.md, site/** |
 
 Phase 05 runs in parallel with 02–04; their file sets do not overlap. Phases 01 → 02 → 03 → 04 are sequential: 01, 03 and 04 all edit `ImportStage*.swift`.
 
@@ -83,6 +88,7 @@ Phase 05 runs in parallel with 02–04; their file sets do not overlap. Phases 0
 
 1. Over several cycles of a fake feed, these give exactly the expected assets:
    - adds, modifications, deletions, renames and case-only renames;
+   - a delete and re-add of the same name with a new id, and a folder deleted and recreated, in one feed;
    - moves in and out of the root, a deleted folder, a cursor reset;
    - more than 500 mixed actions in one feed.
 
@@ -91,7 +97,7 @@ Phase 05 runs in parallel with 02–04; their file sets do not overlap. Phases 0
    - A rename or move inside the root uploads nothing.
    - A modified file, read once it has been settled for an hour, becomes a new asset. The old asset keeps its backed-up files and is marked deleted.
    - A file deleted in Dropbox marks its asset deleted and its files stay. If another live row of an open source still holds the same bytes, that row takes the asset over with no upload.
-3. A renamed, recreated or deleted root never removes a row. It holds the source with `rootChanged`. A feed that would remove more than max(50, 20 %) rows commits nothing until the owner confirms.
+3. A renamed, recreated or deleted root never removes a row. It holds the source with `rootChanged`. A feed that would remove more than max(50, 20 %) rows commits nothing until the owner confirms; a confirm allows at most the confirmed count, survives the cooldown it clears, and can never wedge the source.
 4. The same bytes as a live Photos asset (by SHA-256, or by the fingerprint before it is exported) or as an imported file are counted as already backed up.
 5. Crash safety (NFR-01): killing the app after any feed batch, after inspect or after a group commit, then restarting, gives no duplicate item, asset or upload and loses no change.
 6. Errors and network rules:
@@ -101,7 +107,7 @@ Phase 05 runs in parallel with 02–04; their file sets do not overlap. Phases 0
    - Assets with unfinished jobs are treated as deleted, and fully backed-up assets stay.
    - The grant is deleted.
    - Adding the folder again reuses every asset with no original uploaded again.
-8. Failed files of a continuous source are retried daily, and the row shows their count.
+8. Failed files of a continuous source are retried 24 h after they failed, and the row shows their count. A hand-over into a one-time import that is uploading (`importing`) is read and the import still completes; cancelling an import hands its assets over to watched sources that hold them.
 9. One-time imports behave exactly as in 0.4.0: their suites are unchanged and green.
 10. Builds and checks:
     - `swift test` and the unsigned `xcodebuild` build pass.
@@ -114,7 +120,7 @@ Phase 05 runs in parallel with 02–04; their file sets do not overlap. Phases 0
 |---|---|---|
 | Unit (Core) | Planner:<br>- New id at a free path; at a path held by a live id (`stem (2).ext`, skipping an existing `stem (2)` row); at a removed row.<br>- Move (same hash) vs change (new hash) for pending, duplicate, imported primary and imported companion rows.<br>- `.tree` removals: exact key, children, not a sibling prefix, exact case. One `.item` case.<br>- A removal of an id that is listed again is a move.<br>- A complete listing removes the unlisted rows.<br>- `returned` with an unchanged hash restores the asset; with a new hash it goes pending.<br>- Per-path order (removals first); Unicode case folding ("ẢNH" vs "ảnh").<br>- Applying the plan twice gives no action. | 01 |
 | Store | - Migration on the previous schema keeps rows (new columns NULL).<br>- Remote fields round-trip.<br>- Exact (case-sensitive) path-key prefix and folded-path lookups.<br>- Group-level `readyBefore`.<br>- Compare-and-set updates; `markRemoved` keeps `asset_key`; the hand-over query; the failed → pending reset.<br>- Cursor get/set. | 02 |
-| Engine integration (`FakeContinuousSource` + `FakeDestination`) | - First sync; insert, modify, delete, rename and case-only rename over 3+ cycles; move out and back; folder delete; shared-folder unmount and remount (revive, no upload).<br>- Cursor reset; more than 500 mixed actions; an existing `IMG (2).jpg` row.<br>- `rootChanged` (rename and recreate of `/Camera Uploads`, deleted root, `.tree(root)`); large-removal brake, then confirm or remove.<br>- Hand-over: in-source duplicate copy, RAW deleted with the JPEG kept, a second watched folder, removal of a source.<br>- Bytes changed between feed and inspect; a pair split across two polls with the settle delay; a modification inside the settle window.<br>- Failed group retried; poll throttle; transfers held (expensive network, battery).<br>- Dedupe against Photos (hash, fingerprint) and a one-time import.<br>- Offline, busy, revoked grant at the feed and at export; sign in again.<br>- Remove and re-add; export `resourceMissing`, then the file returns (jobs re-armed); one-time import regression. | 03, 04 |
+| Engine integration (`FakeContinuousSource` + `FakeDestination`) | - Delete and re-add the same name with a new id, and a folder deleted and recreated, in one delta (row removed, new id reuses it, no `(2)`).<br>- Brake confirm, then a sign-in before the next feed: the brake asks again and the source is never wedged; a confirm allows at most the confirmed count.<br>- Hand-over into an `importing` one-time import: it goes back to `scanning`, reads the row and completes; `cancelImport` hands its asset to a watched source.<br>- First sync; insert, modify, delete, rename and case-only rename over 3+ cycles; move out and back; folder delete; shared-folder unmount and remount (revive, no upload).<br>- Cursor reset; more than 500 mixed actions; an existing `IMG (2).jpg` row.<br>- `rootChanged` (rename and recreate of `/Camera Uploads`, deleted root, `.tree(root)`); large-removal brake, then confirm or remove.<br>- Hand-over: in-source duplicate copy, RAW deleted with the JPEG kept, a second watched folder, removal of a source.<br>- Bytes changed between feed and inspect; a pair split across two polls with the settle delay; a modification inside the settle window.<br>- Failed group retried; poll throttle; transfers held (expensive network, battery).<br>- Dedupe against Photos (hash, fingerprint) and a one-time import.<br>- Offline, busy, revoked grant at the feed and at export; sign in again.<br>- Remove and re-add; export `resourceMissing`, then the file returns (jobs re-armed); one-time import regression. | 03, 04 |
 | Crash | - `afterContinuousFeedBatchCommit` mid-listing.<br>- A delete or change re-delivered after a crash before the cursor commit.<br>- A crash after a hand-over batch.<br>- `afterImportInspectBeforeCommit` and `afterImportGroupCommit` on a continuous source. | 03, 04 |
 | Adapter (stub transport) | - First listing with paging; root id checked on probe and before a full listing; `deleted` root or ancestor → `rootChanged`.<br>- Continue with add, modify, move, case-only rename, file and folder delete; compaction in feed order; `reset` → complete relist after the root check.<br>- Content hash computed while streaming matches Dropbox's reference vector.<br>- Hidden and unsupported files skipped.<br>- 401 refresh once, revoked, 429/5xx busy, network unavailable.<br>- Download by id; no paths in logs. | 05 |
 | AppSupport | - Status presentation per state and reason.<br>- Root nesting guard.<br>- Orphan grant sweep.<br>- Overall header with source work.<br>- UI text coverage. | 06 |
@@ -126,7 +132,7 @@ Each phase is its own commit range on the feature branch. Destinations are never
 
 Going back to an older build after a continuous source was added is **not supported**:
 - 0.4.0 cannot decode `status = 'watching'` or `state = 'removed'`. `RowDecoding.parse` throws `corruptRow`, so every cycle and snapshot fail, Photos backup included.
-- Once feat/27 lands, its newer-schema guard makes an older build refuse the database outright.
+- Builds that carry feat/27's newer-schema guard (`hasBeenSuperseded` in `Store.open`) refuse a database with a migration id they do not know. 0.4.0 has no such guard and fails with `corruptRow` instead.
 
 The way back is the backup FR-52 takes before migrating, or the owner's reset (delete the local database and resync, decision 0023).
 
@@ -137,7 +143,7 @@ The migration id has no number. It is registered after whatever is last on the b
 Checked against its plan (`plans/261110-0735-27-split-day-by-place`, worktree `photovault-27-split-day-by-place`). No layout, placement, move or recovery-writer code is touched here; `AssetFinalizer` is only called. Shared files:
 - `Sources/PhotoVaultStore/Schema.swift`: both register a migration after `v5-sources`. This plan's id `continuous-sources` needs no rename; order is decided at merge, before any release.
 - `Sources/PhotoVaultEngine/EngineEnvironment.swift`: one new `CrashPoint` case. #27 may add cases next to it, an adjacent-line conflict only.
-- Docs (`photovault-spec-v1.md`, `system-architecture.md`, `decisions/README.md`): text conflicts. #27 takes decision 0028, this plan takes 0029.
+- Docs (`photovault-spec-v1.md`, `system-architecture.md`, `decisions/README.md`): text conflicts. Decision numbers 0028 (split-day), 0029 (Photos-only continuous source, docs branch) and 0030 (Drive import with `drive.readonly`) are taken; phase 07 uses the next free number at resume time.
 
 ## Decisions
 
@@ -180,11 +186,13 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
      - The source holds `offline` with reason `largeRemoval` ("cần xác nhận").
      - The owner can **Xác nhận**, and the next feed applies once, or **Gỡ** the source.
 - Alternatives: the root guard alone; the brake alone; no guard ("backups are kept anyway")
-- Why: renaming `/Camera Uploads` and letting the phone recreate it, or deleting the root, would otherwise retire every asset. Pending uploads would be cancelled and later destinations would skip them all. The brake also catches provider bugs no rule foresees.
+  - A trip holds the source for 10 minutes (`signInBackoff`) so it does not replan the whole delta on every poll. The trip stores its removal count; **Xác nhận** acts only while the reason is `largeRemoval`, clears only the cooldown (`ImportHolds.clearCooldown`) and allows one feed with at most that count plus 10 %. The allowance is in memory: a relaunch or sign-in loses it and the brake asks again, which is never a wedge.
+  - A held source sends no notification; the Settings row and the popover "Nguồn" section show the state (accepted, re-audit M-2). Following a renamed root by its id (`get_metadata(rootId)` gives the new path) would avoid a remove and re-add; Review later.
+- Why: renaming `/Camera Uploads` and letting the phone recreate it, or deleting the root, would otherwise retire every asset. Pending uploads would be cancelled and later destinations would skip them all. The brake catches unforeseen mass *removals* only; a bug in the hash signal produces `changed` actions, which retire assets but cost only a re-download, because the same bytes revive under the same `x:` key.
 - Review later: yes
 
-### A modified file is a new version; nothing is overwritten (lead decision, audit I6)
-- Chosen: a known `remote_id` with a new `contentHash` resets its row to `pending` as its own group, with `seen_at = now`, so the one-hour settle window applies. Only the version present after the window is read.
+### A modified file is a new version; nothing is overwritten (lead default, audit I6; owner to confirm)
+- Chosen: a known `remote_id` with a new `contentHash` resets its row to `pending` with `seen_at = now`, so the one-hour settle window applies. Only the version present after the window is read. Its group key is `FolderItemGrouper.groupKey(rel_path)` plus one token per feed (`"#v"` + 8 hex of the SHA-256 of the new cursor), so files of one pair changed together stay one group and keys never grow.
   - It becomes a new `x:` asset.
   - When the row was the primary of a live asset of this source, that asset is retired (`deleted_at`, `local_id` → `<old>#<16 hex of its key>`), and other holders take it over (see the next decision).
   - A changed companion becomes its own asset, and the old pair stays live.
@@ -200,7 +208,9 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 - Chosen: `AssetHandover.retire` acts only when the asset is live, belongs to this source and its `local_id` is this row's.
   1. It marks the asset deleted and retires its `local_id`.
   2. It moves every other `imported` or `duplicate` row with `asset_key = K` in any open source (continuous `watching`/`offline`, or an open one-time import) back to `pending`. Those rows get a suffixed group key and `seen_at = NULL`. Rows that the current plan itself removes or changes are excluded.
-  3. The next ingest revives K under such a row, with no upload because done jobs stay done, or takes it over when its owner was removed.
+  3. In the same transaction, every one-time import that receives a row and is `importing` goes back to `scanning`, or it would wait forever for a pending row it never reads (re-audit I-1).
+  4. The next ingest revives K under such a row, with no upload because done jobs stay done, or takes it over when its owner was removed.
+  - `cancelImport` hands over too: each asset it deletes goes through the same step 2, excluding the import's own rows (re-audit I-3).
   - A handed-over companion, such as the JPEG left when its RAW is deleted, becomes its own `x:` asset. It may be uploaded once more under its own name; it is never lost.
 - Alternatives: retire regardless (the audit's failure); never retire while any row in any source, closed ones included, points to K; hook `ChangeTracker` deletions too
 - Why: a photo still present in a watched folder must stay backed up for later destinations. Closed one-time imports are not handed over, because nothing ingests their rows; running the import again revives the asset. A Photos deletion does not re-queue continuous `duplicate` rows: that would re-upload the Photos copy under a new path, and Photos code stays untouched. Both are documented limits.
@@ -210,13 +220,14 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 - Chosen:
   - Deletions:
     - A deleted path removes every live row whose `remote_path` equals the key or lies under `key/` (exact case), unless the id is listed again in the same feed, which makes it a move.
+    - A listed file whose `pathKey` is the `remote_path` of a live row with another id, not listed elsewhere, removes that row; the new id then reuses it (re-audit I-2). This covers safe-save editors, delete + re-add and providers that never report the delete.
     - A removed row keeps `asset_key` and `is_primary`; a primary is retired with hand-over.
   - Renames and moves:
     - A rename, case-only rename or move inside the root only updates `remote_path`.
     - A move out of the root is a deletion.
-    - A move back, or a shared folder remounted, is `returned`. With an unchanged hash it restores the row and the asset in the feed transaction: no download, no settle wait, and `resourceMissing` skips are re-armed (audit M2). With a new hash it goes to `pending`.
+    - A move back, or a shared folder remounted, is `returned`. Every row of the asset whose hash is unchanged (primary and companions) is restored in the feed transaction: no download, no settle wait, and `resourceMissing` skips are re-armed (audit M2). If another source took the asset over meanwhile, the rows become `duplicate` of it. With a new hash a row goes to `pending`.
   - Name collisions:
-    - A new id at a path held by a live id gets the first free `stem (n).ext` among the folded existing rows.
+    - A new id at a path held by a live id gets the first `stem (n)` free for every member of its base group (folded dir + stem), so a new RAW+JPEG pair gets `IMG (2).CR2` and `IMG (2).JPG`.
     - A new id at a removed row's path reuses that row.
 - Alternatives: delete by path only (re-upload on every move); re-download returned files; refuse path reuse
 - Why: the same semantics as Photos deletions, with ids making moves free. The prefix rule works whether or not Dropbox lists a deleted folder's children `[UNVERIFIED]`.
@@ -224,17 +235,17 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 
 ### Feed ordering, batching and crash safety (lead decision, audit I1)
 - Chosen:
-  - Order and batching: actions are ordered by `rel_path`, with removals first within a path (removed → changed → moved → returned → reuse → insert). Batches of about 500 split only between paths.
+  - Order and batching: actions are ordered by `rel_path`, with removals first within a path (removed → changed → moved → returned → reuse → insert). Batches of about 500 split only between base groups (folded dir + stem), so a path's actions and a pair's rows always commit together.
   - Compare-and-set: every update checks `(source_id, rel_path, expected remote_id)` and skips a row that no longer matches. An insert re-checks that its folded path is free inside the transaction and takes the next `(n)` if not, so the primary key can never be hit.
   - Commit: the last transaction writes the cursor (`source.cursor`), `listed_at` (last check) and `watching`. The removals of a complete listing are computed over the whole listing first.
 - Alternatives: global ordering by action kind; one transaction per feed; cursor in `key_value`
-- Why: a `reuse(p)` and its `removed(p)` can never land in different batches, and a stale plan cannot overwrite a row. The pattern matches the Photos change token, committed with its change. A first listing of 100 k files should not be one write.
+- Why: a `reuse(p)` and its `removed(p)` can never land in different batches, half a pair is never committed alone, and a stale plan cannot overwrite a row. The pattern matches the Photos change token, committed with its change. A first listing of 100 k files should not be one write.
 - Review later: no
 
 ### Where the feed runs and how often
 - Chosen: `ContinuousFeedStage` at cycle step 2 (`.changes`), at most once per 60 s per source; a manual trigger skips the wait.
-  - The 15-minute timer also fires while a continuous source is open.
-  - The 5-minute recheck covers sources with *ready* pending groups or `offline/unavailable`, not rows still waiting out the settle window (audit M6).
+  - The 15-minute disk-recheck timer's condition becomes `diskLow || needsSourcePoll` (a continuous source is open).
+  - The 5-minute recheck covers sources with *ready* pending groups or `offline/unavailable`, not rows still waiting out the settle window (audit M6), and is skipped while uploads are held (re-audit M-11).
   - No longpoll.
   - The cycle, Dropbox included, still needs Photos access and the baseline (audit M9, documented).
 - Alternatives: longpoll in an app task; polling in every round; a 5-minute timer
@@ -269,9 +280,9 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 - Review later: yes
 
 ### Failed files of a continuous source are retried daily (lead decision, audit I4)
-- Chosen: `failed` rows of an open continuous source go back to `pending` (`seen_at = NULL`, group failures forgotten) at the first poll after launch, then every 24 h, after a complete listing and on sign-in again. The row shows "N file chưa đọc được · thử lại mỗi ngày".
-- Alternatives: a **Thử lại** button only; never retry (the import rule)
-- Why: a continuous source has no "import again". An unchanged hash produces no feed action, so a file would otherwise never be backed up. The retry time is kept in memory, so a launch also retries, which is cheap for a few files.
+- Chosen: when a continuous row is marked `failed`, its `seen_at` records the failure time. The feed requeues `failed` rows (`pending`, `seen_at = NULL`, group failures forgotten) once that time is 24 h old, and all of them at once after a complete listing or a sign-in. The row shows "N file chưa đọc được · thử lại mỗi ngày". No **Thử lại** button.
+- Alternatives: a **Thử lại** button; an in-memory retry clock; never retry (the import rule)
+- Why: a continuous source has no "import again", and an unchanged hash produces no feed action. A persisted failure time keeps the cadence daily: with an in-memory clock, a group given up after FR-124's 10 tries over 24 h would be due again at once and retried about hourly (re-audit M-3).
 - Review later: no
 
 ### First sync of an existing folder: like an import
@@ -302,16 +313,16 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 - Why: every open-import rule (holds, offline exclusion, last-successful-sync) applies unchanged, and the row reads like a destination.
 - Review later: no
 
-### Removing a continuous source = cancelling an import (lead decision, audit I8)
+### Removing a continuous source = cancelling an import (lead default, audit I8; owner to confirm)
 - Chosen: one lane command. The steps follow `cancelImport` (FR-115), asset by asset (audit M10):
   1. Pending rows become `cancelled`.
   2. Each live asset of the source with a pending, uploading or deferred job is retired through `AssetHandover`. Its unfinished jobs are cancelled and other holders take it over.
-  3. Fully backed-up assets stay live. Rows of other open sources that hold them go back to `pending` and take them over.
+  3. Fully backed-up assets stay live. Rows of other open sources that hold them go back to `pending` and take them over; the removed source's own rows are excluded.
   4. The status becomes `cancelled`, the cursor is cleared, the adapter is unregistered and the holds are cleared. The app deletes the grant.
 
   A destination added later skips the kept assets nobody took over (`resourceMissing`). Adding the folder again takes them over or revives them, with no original uploaded again.
 - Alternatives: mark every asset deleted (revision 1); keep the grant so later destinations still read them (imports' choice in 0026)
-- Why: lead decision: same meaning as cancelling an import. The grant goes because the owner removed the account's access from PhotoVault's view. The visible `resourceMissing` skips are the price.
+- Why: lead default: same meaning as cancelling an import. The grant goes because the owner removed the account's access from PhotoVault's view. The visible `resourceMissing` skips are the price. The docs branch (R12) currently says the grant is kept; phase 07 aligns it with whatever the owner confirms.
 - Review later: yes
 
 ### UI: "Nguồn liên tục" and "Lần nhập" stay apart
@@ -331,10 +342,10 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 - Why: with #27's newer-schema guard, a renamed migration makes any database that ran the branch refuse to open. Without the guard, the renamed migration re-runs `ADD COLUMN` and fails.
 - Review later: no
 
-### Provider mechanism: a guide and roadmap entries, no code
-- Chosen: `docs/architecture/adding-a-source-provider.md` covers the contract, error mapping, cursor, `isComplete` and compaction rules, root guard, content hash choice, auth, Keychain naming, registration points and tests. It includes a table for OneDrive, S3 and Flickr, marked `[UNVERIFIED]`. Roadmap entries go in spec §15; no `roadmap.md` is created.
-- Alternatives: a plugin protocol with registration code now; a new `docs/requirements/roadmap.md`
-- Why: the owner said these need only a mechanism on the roadmap. Spec §15 is the existing roadmap.
+### Provider mechanism: the existing extension doc and roadmap, no code
+- Chosen: the mechanism lives in `docs/architecture/continuous-source-extension.md` (contract, safety rules R1–R15, provider table for Dropbox, OneDrive, S3 and Flickr, marked `[UNVERIFIED]`) and the roadmap in `docs/requirements/roadmap.md`, both from branch `docs/future-continuous-sources`, which merges before this plan resumes. Phase 07 updates them to match this plan (R8 retry without a button, R10 feed listing not gated, R12 grant per the owner's answer, the I-2 path rule, the brake allowance) and adds no parallel guide or roadmap. The decision record takes the next free number at resume time and supersedes 0029.
+- Alternatives: a new `adding-a-source-provider.md`; roadmap entries only in spec §15; a plugin protocol with registration code now
+- Why: one living doc per subject (DRY); the docs branch already holds the provider mechanism the owner asked for. 0028–0030 are taken.
 - Review later: no
 
 ### Accepted limits (audit M7, M8, M9)
@@ -344,6 +355,7 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
   - Dropbox stops with the cycle when Photos access is lost.
 - Alternatives: a download probe to clear the hold; a sidecar `source` block that ignores the source id; a cycle without Photos
 - Why: each fix costs more than the symptom (a status flicker, a few KB of sidecars, a rule that is already documented). All three are listed in FR-130 and the README.
+- Note: `plan-phases.cjs --check` warns `status-unknown` for `status: on-hold`; the status is intended while implementation is on hold.
 - Review later: no
 
 ### Smaller choices
@@ -361,7 +373,7 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 - **High:** a feed bug marks many assets deleted.
   - Mitigations: the root id guard, deleted-root refusal and the brake (C1); a pure planner with exhaustive tests; compare-and-set; hand-over (C2); backups are never touched.
 - **High:** ImportStage regressions for one-time imports, since the code is shared.
-  - Mitigations: a mode filter, the reader seam, group-level readiness applied only when `readyBefore` is passed, and the unchanged import suites as the gate.
+  - Mitigations: a mode filter (in phase 03, before the feed stage runs), the reader seam, group-level readiness applied only when `readyBefore` is passed, and the unchanged import suites as the gate.
 - **Medium:** Camera Uploads with iCloud Photos uploads the same photo twice when Dropbox converts HEIC to JPG. Accepted; the owner's E2E measures it.
 - **Medium:** the archive grows with every edit in a watched working folder (I6). Mitigated by the settle window and the whole-account warning; Review later.
 - **Medium:** merge overlap with #27 (migration order, `CrashPoint`, docs); see "Merge overlap".
@@ -369,6 +381,13 @@ Plan complete and audited; implementation on hold by owner decision 2026-11-10: 
 
 ## Unresolved questions
 
+Owner to confirm when resuming (the plan uses the lead's default until then):
+- **Modified file (audit I6).** Default: a changed file is a new version after the 1-hour settle window; the old asset is marked deleted, its backups stay; the whole-Dropbox choice warns about archive growth. Other options: (b) the same plus a per-poll threshold that holds the source and asks (for example more than 50 changed files); (c) keep the old asset live.
+- **Removing a source (audit I8).** Default: like cancelling an import (FR-115): assets with unfinished jobs are treated as deleted, fully backed-up assets stay live, and the `import-<id>` grant is deleted, so a destination added later skips what no other source holds. Other option: keep the grant (as one-time imports do) so later destinations still receive those files.
+
+Open facts for the owner's E2E:
 - Does a deleted Dropbox folder produce child `deleted` entries? Does a renamed root give `reset`, `not_found` or a `deleted` root entry? The design handles all of them `[UNVERIFIED]`; the owner's E2E will show the real shape.
 - Does Dropbox Camera Uploads keep the HEIC bytes identical to the Photos original? Owner E2E.
+- Does a Dropbox safe-save (editing a file in place) keep the file id or create a new one? Both are handled (I-2); the E2E should edit one file in place.
 - Is a 15-minute poll fast enough, or is longpoll wanted later?
+- Who aligns R8, R10 and R12 on `docs/future-continuous-sources` before it merges? Default: phase 07 does it at resume time.

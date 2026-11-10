@@ -51,10 +51,10 @@ This phase lets the owner add, show, confirm, re-sign and remove continuous Drop
    - `AppEnvironment.openImportSources` takes `mode == .oneTime` rows only.
    - New `openContinuousSources` builds adapters for open continuous rows whose grant exists.
    - `AppModel.goLive` registers both before startup recovery.
-2. Orphan grants: `CloudImportKeychain.orphanGrants(stored:rows:)` (pure) lists `import-*` items whose row is missing, or is a `cancelled` continuous row. The app deletes them at launch, with one log line counting them (audit M3).
+2. Orphan grants: `CloudImportKeychain.orphanGrants(stored:rows:)` (pure) lists `import-*` items whose row is missing, or is a `cancelled` continuous row. The app deletes them at launch, with one log line counting them (audit M3). The sweep runs only after a successful read of the source rows: today `AppEnvironment` reads them with `(try? …) ?? []` (`AppEnvironment.swift:190`), and an empty list on a failed read would delete every grant, finished imports included (re-audit M-10). A failed read skips the sweep.
 3. `AppModel+ContinuousSources.swift`:
    - `continuousSources` comes from the snapshot.
-   - `addDropboxSource(path:email:)`: run the guard, read the root id (`folderId`, nil for `""`), copy the token, call `addContinuousSource` with `config.remoteRootId`, delete the copy on failure, `requestSync(.manual)`.
+   - `addDropboxSource(path:email:)`: run the guard, read the root id (`folderId`, nil for `""`), copy the token, call `addContinuousSource` with a `SourceConfig` carrying `account: email`, `remoteItems: [path]`, `sidecarName: CloudImportText.dropboxSidecarName(path:)` and `remoteRootId`, as `AppModel+CloudImports.swift:95-98` does for imports (the launch factory reads `rootPath` from `remoteItems`; re-audit M-13), delete the copy on failure, `requestSync(.manual)`.
    - `removeContinuousSource(id)`: the engine command, then delete `import-<id>`.
    - `confirmLargeRemoval(id)`.
    - `reconnectSource(id:kind:account:)`: `reconnectImport(_:)` becomes a thin wrapper of it (same-account check, `resumeImportAfterSignIn`). The wrapper must not grow `AppModel+CloudImports.swift`.
@@ -68,7 +68,7 @@ This phase lets the owner add, show, confirm, re-sign and remove continuous Drop
    | Failed rows | "N file chưa đọc được · thử lại mỗi ngày" |
    | `unavailable` | "Không kết nối được, sẽ tự thử lại" |
    | `signInRequired` | "Cần đăng nhập lại" |
-   | `rootChanged` | "Thư mục đã bị đổi tên, chuyển hoặc xoá trên Dropbox. Gỡ nguồn này rồi chọn lại thư mục." |
+   | `rootChanged` | label "Thư mục đã đổi trên Dropbox"; detail "Thư mục đã bị đổi tên, chuyển hoặc xoá trên Dropbox. Gỡ nguồn này rồi chọn lại thư mục." |
    | `largeRemoval` | "Nhiều file biến mất khỏi Dropbox cùng lúc. Xác nhận nếu bạn đã xoá chúng; ảnh đã sao lưu vẫn ở nguyên." |
    | `diskFull` | "Chờ chỗ trống trên đĩa" |
 
@@ -85,8 +85,8 @@ This phase lets the owner add, show, confirm, re-sign and remove continuous Drop
 8. Popover: `SourcesSection` sits above `DestinationsSection` only when `continuousSources` is non-empty. It shows a Photos line and one line per source with an inline action.
 9. `OverallStatusText` reads "Đang đọc ảnh từ nguồn" / "Reading photos from sources" when ready rows exist and nothing else is working.
 10. `SyncScheduler`:
-    - The 15-minute timer also fires while a continuous source is open (`needsSourcePoll`).
-    - The 5-minute recheck covers sources with `ready > 0` or `offline/unavailable`, but not rows still waiting out the settle window (audit M6).
+    - The 15-minute timer is the disk-recheck `Timer` (`SyncScheduler.swift:33`; the background activity is hourly). Its condition becomes `diskLow || needsSourcePoll`, where `needsSourcePoll` is true while a continuous source is open.
+    - The 5-minute recheck covers sources with `ready > 0` or `offline/unavailable`, but not rows still waiting out the settle window (audit M6), and is skipped while `EngineSnapshot.uploadsHeld` is set, so a held transfer gate does not cause idle cycles (re-audit M-11).
 11. Every string uses `tr(vi:en:)`. No path, email or id goes in logs.
 
 ## Implementation steps
@@ -100,7 +100,8 @@ This phase lets the owner add, show, confirm, re-sign and remove continuous Drop
   - A new phone photo appears after the poll and settle window. It is not uploaded twice when it is also in iCloud Photos (with HEIC kept as HEIC).
   - Rename and move a file in Dropbox: nothing is uploaded.
   - Delete a file: the backup stays.
-  - Rename the watched folder: the row shows "Thư mục đã bị đổi tên…" and nothing is marked deleted.
+  - Rename the watched folder: the row shows "Thư mục đã đổi trên Dropbox" (detail "Thư mục đã bị đổi tên…") and nothing is marked deleted.
+  - Edit one file in place with a desktop editor (safe-save): one new version, no `(2)` name, no stale row.
   - Delete 60 test files: the row shows "Cần xác nhận", and Xác nhận applies the deletions.
   - Disconnect PhotoVault in Dropbox's connected apps: the row shows "Cần đăng nhập lại", and signing in resumes the source.
   - Gỡ: the row is gone, the Keychain item is gone and the backups are kept.

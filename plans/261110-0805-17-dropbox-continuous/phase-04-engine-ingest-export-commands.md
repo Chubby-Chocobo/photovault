@@ -49,11 +49,11 @@ This phase feeds the ready rows of continuous sources through the existing impor
 
 ## Requirements
 1. **Reader seam.** `ImportReader` (new) offers `probe()` and `inspect(item, mediaType, control)`. It is built from a `FolderImportSource` (by `relativePath`) or a `ContinuousSource` (by `item.remoteId`; a missing id throws `fileMissing`). `ingestBatch`, `process` and `reachable` take the reader. One-time imports build it from their folder, with no behaviour change.
-2. **Continuous ingest.** `ImportStage.run` filters one-time imports by `mode == .oneTime`. Continuous sources with status `watching` and an adapter go to `ImportStage+Continuous.ingestContinuous`:
+2. **Continuous ingest.** Phase 03 already restricts the one-time path of `ImportStage.run` to `mode == .oneTime`. Continuous sources with status `watching` and an adapter go to `ImportStage+Continuous.ingestContinuous`:
    - It returns `false` with no probe while `TransferGate.allowsNow` is false, or while no group is ready (`pendingReadyCount(readyBefore: now − 1 h)`).
    - Otherwise it checks the cooldown, runs `reachable`, then `ingestBatch` with `readyBefore`. An empty batch returns `false` and never sets `importing`. There is never a completion row.
    - `showDiskWait` accepts `watching`.
-3. **Stored hash.** In the group commit of a continuous source, each member's `remote_hash` is set to the `InspectedFile.contentHash` of the bytes read. A revived asset of a continuous source moves its `resourceMissing` skips back with `.retrySkipped`. Both live in `ImportStage+Drafts.commit`, behind `source.mode == .continuous`.
+3. **Stored hash.** In the group commit of a continuous source, each member's `remote_hash` is set to the `InspectedFile.contentHash` of the bytes read. A revived asset of a continuous source moves its `resourceMissing` skips back with `.retrySkipped`. Both live in `ImportStage+Drafts.commit`, behind `source.mode == .continuous`. When a continuous row is marked `failed` (group commit in `ImportStage+Ingest.commitGroup`), `markFailedAt` records the failure time that phase 03's daily retry reads.
 4. **Transfer gate.** `TransferGate.allowsNow(env)` (new) covers network, `pauseOnExpensiveNetwork + expensive/constrained` and `allUploadsOnlyOnACPower`.
    - `SyncCoordinator.uploadsAllowedNow` calls it and keeps its `lastNetworkOK` side effect.
    - `EngineQueries.exportCandidates` gains `continuousAllowed: Bool = true`. When it is false, assets whose source has `mode = 'continuous'` are left out.
@@ -63,13 +63,13 @@ This phase feeds the ready rows of continuous sources through the existing impor
    - `holdSource` covers `watching`. The reason maps `accessRevoked` → `signInRequired`, `rootChanged` → `rootChanged`, and anything else → `unavailable` (`ExportWorker.swift:281`).
    - `classifyFolderFailure`: for a `cancelled` continuous source, the result is `.permanent(.resourceMissing)` (its grant is gone).
 7. **Commands.**
-   - `resumeImportAfterSignIn`: an `offline` continuous source resumes to `watching`, and its holds are cleared, which also triggers the failed-row retry. `cancelImport` refuses `mode == .continuous`.
+   - `resumeImportAfterSignIn`: an `offline` continuous source resumes to `watching`, and its holds are cleared, which also triggers the failed-row retry. `cancelImport` refuses `mode == .continuous`. `cancelImport` also hands over: after it marks an asset deleted, it calls `AssetHandover.handOver(key, excluding: the import's own rows)`, so a watched source's `duplicate` row of that asset is requeued and revives it (re-audit I-3). Revival keeps the placement, so no original is uploaded twice.
    - These go in `SyncCoordinator+ContinuousSources.swift`, in the lane:
      - `addContinuousSource(source:kind:displayName:config:)`: refuses the legacy layout and a missing baseline, as `startImport` does. It writes the row (`continuous`, `watching`, with `config.remoteRootId`), then registers the adapter.
      - `removeContinuousSource(_ id)`: only for an open continuous row. It mirrors `cancelImport`, asset by asset:
        1. Pending rows become `cancelled`.
        2. Each live asset of the source with a pending, uploading or deferred job goes through `AssetHandover.retire`, with the source's own rows excluded.
-       3. Each remaining live asset of the source goes through `AssetHandover.handOver`.
+       3. Each remaining live asset of the source goes through `AssetHandover.handOver`, excluding the source's own rows (they were cancelled in step 1 and must not come back to `pending`; re-audit M-9).
        4. Camera days are recounted.
        5. The status becomes `cancelled` and the cursor NULL.
 
@@ -104,6 +104,8 @@ This phase feeds the ready rows of continuous sources through the existing impor
     - the source gets no more `changes` calls;
     - re-adding the same files reuses every asset with no original uploaded again.
   - `cancelImport` on a continuous row is refused.
+  - Cancelling a one-time import whose asset has a `duplicate` row in a watched source: the row is requeued, the watched source revives the asset, and no original is uploaded twice.
+  - Hand-over end to end: in-source copy (`/A` deleted, `/B` revives the asset with no upload); RAW deleted, JPEG kept (the JPEG is backed up as its own asset, at most one extra upload); a second watched folder takes the asset over with no upload.
   - A one-time import runs next to a continuous source and completes with exactly one activity row. Snapshot counts are right.
 - `ContinuousSourceCrashTests`: `afterImportInspectBeforeCommit` and `afterImportGroupCommit` on a continuous source leave no duplicate asset or upload. A crash during the export of a continuous asset resumes.
 

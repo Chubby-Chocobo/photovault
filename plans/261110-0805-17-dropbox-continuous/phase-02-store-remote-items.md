@@ -50,6 +50,7 @@ This phase stores remote ids, hashes, path keys, folded paths, first-seen times 
      - `items(db, sourceId, remoteIds:)`;
      - `items(db, sourceId, underPathKeys:)`: exact, using `remote_path = ? OR substr(remote_path, 1, length(?) + 1) = ? || '/'`, never `LIKE`;
      - `items(db, sourceId, foldedPrefixes:)`: every row whose `path_fold` starts with a folded `dir/stem`, exact `substr`;
+     - `items(db, sourceId, remotePaths:)`: rows whose `remote_path` is one of the listed path keys (exact), so a row that moved into a path is found even when its folded slot differs;
      - `allItems(db, sourceId)`;
      - `isFree(db, sourceId, foldedPath)`.
    - Compare-and-set writes. Each one checks `(source_id, rel_path, expected remote_id)` and returns whether it wrote:
@@ -59,8 +60,9 @@ This phase stores remote ids, hashes, path keys, folded paths, first-seen times 
      - `restoreReturned`: back to `imported` with the same asset;
      - `setRemotePath`;
      - `setRemoteHash`: written at group commit.
-   - Hand-over: `holders(db, assetKey, excluding: Set<(SourceID, String)>)` returns the `imported` and `duplicate` rows with that asset in sources whose status is open. `requeue(db, rows, groupSuffix:)` sets them to `pending` with `seen_at = NULL` and clears `asset_key`.
-   - `requeueFailed(db, sourceId)` (`failed` → `pending`, `seen_at = NULL`) and `counts` including `removed`. `pendingReadyCount(db, sourceId, readyBefore:)` counts at the group level.
+   - Hand-over: `holders(db, assetKey, excluding: Set<ItemRef>)` returns the `imported` and `duplicate` rows with that asset in sources whose status is open. `ItemRef { sourceId, relativePath }` is a small `Hashable` struct (a tuple is not `Hashable`). `requeue(db, rows, groupSuffix:)` sets them to `pending` with `seen_at = NULL`, clears `asset_key`, and in the same transaction sets every affected one-time source that is `importing` back to `scanning`. It returns the affected source ids.
+   - `markFailedAt(db, sourceId, relativePath, now)`: for a continuous row marked `failed`, `seen_at` records the failure time.
+   - `requeueFailed(db, sourceId, failedBefore: Date?)` (`failed` → `pending`, `seen_at = NULL`; nil means every failed row) and `counts` including `removed`. `pendingReadyCount(db, sourceId, readyBefore:)` counts at the group level.
 4. `SourceRepository`: `cursor(db, id)` and `setCursor(db, id, String?)`. The cursor is not a `SourceRecord` field.
 
 ## Implementation steps
@@ -71,8 +73,8 @@ This phase stores remote ids, hashes, path keys, folded paths, first-seen times 
    - Group-level `readyBefore`: a pair with one old and one new member is not offered; once ready, both are.
    - Compare-and-set refuses a stale `remote_id`.
    - `markRemoved` keeps the asset.
-   - `holders` skips closed sources and the excluded rows.
-   - `requeueFailed`, and cursor get/set.
+   - `holders` skips closed sources and the excluded rows; `requeue` moves an `importing` one-time source to `scanning` and leaves a `scanning` or continuous one alone.
+   - `remotePaths` lookup; `requeueFailed(failedBefore:)` picks only rows failed long enough ago; cursor get/set.
 2. Write the migration file and its registration, then the repository code.
 
 ## Risks and rollback

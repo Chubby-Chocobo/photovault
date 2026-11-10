@@ -51,7 +51,7 @@ This phase adds `DropboxContinuousSource: ContinuousSource` over the existing cl
    - `folderId(path:) -> String?` returns nil for `not_found`.
 3. `DropboxContentHasher`: an incremental block hasher. `download` feeds it every chunk, and the result goes in a new `DropboxDownload { file: ExportedFile, contentHash }`. The import adapter ignores the hash.
 4. `DropboxListingMapper`: extracted from `DropboxImportSource.list()`, with the same output for imports. `DropboxImportSourceTests` stay unchanged and green.
-5. `DropboxChangeCompactor`: walks entries in feed order and keeps the net state per `path_lower`. A later `deleted` entry for a folder drops the earlier entries under it. A file entry after a `deleted` for the same path wins (case-only rename, re-add).
+5. `DropboxChangeCompactor`: walks entries in feed order and keeps the net state per `path_lower`. A `deleted` entry drops the earlier entries at or under its path and is **always** emitted as `.tree`, even when a later file entry takes the same path; that later file entry is kept too. The planner turns "removal of an id listed again" into a move (case-only rename) and "another id now at this path" into removed + reuse, so no deletion is lost (re-audit I-2).
 6. `DropboxContinuousSource` (`id`, `rootPath`, `rootId: String?`, `client`, `scratchDirectory`, `metadata`):
    - `probe()`: when `rootId` is set, `folderId(root)` must equal it. A different id or `not_found` throws `rootChanged`; with no `rootId` (whole Dropbox) it uses `probeFolder("")`.
    - `changes(since: nil)`: root check, then a full recursive listing with `isComplete = true`.
@@ -81,6 +81,8 @@ This phase adds `DropboxContinuousSource: ContinuousSource` over the existing cl
     - a move (deleted old path + file with the same id);
     - a case-only rename (deleted + file with the same `path_lower`);
     - a file listed and then its folder deleted later in the same delta (the file is gone);
+    - a delete and a new file with another id at the same path in one delta (both the `.tree` and the file are emitted);
+    - a folder deleted and recreated with new files in one delta (the `.tree` and the new files are emitted);
     - deleted file and folder (`.tree` keys).
   - Root guard:
     - `reset` runs the root check, then a complete relist;

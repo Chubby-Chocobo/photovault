@@ -45,14 +45,15 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
 
 ## Requirements
 1. `SourceAvailability` (new): the helpers above, moved out of `ImportStage` with unchanged behaviour. One addition: `rootChanged` holds with reason `rootChanged` (other `SourceError`s keep `unavailable`). The import suites stay unchanged and green.
-2. `SourceRegistry.continuous(for:)`. New `SyncCoordinator+ContinuousSources.swift` with `registerContinuousSources(_:)` and `confirmLargeRemoval(_ id)`. The confirm command runs in the lane: it records a one-shot allowance in the holds, sets `watching` and clears the cooldown. Phase 04 adds the other commands to the same file.
+   - `ImportStage.run` filters its rows by `mode == .oneTime` here, not in phase 04. Without it, the import stage finds no folder adapter for a continuous row and holds it for sign-in on every cycle (`ImportStage.swift:24-36`, `SourceRegistry.swift:15`), so the feed tests below could not pass (re-audit I-4). Phase 04 adds the continuous ingest branch next to this filter.
+2. `SourceRegistry.continuous(for:)`. New `SyncCoordinator+ContinuousSources.swift` with `registerContinuousSources(_:)` and `confirmLargeRemoval(_ id)`. The confirm command runs in the lane and acts only while the source is `offline` with reason `largeRemoval`: it records a one-shot allowance bounded by the tripped count, sets `watching` and calls `clearCooldown` (never `clear`, which would also drop the allowance; re-audit I-6). Phase 04 adds the other commands to the same file.
 3. `ImportHolds` gains:
    - `notePolled` / `polledRecently`;
-   - `allowLargeRemoval` / `consumeLargeRemoval`;
-   - `noteFailedRetry` / `failedRetryDue` (24 h; nil after launch means due);
+   - `noteLargeRemoval(id, count)` (the count at the trip), `allowLargeRemoval(id)` (allowance = that count + 10 %), `consumeLargeRemoval(id, removing:) -> Bool` (true only when an allowance exists and `removing` is within it; consumed either way);
+   - `clearCooldown(id)`: forgets only the job-wide hold;
    - `forgetGroups(id)`.
 
-   `clear(id)` forgets all of them.
+   `clear(id)` forgets all of them. A relaunch or a sign-in (`clear`) loses an allowance; the brake then asks again, which is never a wedge.
 4. `ContinuousFeedStage` (`.changes`), registered at `SyncCoordinator.swift:78` with the shared holds. It runs for each source with `mode == .continuous` and an open status:
    - With no adapter, it holds for sign-in (as imports, `ImportStage.swift:30-36`). It skips a source that is cooling down, or was polled less than 60 s ago, unless the trigger is `.manual`.
    - It calls `changes(since: cursor)` through `SourceAvailability.adapter`:
@@ -65,12 +66,13 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
    - Known rows are fetched by:
      - the remote ids of the files and `.item` removals;
      - the rows under each `.tree` key (exact);
-     - the folded `dir/stem` prefixes of the wanted paths.
+     - the folded `dir/stem` prefixes of the wanted paths;
+     - `remote_path IN` the listed path keys (a row that moved into a path; re-audit I-2).
 
      A complete listing fetches every row. Then `ContinuousChangePlanner.plan` runs.
-   - **Brake:** when the count of `removed` actions is greater than `max(50, 20 % of rows not removed)` and no allowance is pending, the source holds `offline` with reason `largeRemoval`, the log gets counts only, and nothing is committed. An allowance is consumed when the next feed is applied.
-   - Actions are applied in transactions of about `env.tuning.importListBatch`, split only between paths. The last transaction also sets the cursor, `listed_at = now` and `watching` (clearing an offline reason). An empty feed still runs it. `env.reach(.afterContinuousFeedBatchCommit)` fires after every commit.
-   - Failed rows go back to pending: after the feed, when `failedRetryDue`, after a complete listing, or when the holds were cleared by a sign-in, the stage calls `requeueFailed` and `forgetGroups`, then `noteFailedRetry`.
+   - **Brake:** when the count of `removed` actions is greater than `max(50, 20 % of rows not removed)` and `consumeLargeRemoval` does not allow it, the source holds `offline` with reason `largeRemoval`, `noteLargeRemoval` stores the count, the holds get a 10-minute cooldown (`signInBackoff`, so the delta is not replanned on every poll; re-audit M-1), the log gets counts only, and nothing is committed.
+   - Actions are applied in transactions of about `env.tuning.importListBatch`, split only between base groups (folded dir + stem), so every action of a path and every row of a pair commit together (re-audit M-6). The last transaction also sets the cursor, `listed_at = now` and `watching` (clearing an offline reason). An empty feed still runs it. `env.reach(.afterContinuousFeedBatchCommit)` fires after every commit.
+   - Failed rows go back to pending after each applied feed: `requeueFailed(failedBefore: now − 24 h)` normally, `requeueFailed(failedBefore: nil)` after a complete listing or when a sign-in cleared the holds; then `forgetGroups`. The failure time is the row's `seen_at`, written when phase 04 marks it failed, so the cadence survives relaunches and FR-124's give-up (re-audit M-3).
    - Logging is counts only.
 5. `ContinuousFeedStage+Apply`, one compare-and-set function per action. A row that no longer matches is skipped and logged.
    - `insert`/`reuse`:
@@ -78,9 +80,9 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
      - `seen_at = now` when the source's `listed_at` is non-nil.
      - An insert re-checks `isFree` and takes the next `(n)` if needed.
    - `returned`:
-     - With `restore`: `restoreReturned`, then `AssetHandover.restore`.
+     - With `restore`: `AssetHandover.restore` for the primary (once per asset), then each row of the asset back to `imported` (primary or companion) when the restore worked, or to `duplicate` of the asset when another source took it over meanwhile (re-audit M-7, M-8).
      - Without: back to pending, as a `changed` row.
-   - `changed`: reset to `pending` (or `unsupported`). The group key gets the suffix `"#" + contentHash.prefix(12)` unless the row was already pending, and `seen_at = now`. Then `AssetHandover.retire` for `supersedes`.
+   - `changed`: reset to `pending` (or `unsupported`) with `seen_at = now`. The group key is `FolderItemGrouper.groupKey(rel_path)` plus the feed's token (`"#v"` + 8 hex of the SHA-256 of the new cursor), unless the row was already pending; keys never grow and a pair changed together stays one group (re-audit M-4). Then `AssetHandover.retire` for `supersedes`.
    - `moved`: `setRemotePath`.
    - `removed`: `markRemoved`, then `AssetHandover.retire` for `supersedes`.
    - The rows the plan removes or changes form the hand-over exclusion set. Dirty days are recounted once per transaction (`AssetFinalizer.recount`).
@@ -90,8 +92,9 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
      2. upserts the asset;
      3. calls `EligibilityService.recompute` (pending and deferred jobs cancelled; done jobs and destination files untouched);
      4. marks the camera day dirty;
-     5. `requeue`s `holders(key, excluding:)` with the group suffix `"#h"`.
+     5. `requeue`s `holders(key, excluding:)` with the group suffix `"#h"`; `requeue` also moves an `importing` one-time import that receives a row back to `scanning`, so it reads the row and can still complete (re-audit I-1).
    - `handOver(db, key, excluding:)`: only step 5, for a live asset that stays (used by source removal in phase 04).
+   - Exclusion sets are `Set<ItemRef>` (phase 02).
    - `restore(db, key, sourceId, relativePath, context, extensions, dirty:)`. It acts only when the asset is deleted, belongs to this source and its `local_id` is this row's retired form. It clears `deleted_at`, restores `local_id`, calls `AssetFinalizer.finalize`, and moves jobs skipped for `resourceMissing` back with `.retrySkipped`.
 7. `CrashPoint.afterContinuousFeedBatchCommit` (one case).
 8. `FakeContinuousSource` (TestSupport):
@@ -101,7 +104,7 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
    - Behaviour: the cursor is the journal position, compacted to net state per path key; deletes come as `.tree`. It counts `changes` calls and downloads. `inspect` returns `contentHash`, and `exportResource` reads `locator.remoteId`.
 
 ## Implementation steps
-1. Build `ContinuousTestKit` (engine over `FakePhotosSource`, `FakeContinuousSource`, `FakeDestination` and `TestClock`), then write the red tests.
+1. Build `ContinuousTestKit` (engine over `FakePhotosSource`, `FakeContinuousSource`, `FakeDestination` and `TestClock`), then write the red tests. Continuous ingest arrives in phase 04, so the kit seeds `imported` rows and their assets directly; phase 03 tests check rows, `deleted_at`, `local_id` and requeued rows, and the end-to-end "revived with no upload" checks run in phase 04.
 2. Extract `SourceAvailability` and run the import suites, which must pass untouched.
 3. Registry, holds, stage, apply, hand-over, crash point and fake.
 
@@ -110,20 +113,26 @@ This phase reads each continuous source's feed once per cycle. It turns the feed
   - first feed: NULL `seen_at`, cursor stored; a later addition sets `seen_at`;
   - modify, delete, move, case-only rename (no change), move out and back with an unchanged hash (restored, no download), folder delete, unmount and remount;
   - a same-name file after a move gives `stem (2).ext`; an existing `IMG (2).jpg` row gives `(3)`;
+  - delete and re-add of the same name with a new id in one delta, and a folder deleted and recreated in one delta: the old rows are removed and the new ids reuse them (no `(2)`);
+  - move out and back of a seeded RAW+JPEG pair: both rows restored, no download; with the asset taken over by another source meanwhile, both rows become `duplicate`;
   - more than 500 mixed actions, including `removed(p)` + `reuse(p)` pairs at a batch edge, give the right final rows;
   - complete listing after `expireCursor`; poll throttle;
   - offline, busy and revoked transitions, and the return to `watching`;
-  - failed rows retried after 24 h and after a sign-in;
+  - failed rows retried 24 h after their failure time (not at launch, not hourly) and at once after a sign-in or a complete listing;
   - a one-time import row is never read.
 - `ContinuousFeedSafetyTests`:
   - `replaceRoot` (rename and recreate `/Camera Uploads`) then `expireCursor`: 0 rows removed, `offline/rootChanged`, cursor unchanged;
   - `deleteRoot`: the same;
-  - deleting 60 of 100 files trips the brake (`largeRemoval`, nothing committed); `confirmLargeRemoval` applies it once; a second large removal trips again;
+  - deleting 60 of 100 files trips the brake (`largeRemoval`, nothing committed, 10-minute cooldown, no second planning inside it); `confirmLargeRemoval` clears the cooldown and the next feed applies once; a second large removal trips again;
+  - confirm, then a sign-in before the next feed: the brake trips again and confirming again works (never wedged);
+  - confirm 60, then a feed removing 90: trips again (the allowance is bounded);
+  - `confirmLargeRemoval` on a source that is not held for `largeRemoval` does nothing;
   - 40 of 1 000 is applied without a stop.
 - `ContinuousHandoverTests`:
-  - in-source copy: `/A/x.jpg` primary, `/B/x.jpg` duplicate; deleting `/A` revives the asset under `/B` with no upload;
-  - RAW deleted, JPEG kept: the JPEG becomes its own asset and is never lost;
-  - a second watched folder holding a duplicate takes the asset over;
+  - in-source copy: `/A/x.jpg` primary, `/B/x.jpg` duplicate; deleting `/A` retires the asset and requeues `/B` with `seen_at = NULL`;
+  - RAW deleted, JPEG kept: the JPEG row is requeued as its own group;
+  - a second watched folder holding a duplicate gets its row requeued;
+  - a one-time import in `importing` with a duplicate row: the row is requeued, the import goes back to `scanning`, the existing import stage reads the row (revives the asset) and the import then completes with one activity row;
   - the excluded rows of the same plan are not requeued;
   - a closed one-time import's duplicate row is untouched (documented limit).
 - `ContinuousFeedCrashTests`:
