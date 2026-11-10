@@ -55,12 +55,12 @@ import Testing
             #expect(items.count == 1 && !items[0].isEnabled)
             #expect(items[0].help.contains(provider == .googleDrive ? "Google" : "Dropbox"))
             // The reason is in the title itself: a disabled menu item may not show its tooltip.
-            #expect(items[0].title == (provider == .googleDrive ? "Từ Google Drive… (cần cài Google Drive cho máy tính)" : "Từ Dropbox… (cần cài ứng dụng Dropbox)"))
+            #expect(items[0].title == (provider == .googleDrive ? "Từ Google Drive (cần cài Google Drive cho máy tính)" : "Từ Dropbox (cần cài ứng dụng Dropbox)"))
         }
         en {
             let items = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: false)
-            #expect(items[0].title == "From Dropbox… (install the Dropbox app)")
-            #expect(ImportMenuChoices.items(.googleDrive, appPresent: false, browserConfigured: false)[0].title == "From Google Drive… (install Google Drive for desktop)")
+            #expect(items[0].title == "From Dropbox (install the Dropbox app)")
+            #expect(ImportMenuChoices.items(.googleDrive, appPresent: false, browserConfigured: false)[0].title == "From Google Drive (install Google Drive for desktop)")
         }
     }
 
@@ -77,7 +77,7 @@ import Testing
         vi {
             let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
             #expect(items.map(\.action) == [.syncedFolder, .browser, .signOut])
-            #expect(items[1].title == "Dropbox qua trình duyệt… · ten@x.com")
+            #expect(items[1].title == "Dropbox qua trình duyệt (ten@x.com)…")
             #expect(items[2].title == "Đăng xuất Dropbox (ten@x.com)")
             #expect(items[2].help == "Các lần nhập đang có vẫn giữ quyền đọc riêng của chúng.")
             #expect(items[0].title == "Dropbox trên máy này…")
@@ -98,7 +98,7 @@ import Testing
             let out = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedOut)
             #expect(out.map(\.title) == ["Từ Dropbox…"] && out[0].help == "Chưa đăng nhập — sẽ mở trình duyệt để đăng nhập")
             let signedIn = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
-            #expect(signedIn.map(\.title) == ["Từ Dropbox… · ten@x.com", "Đăng xuất Dropbox (ten@x.com)"])
+            #expect(signedIn.map(\.title) == ["Từ Dropbox (ten@x.com)…", "Đăng xuất Dropbox (ten@x.com)"])
         }
     }
 
@@ -127,10 +127,39 @@ import Testing
     @Test func englishTexts() {
         en {
             let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: .signedIn(email: "ten@x.com"))
-            #expect(items[1].title == "Dropbox in the browser… · ten@x.com")
+            #expect(items[1].title == "Dropbox in the browser (ten@x.com)…")
             #expect(items[2].title == "Sign out of Dropbox (ten@x.com)")
             let out = ImportMenuChoices.items(.dropbox, appPresent: false, browserConfigured: true, dropbox: .signedOut)
             #expect(out[0].help == "Not signed in — opens the browser to sign in")
         }
+    }
+
+    // MARK: Enabled states
+
+    func enabled(_ items: [ImportMenuChoices.Item]) -> [ImportMenuChoices.Action: Bool] {
+        Dictionary(uniqueKeysWithValues: items.map { ($0.action, $0.isEnabled) })
+    }
+
+    @Test func importItemsWaitForTheFirstSetupButSignOutDoesNot() {
+        let state = ImportMenuChoices.DropboxState.signedIn(email: "ten@x.com")
+        let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: state, canStartImport: false)
+        #expect(enabled(items) == [.syncedFolder: false, .browser: false, .signOut: true])
+    }
+
+    @Test func aRunningBrowserFlowLocksTheBrowserAndSignOutButNotTheSyncedFolder() {
+        let state = ImportMenuChoices.DropboxState.signedIn(email: "ten@x.com")
+        let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: state, flowBusy: true)
+        #expect(enabled(items) == [.syncedFolder: true, .browser: false, .signOut: false])
+    }
+
+    @Test func everythingIsEnabledWhenIdle() {
+        let state = ImportMenuChoices.DropboxState.signedIn(email: nil)
+        let items = ImportMenuChoices.items(.dropbox, appPresent: true, browserConfigured: true, dropbox: state)
+        #expect(enabled(items) == [.syncedFolder: true, .browser: true, .signOut: true])
+    }
+
+    @Test func aDisabledReasonItemStaysDisabledWhateverTheState() {
+        let items = ImportMenuChoices.items(.googleDrive, appPresent: false, browserConfigured: false, canStartImport: true, flowBusy: false)
+        #expect(items.map(\.isEnabled) == [false])
     }
 }

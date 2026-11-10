@@ -51,7 +51,8 @@ struct SourcesTab: View {
     private func providerItems(_ provider: SyncedCloudProvider, browserConfigured: Bool, openBrowser: @escaping () -> Void) -> some View {
         ForEach(ImportMenuChoices.items(
             provider, appPresent: model.syncedAvailable(provider), browserConfigured: browserConfigured,
-            dropbox: provider == .dropbox ? (model.dropboxSignedIn ? .signedIn(email: model.dropboxEmail) : .signedOut) : .notApplicable), id: \.title) { item in
+            dropbox: provider == .dropbox ? (model.dropboxSignedIn ? .signedIn(email: model.dropboxEmail) : .signedOut) : .notApplicable,
+            canStartImport: model.canStartImport, flowBusy: model.cloudFlowBusy), id: \.title) { item in
             Button(item.title) {
                 switch item.action {
                 case .syncedFolder: model.importFromSyncedFolder(provider)
@@ -59,7 +60,7 @@ struct SourcesTab: View {
                 case .signOut: model.signOutDropbox()
                 }
             }
-            .disabled(!item.isEnabled || (item.action != .syncedFolder && item.action != .signOut && model.cloudFlowBusy))
+            .disabled(!item.isEnabled)
             .help(item.help)
         }
     }
@@ -121,6 +122,7 @@ struct SourcesTab: View {
             HStack {
                 Menu {
                     Button(tr(vi: "Từ thư mục trên Mac…", en: "From a folder on this Mac…")) { model.importFolder() }
+                        .disabled(!model.canStartImport)
                     providerItems(.googleDrive, browserConfigured: model.googleImportAvailable) { showGoogleExplainer = true }
                     providerItems(.dropbox, browserConfigured: model.dropboxImportAvailable) { openDropboxBrowser() }
                 } label: {
@@ -128,7 +130,8 @@ struct SourcesTab: View {
                 }
                 .menuStyle(.button)
                 .fixedSize()
-                .disabled(!model.canStartImport)
+                // Stays usable while signed in to Dropbox so that "Đăng xuất Dropbox" is always reachable.
+                .disabled(!model.canStartImport && !model.dropboxSignedIn)
                 if !model.canStartImport {
                     Text(tr(vi: "Hoàn tất thiết lập ban đầu trước.", en: "Finish the first setup first.")).font(.caption).foregroundStyle(.secondary)
                 }
