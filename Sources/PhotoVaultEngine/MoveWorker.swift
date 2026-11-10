@@ -151,6 +151,13 @@ actor MoveWorker {
         let rootId = FolderRefResolver.rootId(record)
         guard let folder = try await env.store.read({ db in try RemoteFolderRepository.fetch(db, destinationId: id, logicalPath: path) })
         else { try await discard(move); return .none }
+        // A rename queued for a folder that has been relabelled since (its path now means another folder)
+        // must not rename that other folder.
+        guard NameSanitizer.collisionKey(folder.displayName) == NameSanitizer.collisionKey(move.fromValue) else {
+            env.log.log(.notice, category: "move", "stale folder rename discarded dest=\(id)")
+            try await discard(move)
+            return .none
+        }
         guard folder.created, folder.remoteId != nil else {
             // Not created yet: it will be created under its new name, so the owner sees no rename.
             try await env.store.write { db in try MoveCommit.rename(db, move: move, folder: folder, newRemoteId: nil) }

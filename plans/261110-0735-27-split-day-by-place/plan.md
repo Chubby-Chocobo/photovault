@@ -206,7 +206,7 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - Review later: no
 
 ### A Drive backup added after a local recovery (lead addendum)
-- Chosen: Drive's `pvLogical` and folder ids are the truth. A local recovery that had to guess (fallback rule: first folder by name is the main one) marks the day provisional (`kv.slots_provisional:<day>`, `ProvisionalSlots`). When a Drive destination is recovered later (added later, or offline from the start), it skips binding by name for those days and binds by `pvLogical`; then the database is rebound to Drive's slots by display name: `remote_folder` rows and `upload_job.remote_logical_parent` of every destination, `asset.place_slot`, `day_stat` and `day_place` are rewritten in one transaction (two phases, so swaps work), and the flag is cleared. Drive files never move. The common case (Drive recovers first, local waits) needs no rebinding.
+- Chosen: Drive's `pvLogical` and folder ids are the truth. A local recovery that had to guess (fallback rule: first folder by name is the main one) marks the day provisional (`kv.slots_provisional:<day>`, `ProvisionalSlots`). When a Drive destination is recovered later (added later, or offline from the start), it skips binding by name for those days and binds by `pvLogical`; then, after the 50% match guard, the database is rebound to Drive's slots: each Drive folder takes the slot that holds most of its matched assets (`upload_job.remote_logical_parent`), and the display name settles what is left: `remote_folder` rows and `upload_job.remote_logical_parent` of every destination, `asset.place_slot`, `day_stat` and `day_place` are rewritten in one transaction (two phases, so swaps work), and the flag is cleared. Drive files do not move while both destinations hold the same assets, and a Drive folder with a drifted name is renamed. Open `move_job`s (renames by subject, moves by path) follow the rebound paths, and a rename whose `fromValue` is not the folder's name is discarded. The common case (Drive recovers first, local waits) needs no rebinding.
 - Tests: `aDriveBackupAddedAfterTheNASWasRecoveredRebindsTheNASToDrivesSlots`, `aDriveThatWasOfflineFromTheStartRebindsTheNASWhenItComesBack`; both assert zero `move_job`s, equal folder names on both destinations and the NAS rows on Drive's paths.
 - Known limit: a local folder whose name matches no Drive folder keeps its guessed path (or a fresh `r…` slot if a Drive folder claims it). When Drive is added after a NAS-only recovery and the names differ, the main group can move on Drive (up to the whole main group), not only the renamed folder; no names are duplicated and nothing is lost.
 - Review later: yes
@@ -298,3 +298,11 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - `reserved` runs the same destination-filtered queries the test explains (`openRenamesSQL`, `folderNamesSQL`); the timing bound is 10 s.
 - The ordering in the recovery cycle (Drive first) is only an optimisation next to the wait; nothing tests it separately.
 - Review later: no
+
+### Verification review, second round (2026-11-10)
+- Rebinding maps by membership first (the slot holding most of a Drive folder's matched assets), by name second; a drifted Drive folder name is renamed (`renameDriftedFolders`), so a renamed main or extra folder at the loss moves no Drive file.
+- Rebinding runs after the match guard; a day whose target path is already used by a `remote_folder` row outside the rebind is left provisional and logged.
+- No provisional flag is written once a Drive destination is probed and not awaiting recovery; a timezone restore clears the flags.
+- Open `renameFolder` jobs are remapped to the rebound subject, open `moveFile` jobs to the rebound paths, and `MoveWorker` discards a rename whose `fromValue` differs from the folder's current name.
+- Known limit found while testing: a local folder with an unknown name, recovered after Drive, next to folders Drive already knows, falls back to a slot another folder holds; it is refused as a conflict and its files are not adopted, so the recovery asks the owner. Nothing is moved or lost.
+- Review later: yes

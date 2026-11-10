@@ -178,13 +178,9 @@ actor RecoveryService {
         let provisional = try await env.store.read { db in try ProvisionalSlots.days(db) }
         let bound = DaySlotBinding.bind(inventory, known: known, rows: rows, isDrive: isDrive, provisionalDays: provisional)
         inventory = bound.inventory
-        if isDrive, !provisional.isEmpty {
-            // Drive's slots are the truth: what a local recovery guessed is rebound to them, and nothing moves at Drive.
-            let truth = inventory.folders
-            try await env.store.write { db in try ProvisionalSlots.resolve(db, truth: truth, days: provisional) }
-        }
         var stats = RecoveryStats()
         stats.found = try await walkedFileCount(record: record, destination: destination)
+        var resolvedDays: [ArchiveDay] = []
         let matches = try await RecoveryMatcher(env: env, record: record, timeZone: zone).match(inventory)
         stats.matched = matches.files.count
         stats.unmatched = matches.unmatched.count
@@ -194,14 +190,28 @@ actor RecoveryService {
             try await askOwner(record.id, stats: stats)
             return .needsOwnerDecision(stats)
         }
+        if isDrive, !provisional.isEmpty {
+            // Drive's slots are the truth: what a local recovery guessed is rebound to them, and nothing moves at Drive.
+            let truth = inventory.folders
+            let files = matches.files.compactMap { file in file.entry.parentLogical.map { (asset: file.assetKey, folder: $0) } }
+            let resolution = try await env.store.write { db in try ProvisionalSlots.resolve(db, truth: truth, days: provisional, files: files) }
+            resolvedDays = resolution.resolved
+            if resolution.skipped > 0 { env.log.log(.notice, category: "recovery", "destination=\(record.id) days left provisional=\(resolution.skipped)") }
+        }
         let writer = RecoveryWriter(env: env, record: record, timeZone: zone)
         try await writer.releaseUnconfirmedPlacements()
         let daysWithRows = try await env.store.read { db in try DayPlaceRepository.days(db) }
         let folders = try await writer.writeFolders(inventory.folders, listedIds: Set(inventory.folders.map(\.remoteId)))
         stats.folders = folders.written
+        if !resolvedDays.isEmpty {
+            let id = record.id
+            let now = env.clock.now
+            let days = resolvedDays
+            try await env.store.write { db in try ProvisionalSlots.renameDriftedFolders(db, destinationId: id, days: days, now: now) }
+        }
         stats.folderConflicts = bound.conflicts + folders.conflicts
         if stats.folderConflicts > 0 { try await reportFolderConflicts(record.id, count: stats.folderConflicts) }
-        if !bound.guessed.isEmpty {
+        if !bound.guessed.isEmpty, !(try await driveIsRecovered()) {
             let guessed = bound.guessed
             try await env.store.write { db in try ProvisionalSlots.mark(db, guessed) }
         }
@@ -221,7 +231,20 @@ actor RecoveryService {
             try db.execute(sql: "DELETE FROM day_stat")
             try DayPlaceRepository.deleteAll(db)
             try AssetPlacementRepository.clearPlaceSlots(db)
+            try ProvisionalSlots.clear(db)
         }
+    }
+
+    /// A Drive destination that has been looked at and holds nothing to recover (or has been recovered):
+    /// its slots are settled, so a local guess needs no later correction.
+    private func driveIsRecovered() async throws -> Bool {
+        let candidates = try await env.store.read { db in
+            try DestinationRepository.fetchAll(db).filter { record in
+                try !record.recoveryRequired && KeyValueRepository.int(db, RecoveryTriggers.probeKey + record.id.rawValue) == 1
+            }.map(\.id)
+        }
+        for id in candidates where await supportsAppProperties(id) { return true }
+        return false
     }
 
     /// What the database knows about the camera days listed at a destination, for `DaySlotBinding`.
