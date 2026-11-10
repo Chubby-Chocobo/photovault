@@ -28,10 +28,44 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
     private var oneShots: [String: StubResponse] = [:]
     private var inFlight = 0
     private var peak = 0
+    private var held: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var holding = false
+    private var answeredCount = 0
     var pageSize = 1000
     /// Each answer takes this long, so overlapping requests can be seen.
     var latency: Duration = .zero
     let validToken = LockedBox("token-1")
+
+    /// Every request waits, without a timer, until `releaseAnswers()`; a cancelled request stops waiting.
+    func holdAnswers() { lock.withLock { holding = true } }
+    func releaseAnswers() {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            holding = false
+            defer { held = [:] }
+            return Array(held.values)
+        }
+        waiting.forEach { $0.resume() }
+    }
+    /// Requests that were answered (not still held, not cancelled while held).
+    var answered: Int { lock.withLock { answeredCount } }
+
+    private func waitWhileHeld() async throws {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.withLock { () -> Bool in
+                    guard holding else { return true }
+                    held[id] = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        } onCancel: {
+            let waiting = lock.withLock { held.removeValue(forKey: id) }
+            waiting?.resume()
+        }
+        try Task.checkCancellation()
+    }
 
     func add(_ node: Node) { lock.withLock { nodes[node.id] = node; order.append(node.id) } }
     func remove(_ id: String) { lock.withLock { nodes[id] = nil } }
@@ -57,6 +91,8 @@ final class ImportDriveStub: HTTPTransport, @unchecked Sendable {
         }
         defer { lock.withLock { inFlight -= 1 } }
         if latency > .zero { try await Task.sleep(for: latency) }
+        try await waitWhileHeld()
+        lock.withLock { answeredCount += 1 }
         let url = request.url!
         let response = route(request, url)
         return (response.body, response.http(for: url))

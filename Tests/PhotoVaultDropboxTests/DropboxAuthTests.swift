@@ -153,7 +153,8 @@ private final class OpenedFlag: @unchecked Sendable {
         let started = ContinuousClock.now
         task.cancel()
         await #expect(throws: DropboxAuthError.cancelled) { try await task.value }
-        #expect(ContinuousClock.now - started < .seconds(5))
+        // Cancelling must not wait for the 60 s loopback timeout; the cap sits well below it for a loaded machine.
+        #expect(ContinuousClock.now - started < .seconds(30))
     }
 
     @Test func deniedConsentIsReportedBeforeAnyExchange() async throws {

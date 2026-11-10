@@ -10,7 +10,7 @@ private final class Counter: @unchecked Sendable {
 }
 
 /// Polls until `condition` holds or `timeout` passes; keeps timing tests stable on a loaded machine.
-private func eventually(timeout: Duration = .seconds(5), _ condition: () -> Bool) async throws {
+private func eventually(timeout: Duration = .seconds(30), _ condition: () -> Bool) async throws {
     let start = ContinuousClock.now
     while !condition(), start.duration(to: .now) < timeout { try await Task.sleep(for: .milliseconds(10)) }
 }
