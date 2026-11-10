@@ -1,7 +1,7 @@
 ---
 phase: "04"
 title: "Engine: slot-aware LayoutResolver plumbing"
-status: pending
+status: completed
 priority: P2
 size: M
 human_effort: 0.5-1h

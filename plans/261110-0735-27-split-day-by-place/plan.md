@@ -55,7 +55,7 @@ Camera Uploads/
 | 01 | [Store: slot column, day_place table, move index, newer-schema guard](phase-01-store-slot-and-day-place.md) | Completed | L | — |
 | 02 | [Core: PlaceSplitPolicy (grouping)](phase-02-core-place-split-policy.md) | Completed | M | — |
 | 03 | [Core: DaySlotPolicy and slot-aware layout](phase-03-core-day-slot-policy-and-layout.md) | Completed | M | 02 |
-| 04 | [Engine: slot-aware LayoutResolver plumbing](phase-04-engine-layout-plumbing.md) | Pending | M | 01, 03 |
+| 04 | [Engine: slot-aware LayoutResolver plumbing](phase-04-engine-layout-plumbing.md) | Completed | M | 01, 03 |
 | 05 | [Engine: split evaluation and move planning](phase-05-engine-split-evaluation.md) | Pending | L | 04 |
 | 06 | [Engine: move crash points, pass cap, late arrivals](phase-06-engine-moves-and-late-arrivals.md) | Pending | M | 05 |
 | 07 | [Engine: recovery of split days](phase-07-engine-recovery.md) | Pending | L | 05 |
@@ -175,6 +175,12 @@ Dependency graph: `01 ∥ 02 → 03 → 04 (needs 01) → 05 → {06 ∥ 07} →
 - Alternatives: today's behaviour (bare date while waiting).
 - Why: today a folder created while waiting gets the bare date and is never renamed back, because `renamed = name != stat.placeName` is false. With splits it could also collide with an unnamed extra folder (audit M11). This intentionally fixes a latent naming bug; it never causes a move.
 - Review later: no
+
+### Names still on disk block reuse (implementation of slot matching)
+- Chosen: when a group's display name is held by a slot that another group already owns under a different final name (a name still on disk during a rename, or vacated in the same run), `DaySlotPolicy` places the group in that slot and lists its index in `DaySlotPlan.deferredGroups`. Pass 3 gives the free main folder to the first remaining group even when the main folder has a name of a group that no longer exists (the table's case 12 therefore ends with the renamed group in the main folder, not in a lengthened `p…` slot).
+- Alternatives: give the group a new folder with the contested name (two logical folders, one directory); drop the group.
+- Why: invariants (a) and (b) cannot both hold for such a group. Sharing a folder until the rename ran moves the least. Phase 05 must treat `deferredGroups` as "keep the current slot, re-evaluate after the renames".
+- Review later: yes
 
 ### Decision record number
 - Chosen: `docs/decisions/0028-split-day-by-place.md`.

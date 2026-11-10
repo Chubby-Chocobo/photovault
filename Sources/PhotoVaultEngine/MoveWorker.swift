@@ -121,8 +121,8 @@ actor MoveWorker {
         guard let identity = JobIdentity(subject: move.subject, destinationId: record.id) else { try await discard(move); return .none }
         let loaded: (job: UploadJob, chain: [FolderLevel])? = try await env.store.read { db in
             guard let job = try JobRepository.fetch(db, identity: identity), let asset = try AssetRepository.fetch(db, key: identity.assetKey),
-                  let placement = asset.placement else { return nil }
-            return (job, try LayoutResolver.chain(db, placement: placement, layout: layout))
+                  asset.placement != nil else { return nil }
+            return (job, try LayoutResolver.chain(db, asset: asset, layout: layout))
         }
         // A job that lost its file (re-upload, narrowing) has nothing to move.
         guard let loaded, let remoteId = loaded.job.remoteId, let name = loaded.job.remoteName,

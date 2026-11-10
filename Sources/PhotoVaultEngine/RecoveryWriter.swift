@@ -167,8 +167,8 @@ struct RecoveryWriter: Sendable {
                 sql: "UPDATE resource SET size_bytes = ? WHERE asset_key = ? AND res_type = ? AND size_bytes IS NULL",
                 arguments: [size, file.assetKey.rawValue, file.resType.rawValue])
         }
-        if job.state == .done, let placement = placed.placement, let from = job.remoteLogicalParent {
-            let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, placement: placement, layout: context.layout))
+        if job.state == .done, placed.placement != nil, let from = job.remoteLogicalParent {
+            let target = LayoutResolver.parentLogical(try LayoutResolver.chain(db, asset: placed, layout: context.layout))
             try MoveJobPlanner.enqueueMove(db, identity: identity, from: from, to: target, now: context.now)
         }
         return suspect ? .suspect : .applied
