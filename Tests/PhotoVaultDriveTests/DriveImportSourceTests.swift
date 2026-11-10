@@ -55,6 +55,39 @@ func md5(_ data: Data) -> String { Insecure.MD5.hash(data: data).map { String(fo
         #expect(entries.first?.uti == "com.apple.quicktime-movie")
     }
 
+    @Test func readsEveryLevelOfANestedTree() async throws {
+        let rig = try ImportRig()
+        rig.stub.pageSize = 2
+        rig.stub.add(.init(id: "F", name: "Root", mime: DriveMime.folder))
+        var parent = "F"
+        var expected: [String] = []
+        var path = "Root"
+        for level in 1...4 {
+            let folder = "L\(level)"
+            rig.stub.add(.init(id: folder, name: "Level \(level)", mime: DriveMime.folder, parent: parent))
+            path += "/Level \(level)"
+            for n in 1...3 {
+                rig.stub.add(.init(id: "\(folder)-\(n)", name: "p\(n).jpg", parent: folder, content: Data(count: n)))
+                expected.append("\(path)/p\(n).jpg")
+            }
+            parent = folder
+        }
+        let entries = try await rig.source(["F"]).listFiles()
+        #expect(Set(entries.map(\.relativePath)) == Set(expected))
+        #expect(entries.count == 12)
+    }
+
+    @Test func aFilePickedAndAlsoInsideAPickedFolderIsListedOnce() async throws {
+        let rig = try ImportRig()
+        rig.stub.add(.init(id: "F", name: "Trip", mime: DriveMime.folder))
+        rig.stub.add(.init(id: "A", name: "a.jpg", parent: "F", content: Data(count: 1)))
+        rig.stub.add(.init(id: "B", name: "b.jpg", parent: "F", content: Data(count: 2)))
+        let entries = try await rig.source(["F", "A"]).listFiles()
+        #expect(entries.map(\.relativePath) == ["Trip/a.jpg", "Trip/b.jpg"])
+        let reversed = try await rig.source(["A", "F"]).listFiles()
+        #expect(reversed.map(\.relativePath) == ["Trip/a.jpg", "Trip/b.jpg"])
+    }
+
     @Test func singlePickedFolderNameOnlyForOneFolder() async throws {
         let rig = try ImportRig()
         rig.stub.add(.init(id: "F", name: " Trip 2024 ", mime: DriveMime.folder))

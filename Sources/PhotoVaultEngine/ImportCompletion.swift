@@ -16,6 +16,10 @@ enum ImportCompletion {
             return tr(vi: "Đã huỷ nhập 1 thư mục: \(new) file mới, \(known) đã có sẵn, \(skipped) bỏ qua, \(failed) lỗi",
                       en: "Folder import cancelled: \(new) new, \(known) already backed up, \(skipped) skipped, \(failed) failed")
         }
+        if counts.values.reduce(0, +) == 0 {
+            return tr(vi: "Nhập xong 1 thư mục nhưng không có ảnh hay video nào mà app đọc được",
+                      en: "Folder import finished, but it had no photos or videos the app could read")
+        }
         return tr(vi: "Đã nhập xong 1 thư mục: \(new) file mới, \(known) đã có sẵn, \(skipped) bỏ qua, \(failed) lỗi",
                   en: "Folder import finished: \(new) new, \(known) already backed up, \(skipped) skipped, \(failed) failed")
     }
