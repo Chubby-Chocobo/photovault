@@ -207,7 +207,8 @@ public enum AssetRepository {
             firstSeenAt: try row.require("first_seen_at", table: table),
             lastSeenAt: try row.require("last_seen_at", table: table),
             deletedAt: row["deleted_at"],
-            sourceId: try row.parse("source_id", table: table) { (raw: String) in SourceID(rawValue: raw) })
+            sourceId: try row.parse("source_id", table: table) { (raw: String) in SourceID(rawValue: raw) },
+            placeSlot: row["place_slot"])
     }
 
     /// A live asset that has a resource with this SHA-256 (an exported Photos asset, or an earlier import).

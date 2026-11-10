@@ -112,8 +112,13 @@ extension AppModel {
             let record = try await commit(pending)
             try await env.coordinator.destinationAdded(record.id)
             if pending.isReuse, let hardening {
-                let report = try await hardening.startRecovery(record.id)
-                showNotice(tr(vi: "Đã khôi phục: ghép \(VietnameseFormat.integer(report.matchedFiles)) file từ thư mục.", en: "Recovered: matched \(L10n.plural(report.matchedFiles, one: "\(VietnameseFormat.integer(report.matchedFiles)) file", other: "\(VietnameseFormat.integer(report.matchedFiles)) files")) from the folder."))
+                do {
+                    let report = try await hardening.startRecovery(record.id)
+                    showNotice(tr(vi: "Đã khôi phục: ghép \(VietnameseFormat.integer(report.matchedFiles)) file từ thư mục.", en: "Recovered: matched \(L10n.plural(report.matchedFiles, one: "\(VietnameseFormat.integer(report.matchedFiles)) file", other: "\(VietnameseFormat.integer(report.matchedFiles)) files")) from the folder."))
+                } catch RecoveryCommandError.notReady(.waitingForDrive) {
+                    // The folder is added; the engine recovers it right after Drive.
+                    showNotice(RecoveryCommandError.notReady(.waitingForDrive).message)
+                }
             } else {
                 showNotice(tr(vi: "Đã thêm “\(record.displayName)”.", en: "Added “\(record.displayName)”."))
             }

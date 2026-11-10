@@ -51,7 +51,7 @@ import Testing
         #expect(await h.geocoder.requestCount == 2)
     }
 
-    @Test func t28TwoProvincesGiveNoNameAndAnImportDropsAnExistingName() async throws {
+    @Test func t28TwoProvincesGiveTwoFoldersAndAnImportAddsAFolder() async throws {
         let h = try await harness()
         await h.geocoder.seed(daLat, en: daLatEnglish, local: daLatVietnamese)
         await h.geocoder.seed(hanoi, en: hanoiEnglish, local: hanoiVietnamese)
@@ -62,9 +62,12 @@ import Testing
 
         await h.add(h.snapshot("far", daysAgo: 3, location: hanoi))
         await h.settle()
-        #expect(try h.dayStat(organizationDay)?.placeState == .unnamed)
-        #expect(await dayFolders(h.drive) == [organizationDay.description], "the place was dropped from the folder name")
-        #expect(await h.backupPaths(h.drive).allSatisfy { $0.hasPrefix("Camera Uploads/\(organizationDay)/") })
+        let stat = try #require(try h.dayStat(organizationDay))
+        #expect(stat.placeState == .named && stat.placeName == "Đà Lạt", "the largest group keeps the main folder")
+        #expect(Set(await dayFolders(h.drive)) == ["\(organizationDay) Đà Lạt", "\(organizationDay) Hà Nội"])
+        let paths = await h.backupPaths(h.drive)
+        #expect(paths.filter { $0.hasPrefix("Camera Uploads/\(organizationDay) Hà Nội/") }.count == 1)
+        #expect(paths.filter { $0.hasPrefix("Camera Uploads/\(organizationDay) Đà Lạt/") }.count == 11)
     }
 
     @Test func aDayThatHasNotEndedForSixHoursIsNotNamedYet() async throws {

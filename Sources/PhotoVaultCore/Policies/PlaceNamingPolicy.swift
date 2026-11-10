@@ -5,11 +5,18 @@ public struct PlaceAsset: Hashable, Sendable {
     public var location: GeoPoint?
     public var isHidden: Bool
     public var isDeleted: Bool
+    /// Identifies the asset in a split result; empty where only the location matters.
+    public var id: String
+    public var creationDate: Date?
 
-    public init(location: GeoPoint?, isHidden: Bool = false, isDeleted: Bool = false) {
+    public init(
+        location: GeoPoint?, isHidden: Bool = false, isDeleted: Bool = false, id: String = "", creationDate: Date? = nil
+    ) {
         self.location = location
         self.isHidden = isHidden
         self.isDeleted = isDeleted
+        self.id = id
+        self.creationDate = creationDate
     }
 }
 
@@ -98,6 +105,9 @@ public enum PlaceNamingPolicy {
         var area: String
         var key: String { "\(iso)|\(area)" }
     }
+
+    /// `<ISO>|<administrativeArea>` of a geocode, the key `day_stat.place_key` carries; nil without both.
+    public static func identityKey(_ place: GeoPlace) -> String? { identity(place)?.key }
 
     static func identity(_ place: GeoPlace) -> PlaceIdentity? {
         guard let iso = place.isoCountryCode?.trimmingCharacters(in: .whitespaces), !iso.isEmpty,

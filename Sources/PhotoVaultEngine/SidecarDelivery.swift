@@ -16,7 +16,7 @@ extension UploadAttempt {
                   let file = try SidecarFactory.build(
                     db, asset: asset, destinationId: id.destinationId, type: id.resType, settings: snapshot.settings,
                     timeZone: snapshot.timeZone, nameBuilder: builder) else { return nil }
-            let chain = try LayoutResolver.chain(db, placement: placement, layout: layout)
+            let chain = try LayoutResolver.chain(db, asset: asset, layout: layout)
             return (file, UploadPlan(
                 asset: asset, chain: chain, parentLogical: LayoutResolver.parentLogical(chain),
                 fileName: NameStemBuilder.sidecarName(stem: placement.nameStem, type: id.resType),

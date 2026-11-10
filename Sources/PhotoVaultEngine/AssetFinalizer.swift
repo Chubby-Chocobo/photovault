@@ -17,7 +17,44 @@ enum PlacementAllocator {
         let day: PlacementDay = asset.creationDate.map { .day(ArchiveDay(date: $0, timeZone: context.timeZone)) } ?? .unknown
         let placement = try AssetPlacementRepository.allocatePlacement(
             db, assetKey: asset.assetKey, baseStem: base, category: category, day: day, now: context.now)
+        if category == .camera, let archiveDay = day.archiveDay, try DayPlaceRepository.exists(db, day: archiveDay) {
+            let slot = try slotForLateArrival(db, asset: asset, day: archiveDay)
+            if slot != nil { try AssetPlacementRepository.setPlaceSlot(db, key: asset.assetKey, slot: slot) }
+        }
         return (placement, category == .camera ? day.archiveDay : nil)
+    }
+
+    /// A photo placed on a day that is already split has no file yet, so any slot costs nothing; `PlaceNamer`
+    /// corrects a wrong guess later. The province of its cell decides when that is known, otherwise the
+    /// photo nearest in time does (a tie goes to the earlier one). nil is the main folder.
+    private static func slotForLateArrival(_ db: Database, asset: AssetRecord, day: ArchiveDay) throws -> String? {
+        if let cell = asset.geoCell ?? asset.location.map(GeoCell.init),
+           let english = try GeoCacheRepository.fetch(db, cell: cell, locale: "en")?.place,
+           let key = PlaceNamingPolicy.identityKey(english) {
+            if try DayStatRepository.fetch(db, day: day)?.placeKey == key { return nil }
+            if let row = try DayPlaceRepository.fetchAll(db, day: day).first(where: { $0.placeKey == key }) { return row.slot }
+        }
+        guard let created = asset.creationDate else { return nil }
+        // Only the photos just before, at and just after the new one can be nearest.
+        let base = """
+            SELECT place_slot, creation_date, asset_key FROM asset
+            WHERE placement_category = 'camera' AND placement_day = ? AND deleted_at IS NULL AND asset_key != ?
+            """
+        let arguments: [any DatabaseValueConvertible] = [day.description, asset.assetKey.rawValue]
+        let candidates = try [
+            Row.fetchOne(db, sql: base + " AND creation_date < ? ORDER BY creation_date DESC, asset_key LIMIT 1", arguments: StatementArguments(arguments + [created])),
+            Row.fetchOne(db, sql: base + " AND creation_date = ? ORDER BY asset_key LIMIT 1", arguments: StatementArguments(arguments + [created])),
+            Row.fetchOne(db, sql: base + " AND creation_date > ? ORDER BY creation_date, asset_key LIMIT 1", arguments: StatementArguments(arguments + [created])),
+        ].compactMap { $0 }
+        let nearest = candidates.min { a, b in
+            let da = abs((a["creation_date"] as Date).timeIntervalSince(created))
+            let db = abs((b["creation_date"] as Date).timeIntervalSince(created))
+            if da != db { return da < db }
+            let (ta, tb) = (a["creation_date"] as Date, b["creation_date"] as Date)
+            if ta != tb { return ta < tb }
+            return (a["asset_key"] as String) < (b["asset_key"] as String)
+        }
+        return nearest?["place_slot"]
     }
 }
 
