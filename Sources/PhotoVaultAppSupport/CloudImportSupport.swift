@@ -106,7 +106,8 @@ public enum CloudImportKeychain {
     /// when that worked drops the adapter. Nothing else in the Keychain is touched; ids without a grant are skipped,
     /// so running it again changes nothing.
     public static func release(
-        ids: [SourceID], hasGrant: (SourceID) -> Bool, deleteGrant: (String) -> Bool, dropAdapter: (SourceID) async -> Void
+        ids: [SourceID], hasGrant: @Sendable (SourceID) -> Bool, deleteGrant: @Sendable (String) -> Bool,
+        dropAdapter: @Sendable (SourceID) async -> Void
     ) async -> (released: Int, failed: Int) {
         var released = 0, failed = 0
         for id in ids where hasGrant(id) {

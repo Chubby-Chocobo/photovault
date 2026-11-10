@@ -154,9 +154,9 @@ import Testing
     @Test func releaseTwiceChangesNothing() async {
         let a = SourceID.folder()
         let log = Recorder()
-        var present = true
-        let hasGrant: (SourceID) -> Bool = { _ in present }
-        let first = await CloudImportKeychain.release(ids: [a], hasGrant: hasGrant, deleteGrant: { _ in present = false; return true }, dropAdapter: { _ in log.add("drop") })
+        let present = Flag()
+        let hasGrant: @Sendable (SourceID) -> Bool = { _ in present.value }
+        let first = await CloudImportKeychain.release(ids: [a], hasGrant: hasGrant, deleteGrant: { _ in present.value = false; return true }, dropAdapter: { _ in log.add("drop") })
         let second = await CloudImportKeychain.release(ids: [a], hasGrant: hasGrant, deleteGrant: { _ in log.add("again"); return true }, dropAdapter: { _ in log.add("drop") })
         #expect(first.released == 1 && second.released == 0 && second.failed == 0)
         #expect(log.lines == ["drop"])
@@ -171,6 +171,12 @@ import Testing
         #expect(CloudImportKeychain.missingToken(rows, hasGrant: { _ in false }) == 2)
         #expect(CloudImportKeychain.missingToken(rows, hasGrant: { _ in true }) == 0)
     }
+}
+
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = true
+    var value: Bool { get { lock.withLock { stored } } set { lock.withLock { stored = newValue } } }
 }
 
 private final class Recorder: @unchecked Sendable {
