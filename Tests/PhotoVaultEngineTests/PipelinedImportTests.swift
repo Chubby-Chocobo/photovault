@@ -132,6 +132,17 @@ private final class SlowCloudFolder: FolderImportSource, @unchecked Sendable {
     }
 }
 
+/// Runs `body` each time the cycle reaches `step`: `.export` ends the read half of a round, `.fanOut` comes once both the read
+/// half and the upload pass have ended. Never reports work.
+private struct SignalStage: CycleStage {
+    let step: CycleStep
+    let body: @Sendable () -> Void
+    func run(trigger: SyncTrigger) async throws -> Bool {
+        body()
+        return false
+    }
+}
+
 /// Download and upload of a cloud import overlap: a round reads and stages the next batch while the upload pass sends the
 /// batch staged before it. Each test starts with the first batch read and staged and nothing uploaded, then lets the engine
 /// run with uploads allowed and watches the overlap through signals.
@@ -383,6 +394,38 @@ private final class SlowCloudFolder: FolderImportSource, @unchecked Sendable {
         #expect(await seen.value == started, "the command ran before the next export started")
         _ = await cycle.value
         await p.h.settle()
+        try await expectAllDeliveredOnce(p)
+    }
+
+    @Test func filesStagedDuringARoundAreLeftForTheNextRoundsUploadPass() async throws {
+        let p = try await pipeline()
+        let probe = p.probe
+        let source = p.source
+        // How many reads and uploads had started when each round ended.
+        let rounds = Box<[(reads: Int, uploads: Int)]>([])
+        let readHalfEnded = Box(0)
+        let coordinator = SyncCoordinator(env: p.h.env, stages: [
+            SignalStage(step: .export) { readHalfEnded.mutate { $0 += 1 } },
+            SignalStage(step: .fanOut) { rounds.mutate { $0.append((source.reads.count, probe.uploadsStarted)) } },
+        ])
+        // The first upload waits until the second batch's read is in hand; the second until the read half has staged that
+        // batch, so the upload pass is still running when those files become ready.
+        source.holdReads()
+        await p.h.drive.setUploadHook { _ in
+            await probe.upload { index in
+                switch index {
+                case 0:
+                    _ = await pollUntil(timeout: hangGuard) { source.heldReads > 0 }
+                    source.releaseReads()
+                case 1: _ = await pollUntil(timeout: hangGuard) { readHalfEnded.get() >= 1 }
+                default: break
+                }
+            }
+        }
+        _ = await coordinator.run(trigger: .manual)
+        // The round that read the second batch also staged it; its upload pass sent only the first batch.
+        let second = try #require(rounds.get().first { $0.reads >= 4 }, "\(rounds.get())")
+        #expect(second.uploads == 2, "uploads by the end of the round that read the second batch: \(second.uploads)")
         try await expectAllDeliveredOnce(p)
     }
 }

@@ -50,6 +50,10 @@ Round, after this change:
 - **Overlap unit is the round.** Import of batch N+1 and its export run while batch N uploads; the join at the end of
   the round is the look-ahead bound: the read half reads at most one import batch per round and its exports stop at the
   staging cap, so it can never run more than one batch ahead of an upload pass. No new tuning knob.
+- **The upload pass beside reads sends what was staged when the round began.** Measured: when it also took the files
+  staged during the round, it emptied staging and the next round had nothing to upload while reading, so rounds
+  alternated (read-only, then read+upload) and the gain was small. With the round-start snapshot (`stagedAtStart`)
+  every round reads batch N+1 while uploading batch N.
 - **Staging bound unchanged.** Exports keep going through `ResourceGuard.admit` (staged + in-flight bytes below
   `stagingSoftLimitBytes`, disk watermarks); import reads keep `hasRoomToDownload`. Uploads free staging per file
   (`releaseUnneeded(asset:)`), which lets the exporter admit more within the same round.
@@ -86,7 +90,8 @@ Round, after this change:
 - crash in the read half with uploads in flight, and in the upload half with a read in flight: after a restart every
   file reaches the destination exactly once and staging is empty;
 - an export cut off by an upload-half error is done again by the next cycle without a relaunch;
-- a waiting command runs before the next export starts.
+- a waiting command runs before the next export starts;
+- files staged during a round are left for the next round's upload pass.
 
 ## Acceptance
 

@@ -1,5 +1,6 @@
 import Foundation
 import PhotoVaultCore
+import PhotoVaultStore
 
 /// What the read half of a round did: Photos classification, the import stage, exports into staging.
 struct ReadPass: Sendable {
@@ -28,9 +29,12 @@ private enum OverlappedPart: Sendable {
 /// files (a cloud import's reads and the exports into staging) while the upload pass sends what is already staged, and a
 /// cloud-to-cloud import takes about as long as the slower direction instead of both added up.
 ///
+/// The upload pass sends the files staged when the round began; the read half reads the next import batch and stages it.
 /// The round's end is the barrier that bounds the look-ahead: the read half reads at most one import batch per round and
 /// its exports stop at the staging limit (`ResourceGuard`), so it is never more than one batch ahead of an upload pass.
-/// Uploads free staging file by file, which lets the exporter admit more in the same round.
+/// Uploads free staging file by file, which lets the exporter admit more in the same round. Leaving the files staged
+/// during the round to the next one keeps both directions busy in every round: an upload pass that also took them would
+/// leave the next round's upload pass nothing to send while its batch is read.
 ///
 /// Nothing beside the upload pass changes the plan of a job that may be in flight: the read half only adds assets and jobs,
 /// re-counts days (a placement that changes under an upload is queued as a move by the upload's commit), and stages files.
@@ -46,9 +50,13 @@ extension SyncCoordinator {
             if let gate { pass.uploaded = try await uploader.runPass(gate: gate) }
             return pass
         }
+        // The upload pass sends what is staged now; what the read half stages meanwhile is the next round's to send.
+        let staged: Set<StagedFile> = gate == nil ? [] : try await env.store.read { db in
+            Set(try ResourceRepository.fetch(db, stagingState: .ready, limit: Int.max).map { StagedFile(assetKey: $0.assetKey, type: $0.type) })
+        }
         return try await withThrowingTaskGroup(of: OverlappedPart.self) { group in
             if let gate {
-                group.addTask { [uploader] in .uploaded(try await uploader.runPass(gate: gate)) }
+                group.addTask { [uploader] in .uploaded(try await uploader.runPass(gate: gate, stagedAtStart: staged)) }
             }
             group.addTask { .read(try await self.readPass(trigger)) }
             var pass = OverlappedPass()
