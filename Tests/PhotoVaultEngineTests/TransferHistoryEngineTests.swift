@@ -96,6 +96,28 @@ import Testing
         #expect(await h.nas.files.count == 2)
     }
 
+    @Test func retryingAFileTooLargeForTheDiskReArmsItAtEveryDestination() async throws {
+        let h = try await Harness()
+        try h.addDrive(scope: .full)
+        try h.addNAS(scope: .full)
+        await h.add(h.snapshot("big", daysAgo: 2), recordChange: false)
+        try await h.baseline(.googleDrive, h.nasId)
+        await h.drive.setStatus(.unavailable(.offline))
+        await h.nas.setStatus(.unavailable(.offline))
+        await h.run()
+        let jobs = try h.jobs().filter { !$0.resType.isSidecar }
+        #expect(jobs.count == 2)
+        let now = h.clock.now
+        try h.write { db in
+            for job in jobs { _ = try JobRepository.apply(db, .tooLargeForDisk, to: job.identity, now: now) }
+            try db.execute(sql: "UPDATE resource SET too_large_for_disk = 1")
+        }
+        let drive = try #require(jobs.first { $0.destinationId == .googleDrive })
+        #expect(try await h.coordinator.retryFiles([drive.identity]) == 1)
+        #expect(try h.jobs().filter { !$0.resType.isSidecar }.allSatisfy { $0.state == .pending }, "the NAS job waited for the same mark")
+        #expect(try h.read { db in try Int.fetchOne(db, sql: "SELECT SUM(too_large_for_disk) FROM resource") } == 0)
+    }
+
     @Test func narrowingTheScopeRecordsTheCancelledFiles() async throws {
         let h = try await Harness()
         try h.addDrive(scope: .full)

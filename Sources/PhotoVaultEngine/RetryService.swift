@@ -65,13 +65,23 @@ struct RetryService: Sendable {
         }
     }
 
-    /// One job through the transition the owner's retry has always used. False when it is neither deferred nor skipped.
-    static func retry(_ db: Database, _ job: UploadJob, now: Date) throws -> Bool {
+    /// One job through the transition the owner's retry has always used, judged on its state now (an earlier retry in
+    /// the same transaction may have moved it). False when it is neither deferred nor skipped.
+    static func retry(_ db: Database, _ snapshot: UploadJob, now: Date) throws -> Bool {
+        guard let job = try JobRepository.fetch(db, identity: snapshot.identity) else { return false }
         switch job.state {
         case .deferred:
             _ = try JobRepository.apply(db, .retryDeferred, to: job.identity, now: now)
             if job.stateReason == .exportFailures { try EngineQueries.clearExportFailures(db, key: job.assetKey, type: job.resType) }
-            if job.stateReason == .tooLargeForDisk { try EngineQueries.clearTooLarge(db, key: job.assetKey, type: job.resType) }
+            if job.stateReason == .tooLargeForDisk {
+                // The size mark belongs to the resource: the jobs of the other destinations that waited for it are
+                // re-armed with it, or nothing would ever retry them (the sweeper skips this reason).
+                try EngineQueries.clearTooLarge(db, key: job.assetKey, type: job.resType)
+                for other in try EngineQueries.jobs(db, key: job.assetKey, type: job.resType, states: [.deferred])
+                where other.stateReason == .tooLargeForDisk {
+                    _ = try JobRepository.apply(db, .retryDeferred, to: other.identity, now: now)
+                }
+            }
             return true
         case .skipped:
             _ = try JobRepository.apply(db, .retrySkipped, to: job.identity, now: now)
