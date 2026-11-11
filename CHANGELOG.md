@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.1] - 2026-11-11
+
+### Bug fixes
+
+- **app:** the menu bar popup fits its content again instead of the fixed 520 pt area from 0.7.0, which left a large gap under the destinations. Text that changes every second still keeps its one-line slot, and while the popup is open its height only grows, so a card that goes away doesn't pull the bottom rows up. Opening it again measures it fresh. Empty activity slots are hidden from VoiceOver, idle spinners no longer animate, and the height cap leaves room for the NAS folder list (#90, #92, #93) (b44c6e3)
+
 ## [0.7.0] - 2026-11-11
 
 ### Upgrade notes
