@@ -34,6 +34,6 @@ The owner wants to look back at what was synced: the Photos files at each destin
 - A row's destination name comes from the destination as it is now; rows of a removed destination say so. Google Drive keeps one id, so rows of a removed Drive show under a Drive added later.
 - Integrity results are deleted with a destination's jobs (removal, root or account change).
 - "Deleted from Photos, backup kept" lists only uploads whose job still holds a copy; a photo deleted before it went up is not shown there.
-- A rules change of one destination joins the shared `settings` run, which names no destination. Old photos that turn up after a `library` run finished start a new, small `library` run, so a finished run's span and totals do not change weeks later.
+- A rules change of one destination joins the shared `settings` run, which names no destination. Old photos that turn up after a `library` run finished start a new, small `library` run instead of joining the finished one. A finished run can still change: a later outcome of one of its own files (a retry, or the skip of a file that kept failing for 30 days) moves its finish and updates its totals.
 - Retrying a file of a cloud import whose grant was released (no file of it was pending, deferred or missing) asks the owner to sign in again, as an upload repeated after a lost file does (0030).
 - Thumbnails (scope item 11) are not part of this decision.
