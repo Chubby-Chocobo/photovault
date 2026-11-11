@@ -26,9 +26,16 @@ public enum TransferLineText {
 
     /// The line for the transfer that has run longest, with a count of the others; nil when none is visible.
     public static func make(_ transfers: [TransferProgress], now: Date, style: Style = .full) -> String? {
+        fitted(transfers, now: now, style: style)?.text
+    }
+
+    /// The same line split for one fixed-height line: the action up to the file name, where it goes, and the
+    /// numbers with the count of the others.
+    public static func fitted(_ transfers: [TransferProgress], now: Date, style: Style = .full) -> FittedLine? {
         let shown = visible(transfers, now: now)
         guard let main = shown.first else { return nil }
-        var parts = [action(for: main, style: style)]
+        let (lead, place) = action(for: main, style: style)
+        var parts: [String] = []
         if style == .short {
             if let fraction = main.fraction, main.bytesDone > 0 { parts.append("\(Int(fraction * 100))%") }
         } else {
@@ -40,7 +47,7 @@ public enum TransferLineText {
         if others > 0 {
             parts.append(tr(vi: "+\(others) file khác", en: L10n.plural(others, one: "+1 more file", other: "+\(others) more files")))
         }
-        return parts.joined(separator: " · ")
+        return FittedLine(lead: lead, place: place, detail: parts.map { " · " + $0 }.joined())
     }
 
     /// `2:05`, or `1:02:05` past an hour.
@@ -74,8 +81,19 @@ public enum TransferLineText {
         return String(characters.prefix(head)) + "…" + String(characters.suffix(tail))
     }
 
-    private static func action(for transfer: TransferProgress, style: Style) -> String {
+    /// Stands for the file name while the sentence is put together, so the sentence can be cut right after the name
+    /// whatever the language's word order. A private-use character never appears in the fixed words.
+    private static let nameMarker = "\u{E000}"
+
+    /// The sentence up to and including the file name, and the rest of it.
+    private static func action(for transfer: TransferProgress, style: Style) -> (lead: String, place: String) {
         let name = middleTruncated(transfer.fileName, limit: nameLimit)
+        let sentence = sentence(for: transfer, name: nameMarker, style: style)
+        guard let marker = sentence.range(of: nameMarker) else { return (sentence, "") }
+        return (String(sentence[..<marker.lowerBound]) + name, String(sentence[marker.upperBound...]))
+    }
+
+    private static func sentence(for transfer: TransferProgress, name: String, style: Style) -> String {
         let full = style == .full
         let destination = full ? transfer.destinationName.map { middleTruncated($0, limit: destinationLimit) } : nil
         let account = full ? transfer.accountEmail.map { " (\(middleTruncated($0, limit: accountLimit)))" } ?? "" : ""

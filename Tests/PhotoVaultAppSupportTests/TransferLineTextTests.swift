@@ -125,6 +125,41 @@ struct TransferLineTextTests {
         #expect(vi { line([upload]) }?.contains(name) == false)
     }
 
+    @Test func theFittedLineEndsItsLeadWithTheFileNameSoMiddleTruncationKeepsTheExtension() {
+        let name = "Kỳ nghỉ Đà Lạt 2026 - bản dựng cuối cùng (final v3).MOV"
+        var cloud = item(.download(.googleDrive), name, done: gib, total: 2 * gib, startedAgo: 75)
+        cloud.accountEmail = "ten@example.com"
+        let kinds: [TransferProgress] = [
+            item(.upload, name, to: "Google Drive", done: gib, total: 2 * gib), item(.upload, name, done: gib, total: 2 * gib),
+            item(.copy, name, to: "NAS", done: gib, total: 2 * gib), item(.exportFromPhotos, name, done: 0, total: nil),
+            item(.exportFromPhotos, name, done: gib, total: 2 * gib), item(.download(.dropbox), name, done: gib, total: nil),
+            item(.download(.localFolder), name, done: gib, total: 2 * gib), cloud,
+        ]
+        for transfer in kinds {
+            for language in AppLanguage.allCases {
+                for style in [TransferLineText.Style.full, .short] {
+                    let fitted = L10n.$override.withValue(language) { TransferLineText.fitted([transfer], now: t0, style: style) }
+                    let joined = L10n.$override.withValue(language) { TransferLineText.make([transfer], now: t0, style: style) }
+                    #expect(fitted?.lead.hasSuffix(TransferLineText.middleTruncated(name, limit: TransferLineText.nameLimit)) == true, "\(fitted?.lead ?? "")")
+                    #expect(fitted?.lead.hasSuffix(".MOV") == true)
+                    #expect(fitted?.text == joined)
+                    #expect(fitted.map { !$0.text.contains("\u{E000}") } == true)
+                }
+            }
+        }
+    }
+
+    @Test func theFittedLineKeepsThePlaceAndTheNumbersApart() {
+        var upload = item(.upload, to: "Google Drive", done: gib, total: 2 * gib, startedAgo: 75)
+        upload.accountEmail = "ten@example.com"
+        let other = item(.copy, "b.MOV", to: "NAS", done: 1, total: 2, startedAgo: 5)
+        #expect(en { TransferLineText.fitted([upload, other], now: t0) } == FittedLine(
+            lead: "Uploading IMG_1234.MOV", place: " to Google Drive (ten@example.com)", detail: " · 1.0 / 2.0 GB (50%) · 1:15 · +1 more file"))
+        #expect(vi { TransferLineText.fitted([upload], now: t0, style: .short) } == FittedLine(lead: "Đang upload IMG_1234.MOV", detail: " · 50%"))
+        let iCloud = item(.exportFromPhotos, done: 0, total: nil)
+        #expect(en { TransferLineText.fitted([iCloud], now: t0) } == FittedLine(lead: "Downloading IMG_1234.MOV", place: " from iCloud"))
+    }
+
     @Test func theHeaderSubtitleShowsTheTransferWhileSyncing() {
         var snapshot = EngineSnapshot(
             overall: .syncing, scanState: .complete, destinations: [], backfillDoneAssets: 0, backfillTotalAssets: 0,

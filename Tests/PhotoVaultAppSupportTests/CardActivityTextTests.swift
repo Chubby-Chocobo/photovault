@@ -47,8 +47,10 @@ struct CardActivityTextTests {
 
     @Test func theBackfillCardShowsTheFullTransferLineOfPhotosFiles() {
         let activity = vi { backfill(snapshot(), [transfer()]) }
-        #expect(activity == .transfer("Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)"))
-        #expect(en { backfill(snapshot(), [transfer()]) } == .transfer("Uploading IMG_1234.MOV to Google Drive (ten@example.com) · 1.0 / 2.0 GB (50%)"))
+        #expect(activity == .transfer(FittedLine(
+            lead: "Đang upload IMG_1234.MOV", place: " lên Google Drive (ten@example.com)", detail: " · 1,0 / 2,0 GB (50%)")))
+        #expect(activity.isBusy)
+        #expect(en { backfill(snapshot(), [transfer()]) }.text == "Uploading IMG_1234.MOV to Google Drive (ten@example.com) · 1.0 / 2.0 GB (50%)")
     }
 
     @Test func theBackfillCardFollowsTheJobOriginNotTheSource() {
@@ -62,7 +64,7 @@ struct CardActivityTextTests {
 
     @Test func theBackfillCardNeverSaysPreparingWhileAnyFileMoves() {
         let incremental = transfer(backfill: false)
-        #expect(vi { backfill(snapshot(), [incremental]) } == .transfer("Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)"))
+        #expect(vi { backfill(snapshot(), [incremental]) }.text == "Đang upload IMG_1234.MOV lên Google Drive (ten@example.com) · 1,0 / 2,0 GB (50%)")
         let other = transfer(source: .folder(), backfill: false)
         if case .transfer = vi({ backfill(snapshot(nextRetryAt: t0.addingTimeInterval(60)), [other]) }) {} else { Issue.record("a moving file beats a wait") }
         // Only when nothing moves at all does the card explain a wait.
@@ -109,7 +111,7 @@ struct CardActivityTextTests {
     @Test func theImportCardShowsOnlyItsOwnTransfers() {
         let mine = SourceID.folder(), other = SourceID.folder()
         let download = transfer(.download(.dropbox), source: mine, to: nil, account: "ten@example.com")
-        #expect(vi { CardActivityText.importJob(mine, transfers: [transfer(source: other), download], now: t0) }
+        #expect(vi { CardActivityText.importJob(mine, transfers: [transfer(source: other), download], now: t0) }?.text
             == "Đang tải IMG_1234.MOV từ Dropbox (ten@example.com) · 1,0 / 2,0 GB (50%)")
         #expect(CardActivityText.importJob(mine, transfers: [transfer(source: other)], now: t0) == nil)
         #expect(CardActivityText.importJob(mine, transfers: [], now: t0) == nil)
@@ -125,6 +127,7 @@ struct CardActivityTextTests {
         // An unfinished backfill: its card shows the moving file, so the header is short.
         let backfilling = vi { OverallStatusText.make(snapshot: snapshot(done: 10, total: 100), disk: .ok, settings: GlobalSettings(), now: t0, transfers: [incremental]) }
         #expect(backfilling.subtitle == "Đang upload IMG_1234.MOV · 50%")
+        #expect(backfilling.subtitleLine == FittedLine(lead: "Đang upload IMG_1234.MOV", detail: " · 50%"), "the file name ends the part that is cut in the middle")
         // A finished import has no card.
         var finished = snapshot(done: 0, total: 0)
         let id = SourceID.folder()
