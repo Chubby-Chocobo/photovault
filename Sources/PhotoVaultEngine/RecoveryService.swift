@@ -403,7 +403,8 @@ actor RecoveryService {
     func enqueueRest(_ id: DestinationID) async throws {
         await uploader.forget(id)
         try await finalize.placeLeftovers()
-        try await eligibility.recomputeAll(destination: id, backfillOrigin: .destinationBackfill)
+        try await eligibility.startRun(.recovery, destination: id)
+        try await eligibility.recomputeAll(destination: id, backfillOrigin: .destinationBackfill, runTrigger: .recovery)
         try await afterRecovery()
         try await env.store.write { db in try KeyValueRepository.set(db, Self.enqueueKey + id.rawValue, nil) }
     }

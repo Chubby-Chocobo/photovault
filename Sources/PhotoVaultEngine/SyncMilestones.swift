@@ -5,6 +5,7 @@ import PhotoVaultStore
 
 /// Progress rows of the activity list (FR-63), written at the end of a cycle: one row per destination
 /// and day that counts the files uploaded, and one row when a backfill ends (`BackfillCompletion`).
+/// A drained cycle also finishes the backfill runs of the history that have nothing left to send.
 struct SyncMilestones: Sendable {
     let env: EngineEnvironment
 
@@ -23,6 +24,7 @@ struct SyncMilestones: Sendable {
                         }
                     }
                     try BackfillCompletion.note(db, drained: report.drained, now: now, settings: settings)
+                    if report.drained { try BackfillRunRepository.finishSettled(db, now: now) }
                 }
             } catch {
                 env.log.log(.error, category: "activity", "could not record sync progress")

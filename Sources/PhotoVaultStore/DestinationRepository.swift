@@ -92,7 +92,8 @@ public enum DestinationRepository {
     }
 
     private static func deleteDependents(_ db: Database, id: DestinationID) throws {
-        for table in ["upload_intent", "upload_job", "remote_folder", "move_job", "shortcut"] {
+        // `transfer_event` stays: the history of what was sent is kept even when the destination goes.
+        for table in ["upload_intent", "upload_job", "remote_folder", "move_job", "shortcut", "integrity_check"] {
             try db.execute(sql: "DELETE FROM \(table) WHERE destination_id = ?", arguments: [id.rawValue])
         }
         try ActivityRepository.dropKeys(db, id: id)

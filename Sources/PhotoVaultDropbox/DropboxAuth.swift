@@ -89,10 +89,10 @@ public struct DropboxAuth: Sendable {
             ], interactive: true)
             guard let refresh = reply.refresh_token else { throw DropboxAuthError.malformedResponse }
             let email = try await DropboxClient.currentAccountEmail(accessToken: reply.access_token, transport: transport)
-            server.respond(success: true)
+            server.respond(.success)
             return DropboxSignIn(accessToken: access(reply), refreshToken: refresh, email: email)
         } catch {
-            server.respond(success: false)
+            server.respond(.failed)
             throw error
         }
     }
