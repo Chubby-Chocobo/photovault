@@ -9,13 +9,16 @@ public enum OverallTone: String, Sendable, Equatable {
 public struct OverallPresentation: Equatable, Sendable {
     public var title: String
     public var subtitle: String
+    /// The subtitle as the header lays it out on one line; a moving file keeps its extension when it is cut.
+    public var subtitleLine: FittedLine
     public var tone: OverallTone
     /// The menu bar icon animates while the engine works.
     public var isWorking: Bool
 
-    public init(title: String, subtitle: String, tone: OverallTone, isWorking: Bool) {
+    public init(title: String, subtitle: String, subtitleLine: FittedLine? = nil, tone: OverallTone, isWorking: Bool) {
         self.title = title
         self.subtitle = subtitle
+        self.subtitleLine = subtitleLine ?? FittedLine(lead: subtitle)
         self.tone = tone
         self.isWorking = isWorking
     }
@@ -27,8 +30,8 @@ public enum OverallStatusText {
         snapshot: EngineSnapshot, disk: MacDiskState, settings: GlobalSettings, now: Date, calendar: Calendar = .current,
         transfers: [TransferProgress] = []
     ) -> OverallPresentation {
-        func result(_ title: String, _ subtitle: String, _ tone: OverallTone, working: Bool = false) -> OverallPresentation {
-            OverallPresentation(title: title, subtitle: subtitle, tone: tone, isWorking: working)
+        func result(_ title: String, _ subtitle: String, _ tone: OverallTone, working: Bool = false, line: FittedLine? = nil) -> OverallPresentation {
+            OverallPresentation(title: title, subtitle: subtitle, subtitleLine: line, tone: tone, isWorking: working)
         }
         let destinations = snapshot.destinations
         switch snapshot.overall {
@@ -85,17 +88,19 @@ public enum OverallStatusText {
         let headerMain = TransferLineText.visible(transfers, now: now).first
         let onCard = CardActivityText.shownOnCards(snapshot: snapshot, transfers: transfers, now: now)
         let style: TransferLineText.Style = headerMain.map { onCard.contains($0.id) } == true ? .short : .full
+        let moving = TransferLineText.fitted(transfers, now: now, style: style)
         let tail = TransferLineText.make(transfers, now: now, style: style) ?? tr(
             vi: "\(count) đích · sync lần cuối ",
             en: L10n.plural(count, one: "1 destination · last sync ", other: "\(count) destinations · last sync ")) + RelativeTimeText.ago(last, now: now, calendar: calendar)
         if importing, !backfilling {
-            return result(tr(vi: "Đang nhập ảnh", en: "Importing photos"), tail, .ok, working: snapshot.overall == .syncing)
+            return result(tr(vi: "Đang nhập ảnh", en: "Importing photos"), tail, .ok, working: snapshot.overall == .syncing, line: moving)
         }
         if snapshot.overall == .syncing || backfilling {
             return result(
-                backfilling ? tr(vi: "Đang backfill", en: "Backfilling") : tr(vi: "Đang đồng bộ", en: "Syncing"), tail, .ok, working: snapshot.overall == .syncing)
+                backfilling ? tr(vi: "Đang backfill", en: "Backfilling") : tr(vi: "Đang đồng bộ", en: "Syncing"), tail, .ok,
+                working: snapshot.overall == .syncing, line: moving)
         }
-        return result(tr(vi: "Đã đồng bộ", en: "Synced"), tail, .ok)
+        return result(tr(vi: "Đã đồng bộ", en: "Synced"), tail, .ok, line: moving)
     }
 
     private static func othersText(_ name: String, _ verb: String, _ total: Int, suffixOnly: Bool = false) -> String {

@@ -6,15 +6,19 @@ import PhotoVaultEngine
 /// card look frozen. File names and e-mails appear on screen only.
 public enum CardActivity: Equatable, Sendable {
     /// The file moving now, in the full form (`TransferLineText.Style.full`).
-    case transfer(String)
+    case transfer(FittedLine)
     /// Nothing moves yet, but the next file is being got ready.
     case preparing(String)
     /// Nothing moves and a known reason holds the job back.
     case waiting(String)
 
-    public var text: String {
+    public var text: String { line.text }
+
+    /// The line as the card lays it out on one line.
+    public var line: FittedLine {
         switch self {
-        case .transfer(let text), .preparing(let text), .waiting(let text): text
+        case .transfer(let line): line
+        case .preparing(let text), .waiting(let text): FittedLine(lead: text)
         }
     }
 
@@ -35,15 +39,15 @@ public enum CardActivityText {
     /// The backfill card: the longest-running file of a backfill job, else any file that moves, else why it
     /// waits, else "preparing". A wait or "preparing" is said only when nothing moves.
     public static func backfill(snapshot: EngineSnapshot, transfers: [TransferProgress], now: Date, disk: MacDiskState, settings: GlobalSettings) -> CardActivity {
-        if let line = TransferLineText.make(backfillCandidates(transfers, now: now), now: now) { return .transfer(line) }
+        if let line = TransferLineText.fitted(backfillCandidates(transfers, now: now), now: now) { return .transfer(line) }
         return waiting(snapshot: snapshot, now: now, disk: disk, settings: settings)
             ?? .preparing(tr(vi: "Đang chuẩn bị file tiếp theo…", en: "Preparing the next file…"))
     }
 
     /// The import card: the transfer of this import's files (download from its source, upload of its files); nil when
     /// none is visible, so the card keeps its own status line.
-    public static func importJob(_ id: SourceID, transfers: [TransferProgress], now: Date) -> String? {
-        TransferLineText.make(transfers.filter { $0.sourceId == id }, now: now)
+    public static func importJob(_ id: SourceID, transfers: [TransferProgress], now: Date) -> FittedLine? {
+        TransferLineText.fitted(transfers.filter { $0.sourceId == id }, now: now)
     }
 
     /// The transfers whose full line a card shows now: the Backfill card while it is shown, and the newest running

@@ -22,29 +22,16 @@ struct ImportsCard: View {
                         .help(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                         .accessibilityLabel(tr(vi: "Huỷ lần nhập này", en: "Cancel this import"))
                 }
-                Text(CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)).font(.caption).foregroundStyle(.secondary)
-                if model.isCancelling(item) {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.mini)
-                        Text(ImportQueue.cancellingText).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(model.engineWaitReason).font(.caption2).foregroundStyle(.tertiary)
-                } else if let wait = model.queueWait(for: item) {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.mini)
-                        Text(wait.title).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(wait.reason).font(.caption2).foregroundStyle(.tertiary)
-                } else {
-                    ProgressBar(fraction: ImportProgressText.fraction(item))
-                        .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
-                }
+                let provider = CloudImportText.providerLabel(kind: item.kind, account: item.account, syncedProvider: item.syncedProvider)
+                Text(provider).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).help(provider)
+                progressSlot(item)
                 let _ = model.transferNow
-                if let line = CardActivityText.importJob(item.id, transfers: model.transfers, now: Date()) {
-                    CardActivityLine(text: line, isBusy: true)
-                }
-                if !ImportQueue.isQueued(item), !model.isCancelling(item) { Text(statusText(item)).font(.caption).monospacedDigit().foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
-                    .fixedSize(horizontal: false, vertical: true) }
+                let line = CardActivityText.importJob(item.id, transfers: model.transfers, now: Date())
+                CardActivityLine(line: line, isBusy: line != nil)
+                // The status line keeps its slot while the import is queued or cancelling.
+                let status = ImportQueue.isQueued(item) || model.isCancelling(item) ? "" : statusText(item)
+                FittedLineText(line: FittedLine(lead: status)).font(.caption)
+                    .foregroundStyle(item.status == .offline || waitingReason(item) != nil ? .orange : .secondary)
                 if confirming {
                     HStack {
                         Text(tr(vi: "Huỷ nhập? File đã upload vẫn giữ.", en: "Cancel the import? Uploaded files stay.")).font(.caption)
@@ -58,9 +45,35 @@ struct ImportsCard: View {
                     .controlSize(.small)
                 }
                 if let waiting = summary.waitingLine {
-                    Text(waiting).font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail)
+                    Text(waiting).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).help(waiting)
                 }
             }
+        }
+    }
+
+    /// The progress bar, or the two lines that say why the import waits, in one slot of the same height.
+    private func progressSlot(_ item: ImportSnapshot) -> some View {
+        ZStack(alignment: .leading) {
+            // The wait block's two lines, unseen, give the slot its height whichever of the two is shown.
+            waitBlock(title: " ", reason: " ", isBusy: false).hidden().accessibilityHidden(true)
+            if model.isCancelling(item) {
+                waitBlock(title: ImportQueue.cancellingText, reason: model.engineWaitReason, isBusy: true)
+            } else if let wait = model.queueWait(for: item) {
+                waitBlock(title: wait.title, reason: wait.reason, isBusy: true)
+            } else {
+                ProgressBar(fraction: ImportProgressText.fraction(item))
+                    .accessibilityLabel(tr(vi: "Tiến độ nhập", en: "Import progress"))
+            }
+        }
+    }
+
+    private func waitBlock(title: String, reason: String, isBusy: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini).opacity(isBusy ? 1 : 0)
+                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).help(title)
+            }
+            Text(reason).font(.caption2).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.tail).help(reason)
         }
     }
 

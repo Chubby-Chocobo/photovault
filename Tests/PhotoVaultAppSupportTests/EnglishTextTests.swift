@@ -71,6 +71,7 @@ struct EnglishTextTests {
                 snapshot: snapshot(.idle, [destination]), disk: .ok, settings: GlobalSettings(), now: now, calendar: calendar)
             #expect(idle.title == "Synced")
             #expect(idle.subtitle == "1 destination · last sync 2 min ago")
+            #expect(idle.subtitleLine == FittedLine(lead: idle.subtitle))
             let decision = DestinationSnapshot(
                 id: DestinationID(rawValue: "gdrive")!, displayName: "Google Drive", status: .paused(.rootTrashed), pending: 0,
                 deferred: 0, skipped: 0, missingRemote: 0, lastSuccessAt: nil)

@@ -26,21 +26,33 @@ public enum TransferLineText {
 
     /// The line for the transfer that has run longest, with a count of the others; nil when none is visible.
     public static func make(_ transfers: [TransferProgress], now: Date, style: Style = .full) -> String? {
+        fitted(transfers, now: now, style: style).map { line in
+            line.prefix + middleTruncated(line.lead, limit: nameLimit) + line.place + line.detail + line.others
+        }
+    }
+
+    /// The same line in parts for one fixed-height line (see `FittedLine`). The file name is whole: the view cuts it
+    /// to the width it has. The tooltip also names the destination and the account in full.
+    public static func fitted(_ transfers: [TransferProgress], now: Date, style: Style = .full) -> FittedLine? {
         let shown = visible(transfers, now: now)
         guard let main = shown.first else { return nil }
-        var parts = [action(for: main, style: style)]
+        var numbers: [String] = []
         if style == .short {
-            if let fraction = main.fraction, main.bytesDone > 0 { parts.append("\(Int(fraction * 100))%") }
+            if let fraction = main.fraction, main.bytesDone > 0 { numbers.append("\(Int(fraction * 100))%") }
         } else {
-            if let progress = sizes(done: main.bytesDone, total: main.bytesTotal) { parts.append(progress) }
+            if let progress = sizes(done: main.bytesDone, total: main.bytesTotal) { numbers.append(progress) }
             let elapsed = now.timeIntervalSince(main.startedAt)
-            if elapsed >= elapsedAfterSeconds { parts.append(clock(seconds: elapsed)) }
+            if elapsed >= elapsedAfterSeconds { numbers.append(clock(seconds: elapsed)) }
         }
-        let others = shown.count - 1
-        if others > 0 {
-            parts.append(tr(vi: "+\(others) file khác", en: L10n.plural(others, one: "+1 more file", other: "+\(others) more files")))
-        }
-        return parts.joined(separator: " · ")
+        let detail = numbers.map { " · " + $0 }.joined()
+        let count = shown.count - 1
+        let others = count > 0
+            ? " · " + tr(vi: "+\(count) file khác", en: L10n.plural(count, one: "+1 more file", other: "+\(count) more files")) : ""
+        let (prefix, place) = split(sentence(for: main, name: nameMarker, style: style, shortened: true))
+        let whole = sentence(for: main, name: main.fileName, style: style, shortened: false)
+        return FittedLine(
+            prefix: prefix, lead: main.fileName, place: place, detail: detail, others: others,
+            help: whole + detail + others)
     }
 
     /// `2:05`, or `1:02:05` past an hour.
@@ -74,11 +86,21 @@ public enum TransferLineText {
         return String(characters.prefix(head)) + "…" + String(characters.suffix(tail))
     }
 
-    private static func action(for transfer: TransferProgress, style: Style) -> String {
-        let name = middleTruncated(transfer.fileName, limit: nameLimit)
+    /// Stands for the file name while the sentence is put together, so the words before and after the name can be
+    /// told apart whatever the language's word order. A private-use character never appears in the fixed words.
+    private static let nameMarker = "\u{E000}"
+
+    /// The words before the file name and the words after it.
+    private static func split(_ sentence: String) -> (before: String, after: String) {
+        guard let marker = sentence.range(of: nameMarker) else { return (sentence, "") }
+        return (String(sentence[..<marker.lowerBound]), String(sentence[marker.upperBound...]))
+    }
+
+    private static func sentence(for transfer: TransferProgress, name: String, style: Style, shortened: Bool) -> String {
         let full = style == .full
-        let destination = full ? transfer.destinationName.map { middleTruncated($0, limit: destinationLimit) } : nil
-        let account = full ? transfer.accountEmail.map { " (\(middleTruncated($0, limit: accountLimit)))" } ?? "" : ""
+        func cut(_ text: String, _ limit: Int) -> String { shortened ? middleTruncated(text, limit: limit) : text }
+        let destination = full ? transfer.destinationName.map { cut($0, destinationLimit) } : nil
+        let account = full ? transfer.accountEmail.map { " (\(cut($0, accountLimit)))" } ?? "" : ""
         switch transfer.kind {
         case .exportFromPhotos where transfer.bytesDone == 0:
             // Photos sends no bytes while it fetches an iCloud-only original; they arrive once it is on this Mac.
