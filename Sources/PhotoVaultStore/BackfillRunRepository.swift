@@ -30,18 +30,22 @@ public enum BackfillRunRepository {
             """, arguments: [now, trigger.rawValue, destination])
     }
 
-    /// Runs with jobs, none of them pending or uploading, are finished (at their latest outcome) and closed.
-    /// Failed (deferred) files do not hold a run open: they are part of its result.
+    /// Runs with no backfill job pending or uploading are finished (at their latest outcome) and closed; a finished run
+    /// with such a job again (the 24-hour retry, an owner's retry) is open again until it settles. Failed (deferred)
+    /// files do not hold a run open: they are part of its result. A run whose jobs were all deleted (its destination
+    /// was removed) finishes too.
     @discardableResult
     public static func finishSettled(_ db: Database, now: Date) throws -> Int {
+        let waiting = """
+            EXISTS (SELECT 1 FROM upload_job WHERE backfill_run_id = backfill_run.id AND state IN ('pending', 'uploading')
+                    AND origin IN (\(origins)))
+            """
+        try db.execute(sql: "UPDATE backfill_run SET finished_at = NULL WHERE finished_at IS NOT NULL AND \(waiting)")
         try db.execute(sql: """
             UPDATE backfill_run
             SET finished_at = COALESCE((SELECT MAX(at) FROM transfer_event WHERE run_id = backfill_run.id), :now),
                 closed_at = COALESCE(closed_at, :now)
-            WHERE finished_at IS NULL
-              AND EXISTS (SELECT 1 FROM upload_job WHERE backfill_run_id = backfill_run.id)
-              AND NOT EXISTS (SELECT 1 FROM upload_job WHERE backfill_run_id = backfill_run.id AND state IN ('pending', 'uploading')
-                              AND origin IN (\(origins)))
+            WHERE finished_at IS NULL AND NOT \(waiting)
             """, arguments: ["now": now])
         return db.changesCount
     }
@@ -75,22 +79,26 @@ public enum BackfillRunRepository {
         return try rows.map { row in
             let id: Int64 = row["id"]
             let table = "backfill_run"
+            let waiting = try waiting(db, runId: id)
             return BackfillRunRow(
                 id: id, trigger: try row.enumValue("trigger", table: table),
                 destinationId: (row["destination_id"] as String?).flatMap(DestinationID.init(rawValue:)),
-                startedAt: try row.require("started_at", table: table), finishedAt: row["finished_at"],
-                approximate: row["approximate"], totals: try totals(db, runId: id), waiting: try waiting(db, runId: id))
+                startedAt: try row.require("started_at", table: table), finishedAt: waiting > 0 ? nil : row["finished_at"],
+                approximate: row["approximate"], totals: try totals(db, runId: id), waiting: waiting,
+                retryable: try failedJobs(db, runId: id).count)
         }
     }
 
     /// The latest outcome of each file of the run: a file that failed and then uploaded counts as uploaded.
+    static let totalsSQL = """
+        SELECT e.outcome, COUNT(*) AS files, COALESCE(SUM(e.bytes), 0) AS bytes FROM transfer_event e
+        WHERE e.run_id = ?1 AND e.id = (SELECT MAX(id) FROM transfer_event WHERE job_id = e.job_id AND run_id = ?1)
+        GROUP BY e.outcome
+        """
+
     static func totals(_ db: Database, runId: Int64) throws -> [TransferOutcome: OutcomeTotal] {
         var result: [TransferOutcome: OutcomeTotal] = [:]
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT e.outcome, COUNT(*) AS files, COALESCE(SUM(e.bytes), 0) AS bytes FROM transfer_event e
-            WHERE e.run_id = ?1 AND e.id = (SELECT MAX(id) FROM transfer_event WHERE job_id = e.job_id AND run_id = ?1)
-            GROUP BY e.outcome
-            """, arguments: [runId])
+        let rows = try Row.fetchAll(db, sql: totalsSQL, arguments: [runId])
         for row in rows {
             guard let outcome = TransferOutcome(rawValue: row["outcome"]) else { continue }
             result[outcome] = OutcomeTotal(files: row["files"], bytes: row["bytes"])
@@ -98,9 +106,11 @@ public enum BackfillRunRepository {
         return result
     }
 
+    static let waitingSQL = """
+        SELECT COUNT(*) FROM upload_job WHERE backfill_run_id = ? AND state IN ('pending', 'uploading') AND origin IN (\(origins))
+        """
+
     static func waiting(_ db: Database, runId: Int64) throws -> Int {
-        try Int.fetchOne(db, sql: """
-            SELECT COUNT(*) FROM upload_job WHERE backfill_run_id = ? AND state IN ('pending', 'uploading') AND origin IN (\(origins))
-            """, arguments: [runId]) ?? 0
+        try Int.fetchOne(db, sql: waitingSQL, arguments: [runId]) ?? 0
     }
 }

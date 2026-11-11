@@ -68,9 +68,9 @@ public enum HistoryRepository {
     /// Uploaded and updated files per 15-minute slot (UTC) in `[from, until)`, oldest first. A slot never
     /// straddles a local midnight in any time zone, so the app can sum slots into local days.
     public static func timeline(
-        _ db: Database, from: Date, until: Date, destinationId: DestinationID? = nil
+        _ db: Database, from: Date, until: Date, destinationId: DestinationID? = nil, sourceId: SourceID? = nil
     ) throws -> [TimelineSlot] {
-        let query = timelineQuery(from: from, until: until, destinationId: destinationId)
+        let query = timelineQuery(from: from, until: until, destinationId: destinationId, sourceId: sourceId)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         return try Row.fetchAll(db, sql: query.sql, arguments: query.arguments).compactMap { row in
@@ -80,12 +80,18 @@ public enum HistoryRepository {
         }
     }
 
-    static func timelineQuery(from: Date, until: Date, destinationId: DestinationID?) -> (sql: String, arguments: StatementArguments) {
+    static func timelineQuery(
+        from: Date, until: Date, destinationId: DestinationID?, sourceId: SourceID? = nil
+    ) -> (sql: String, arguments: StatementArguments) {
         var values: [any DatabaseValueConvertible] = [from, until]
         var destination = ""
         if let destinationId {
-            destination = "AND +destination_id = ?"
+            destination += "AND +destination_id = ? "
             values.append(destinationId.rawValue)
+        }
+        if let sourceId {
+            destination += "AND +source_id = ?"
+            values.append(sourceId.rawValue)
         }
         let sql = """
             SELECT strftime('%Y-%m-%d %H:', at) || printf('%02d', (CAST(strftime('%M', at) AS INTEGER) / 15) * 15) AS slot,
@@ -105,14 +111,16 @@ public enum HistoryRepository {
     }
 
     /// Where each original file of the asset stands at every destination now, with its latest integrity result.
+    static let statusesSQL = """
+        SELECT j.destination_id, j.res_type, j.state, j.state_reason, j.last_error, j.remote_id, c.checked_at, c.result
+        FROM upload_job j
+        LEFT JOIN integrity_check c ON c.destination_id = j.destination_id AND c.asset_key = j.asset_key AND c.res_type = j.res_type
+        WHERE j.asset_key = ? AND j.res_type < 1000
+        ORDER BY j.destination_id, j.res_type
+        """
+
     public static func statuses(_ db: Database, assetKey: AssetKey) throws -> [FileDestinationStatus] {
-        try Row.fetchAll(db, sql: """
-            SELECT j.destination_id, j.res_type, j.state, j.state_reason, j.last_error, j.remote_id, c.checked_at, c.result
-            FROM upload_job j
-            LEFT JOIN integrity_check c ON c.destination_id = j.destination_id AND c.asset_key = j.asset_key AND c.res_type = j.res_type
-            WHERE j.asset_key = ? AND j.res_type < 1000
-            ORDER BY j.destination_id, j.res_type
-            """, arguments: [assetKey.rawValue]).map { row in
+        try Row.fetchAll(db, sql: statusesSQL, arguments: [assetKey.rawValue]).map { row in
             let table = "upload_job"
             return FileDestinationStatus(
                 destinationId: try row.destinationId("destination_id", table: table),

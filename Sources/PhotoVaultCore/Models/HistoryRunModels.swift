@@ -15,10 +15,12 @@ public struct BackfillRunRow: Identifiable, Hashable, Sendable {
     public var totals: [TransferOutcome: OutcomeTotal]
     /// Files of the run still pending or uploading.
     public var waiting: Int
+    /// Files of the run that are deferred or skipped now, whether or not history saw them fail (it began later).
+    public var retryable: Int
 
     public init(
         id: Int64, trigger: BackfillTrigger, destinationId: DestinationID?, startedAt: Date, finishedAt: Date?, approximate: Bool,
-        totals: [TransferOutcome: OutcomeTotal] = [:], waiting: Int = 0
+        totals: [TransferOutcome: OutcomeTotal] = [:], waiting: Int = 0, retryable: Int = 0
     ) {
         self.id = id
         self.trigger = trigger
@@ -28,6 +30,7 @@ public struct BackfillRunRow: Identifiable, Hashable, Sendable {
         self.approximate = approximate
         self.totals = totals
         self.waiting = waiting
+        self.retryable = retryable
     }
 }
 

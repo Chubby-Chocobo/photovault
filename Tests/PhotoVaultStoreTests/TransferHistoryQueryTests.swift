@@ -117,6 +117,13 @@ import Testing
         let bytes = slots.map(\.bytes).reduce(0, +)
         #expect(files == 6)
         #expect(bytes == 2_500)
+        let photosOnly = try store.write { db in
+            let key = try F.file(db, "imp", source: SourceID.folder())
+            try JobRepository.upsert(db, desired: desired(F.drive, key), now: t0)
+            try F.upload(db, F.identity(key), at: t0)
+            return try HistoryRepository.timeline(db, from: t0.addingTimeInterval(-3_600), until: t0.addingTimeInterval(3_600), sourceId: .photos)
+        }
+        #expect(photosOnly.map(\.files).reduce(0, +) == 6, "an import's uploads are not Photos uploads")
         for slot in slots {
             #expect(Int(slot.start.timeIntervalSince1970) % 900 == 0)
         }

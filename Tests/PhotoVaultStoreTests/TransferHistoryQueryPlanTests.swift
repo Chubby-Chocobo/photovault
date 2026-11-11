@@ -90,14 +90,14 @@ import Testing
     }
 
     @Test func runTotalsAndFileStatusesUseIndexes() throws {
-        let totals = try plan("""
-            SELECT e.outcome, COUNT(*) FROM transfer_event e
-            WHERE e.run_id = ?1 AND e.id = (SELECT MAX(id) FROM transfer_event WHERE job_id = e.job_id AND run_id = ?1) GROUP BY e.outcome
-            """, [1])
+        let totals = try plan(BackfillRunRepository.totalsSQL, [1])
         #expect(totals.contains("transfer_event_run_at") && totals.contains("transfer_event_job"), "\(totals)")
         #expect(!totals.contains("SCAN e") && !totals.contains("SCAN transfer_event"), "\(totals)")
-        let waiting = try plan("SELECT COUNT(*) FROM upload_job WHERE backfill_run_id = ? AND state IN ('pending', 'uploading') AND origin IN ('backfill', 'destinationBackfill')", [1])
+        let waiting = try plan(BackfillRunRepository.waitingSQL, [1])
         #expect(waiting.contains("upload_job_backfill_run"), "\(waiting)")
+        let statuses = try plan(HistoryRepository.statusesSQL, ["l:42"])
+        #expect(statuses.contains("upload_job_asset") || statuses.contains("upload_job_identity"), "\(statuses)")
+        #expect(!statuses.contains("SCAN j"), "\(statuses)")
     }
 
     @Test func aPageOfTheLargeLibraryHasTheNewestFirst() throws {

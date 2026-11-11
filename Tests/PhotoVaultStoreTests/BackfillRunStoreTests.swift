@@ -116,4 +116,47 @@ import Testing
             #expect(try BackfillRunRepository.failedJobs(db, runId: run.id) == [F.identity(b)])
         }
     }
+
+    @Test func aRunRetriedOutsideHistoryIsRunningAgainAndOneWhoseJobsWentAwayFinishes() throws {
+        let store = try Store.inMemory()
+        try store.write { db in
+            let a = try F.file(db, "a")
+            try JobRepository.upsert(db, desired: desired(F.drive, a, origin: .backfill), now: t0)
+            try F.failForGood(db, F.identity(a), at: t0)
+            try BackfillRunRepository.finishSettled(db, now: t0)
+            var run = try #require(try BackfillRunRepository.fetchAll(db).first)
+            #expect(run.finishedAt != nil && run.retryable == 1)
+            // The 24-hour sweeper retries it: the run shows as running at once and is reopened by the next drained cycle.
+            _ = try JobRepository.apply(db, .retryDeferred, to: F.identity(a), now: t0)
+            run = try #require(try BackfillRunRepository.fetchAll(db).first)
+            #expect(run.finishedAt == nil && run.waiting == 1 && run.retryable == 0)
+            try BackfillRunRepository.finishSettled(db, now: t0)
+            #expect(try Date.fetchOne(db, sql: "SELECT finished_at FROM backfill_run") == nil)
+            try F.upload(db, F.identity(a), at: t0.addingTimeInterval(50))
+            try BackfillRunRepository.finishSettled(db, now: t0.addingTimeInterval(60))
+            #expect(try BackfillRunRepository.fetchAll(db).first?.finishedAt == t0.addingTimeInterval(50))
+
+            // A destination removed in the middle of a run takes its jobs: the run finishes instead of running forever.
+            let b = try F.file(db, "b")
+            try BackfillRunRepository.close(db, trigger: .library, destinationId: nil, now: t0)
+            try JobRepository.upsert(db, desired: desired(F.drive, b, origin: .backfill), now: t0)
+            try db.execute(sql: "DELETE FROM upload_job WHERE asset_key = ?", arguments: [b.rawValue])
+            try BackfillRunRepository.finishSettled(db, now: t0.addingTimeInterval(70))
+            #expect(try BackfillRunRepository.fetchAll(db).allSatisfy { $0.finishedAt != nil })
+        }
+    }
+
+    @Test func removingADestinationDropsItsIntegrityResultsButKeepsItsHistory() throws {
+        let store = try Store.inMemory()
+        try store.write { db in
+            _ = try DestinationRepository.add(db, makeDestination(), now: t0)
+            let a = try F.file(db, "a")
+            try JobRepository.upsert(db, desired: desired(F.drive, a), now: t0)
+            try F.upload(db, F.identity(a), at: t0)
+            try IntegrityCheckRepository.record(db, identity: F.identity(a), result: .intact, at: t0)
+            try DestinationRepository.remove(db, id: F.drive)
+            #expect(try IntegrityCheckRepository.fetch(db, identity: F.identity(a)) == nil)
+            #expect(try F.events(db).count == 1)
+        }
+    }
 }
