@@ -10,6 +10,11 @@ extension ImportStage {
 
     func ingestBatch(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {
         let id = source.id
+        // Reads stay at most one batch ahead of the exports: while the files read and not yet staged make a full batch, the
+        // next batch waits. Uploads drain staging and the exporter the backlog, so reading resumes at the pace of the uploads.
+        let now = env.clock.now
+        let backlog = try await env.store.read { db in try EngineQueries.importExportBacklogBytes(db, sourceId: id, now: now) }
+        if backlog >= env.tuning.importBatchBytes { return false }
         let limit = max(1, env.tuning.importBatchGroups)
         let groups = try await nextGroups(id, limit: limit)
         guard !groups.isEmpty else {

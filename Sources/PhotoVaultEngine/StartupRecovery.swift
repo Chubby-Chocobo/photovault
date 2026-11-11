@@ -35,7 +35,7 @@ struct StartupRecovery: Sendable {
 
     func run() async throws -> RecoverySummary {
         var summary = RecoverySummary()
-        summary.exportsReset = try await env.store.write { db in try ResourceRepository.resetExportingOnStartup(db) }
+        summary.exportsReset = try await resetInterruptedExports()
         summary.orphanFilesRemoved = try await staging.cleanupOrphans()
         let interrupted = try await resolveInterrupted()
         summary.jobsCompleted = interrupted.jobsCompleted
@@ -45,6 +45,14 @@ struct StartupRecovery: Sendable {
         for participant in participants { try await participant.recover() }
         env.log.log(.info, category: "recovery", "startup recovery finished exports=\(summary.exportsReset) jobsRequeued=\(summary.jobsRequeued) jobsCompleted=\(summary.jobsCompleted)")
         return summary
+    }
+
+    /// Resources left `exporting` go back to `none`; the next export writes their file again. Only safe while no export runs:
+    /// at launch, and at the start of a cycle (an export cut off by an error in the upload pass beside it cannot record its
+    /// own end, because its task is cancelled).
+    @discardableResult
+    func resetInterruptedExports() async throws -> Int {
+        try await env.store.write { db in try ResourceRepository.resetExportingOnStartup(db) }
     }
 
     /// Resolves jobs left `uploading` and unconfirmed folders. Safe to repeat.

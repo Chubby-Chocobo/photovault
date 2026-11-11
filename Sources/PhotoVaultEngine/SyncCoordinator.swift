@@ -7,6 +7,7 @@ import PhotoVaultStore
 /// 1 checks · 2 scan / change tracking · 3 classify · 4 export · 5 [stage] · 6 fan-out ·
 /// 7–9 [stages] · 10 [stage] · 11 publish. Steps 3–9 repeat while they make progress, so a large
 /// backlog drains within one cycle (staging is released by uploads, which lets more exports in).
+/// Within a round the fan-out runs beside steps 3–4, after the edit gate (`SyncCoordinator+Round`).
 /// Single-flight: a trigger that arrives while a cycle runs schedules exactly one follow-up.
 public actor SyncCoordinator {
     let env: EngineEnvironment
@@ -95,7 +96,9 @@ public actor SyncCoordinator {
         finalize = finalizePass
         eligibility = eligibilityService
         classifier = ClassifyWorker(env: env, resourceGuard: guardActor, staging: staging, extensions: extensions)
-        exporter = ExportWorker(env: env, resourceGuard: guardActor, staging: staging)
+        exporter = ExportWorker(
+            env: env, resourceGuard: guardActor, staging: staging, interrupts: importInterrupts,
+            commandWaiting: { await lane.hasWaitingCommands })
         uploader = uploadRunner
         recovery = StartupRecovery(env: env, staging: staging, participants: recoveryParticipants + [MoveRecovery(env: env)])
     }

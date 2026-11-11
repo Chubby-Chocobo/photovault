@@ -19,6 +19,12 @@ enum UploadOutcome: Sendable, Equatable {
     case unsupported
 }
 
+/// A staged file, by asset and resource type.
+struct StagedFile: Hashable, Sendable {
+    var assetKey: AssetKey
+    var type: ResourceType
+}
+
 /// Asked before every job starts; the coordinator re-checks pause, network, power and waiting
 /// owner commands here, so a long pass reacts within one job.
 struct UploadGate: Sendable {
@@ -78,13 +84,15 @@ actor UploadRunner {
 
     // MARK: Pass
 
-    /// Uploads for every destination concurrently. `maxJobsPerDestination` bounds a step-by-step run.
-    func runPass(maxJobsPerDestination: Int? = nil, gate: UploadGate = .open) async throws -> UploadPassResult {
+    /// Uploads for every destination concurrently. `maxJobsPerDestination` bounds a step-by-step run. With `stagedAtStart`,
+    /// only files staged when the pass began are sent (sidecars always are): a pass that runs beside the exports leaves
+    /// what they stage meanwhile to the next round, so that round has something to send while the next batch is read.
+    func runPass(maxJobsPerDestination: Int? = nil, gate: UploadGate = .open, stagedAtStart: Set<StagedFile>? = nil) async throws -> UploadPassResult {
         let ids = await env.destinations.ids
         var result = UploadPassResult()
         try await withThrowingTaskGroup(of: (DestinationID, Int).self) { group in
             for id in ids {
-                group.addTask { (id, try await self.runCancellable(id, maxJobs: maxJobsPerDestination, gate: gate)) }
+                group.addTask { (id, try await self.runCancellable(id, maxJobs: maxJobsPerDestination, gate: gate, staged: stagedAtStart)) }
             }
             for try await (id, count) in group {
                 result.uploaded += count
@@ -98,8 +106,8 @@ actor UploadRunner {
     /// Their jobs stay `uploading` and are resolved by recovery.
     func cancelUploads(of id: DestinationID) { activePasses[id]?.cancel() }
 
-    private func runCancellable(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
-        let task = Task { try await self.runDestination(id, maxJobs: maxJobs, gate: gate) }
+    private func runCancellable(_ id: DestinationID, maxJobs: Int?, gate: UploadGate, staged: Set<StagedFile>?) async throws -> Int {
+        let task = Task { try await self.runDestination(id, maxJobs: maxJobs, gate: gate, staged: staged) }
         activePasses[id] = task
         defer { if activePasses[id] == task { activePasses[id] = nil } }
         do {
@@ -110,13 +118,40 @@ actor UploadRunner {
         }
     }
 
-    private func runDestination(_ id: DestinationID, maxJobs: Int?, gate: UploadGate) async throws -> Int {
+    /// The next ranked window of ready jobs not tried in this pass (one ranking query per window, not per job). Jobs whose
+    /// file was staged after the pass began go to `later`; a full window of only such jobs is widened, so the jobs ranked
+    /// below it are still found.
+    private func refill(
+        _ id: DestinationID, attempted: Set<Int64>, later: inout Set<Int64>, staged: Set<StagedFile>?
+    ) async throws -> [JobRepository.ReadyJob] {
+        let now = env.clock.now
+        while true {
+            let window = 200 + attempted.count + later.count
+            let rows = try await env.store.read { db in try JobRepository.readyToUpload(db, destinationId: id, now: now, limit: window) }
+            var buffer: [JobRepository.ReadyJob] = []
+            var deferred = 0
+            for item in rows {
+                guard let jobId = item.job.id, !attempted.contains(jobId), !later.contains(jobId) else { continue }
+                if let staged, let resource = item.resource, !staged.contains(StagedFile(assetKey: resource.assetKey, type: resource.type)) {
+                    later.insert(jobId)
+                    deferred += 1
+                } else {
+                    buffer.append(item)
+                }
+            }
+            if !buffer.isEmpty || deferred == 0 || rows.count < window { return buffer }
+        }
+    }
+
+    private func runDestination(_ id: DestinationID, maxJobs: Int?, gate: UploadGate, staged: Set<StagedFile>?) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
         if isBackedOff(id) { return 0 }
         let ensurer = ensurer(for: record, destination: destination)
         let limit = max(1, env.tuning.maxConcurrentUploadsPerDestination)
         var attempted = Set<Int64>()
+        // Ready jobs left for the next round (their file was staged after the pass began).
+        var later = Set<Int64>()
         var buffer: [JobRepository.ReadyJob] = []
         var inFlight = Set<Int64>()
         var uploaded = 0
@@ -134,14 +169,7 @@ actor UploadRunner {
                         stop = true
                         break
                     }
-                    if buffer.isEmpty {
-                        // One ranking query per window, not per job.
-                        let now = env.clock.now
-                        let window = 200 + attempted.count
-                        buffer = try await env.store.read { db in
-                            try JobRepository.readyToUpload(db, destinationId: id, now: now, limit: window)
-                        }.filter { item in item.job.id.map { !attempted.contains($0) } ?? false }
-                    }
+                    if buffer.isEmpty { buffer = try await refill(id, attempted: attempted, later: &later, staged: staged) }
                     guard !buffer.isEmpty else { break }
                     let next = buffer.removeFirst()
                     guard let jobId = next.job.id else { continue }

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0] - 2026-11-11
+
+### Upgrade notes
+
+- Pause now also stops new downloads into staging. Before, an import kept downloading while paused until staging was full.
+
+### Features
+
+- **engine:** download the next import batch while the last one uploads, so an import from Google Drive or Dropbox to a cloud destination takes close to the longer of the download and the upload instead of their sum (#79) (591c1d1)
+
+### Maintenance
+
+- The import-cancel tests wait for real signals instead of a 10 s bound (#80).
+
 ## [0.5.1] - 2026-11-10
 
 No user-facing changes.
