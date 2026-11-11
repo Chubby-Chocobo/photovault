@@ -190,7 +190,7 @@ private final class OpenedFlag: @unchecked Sendable {
         #expect(port == 53_682)
         let browser = Task { try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:53682/oauth2/callback?code=C&state=st")!) }
         #expect(try await server.awaitCode() == "C")
-        server.respond(success: true)
+        server.respond(.success)
         _ = try await browser.value
         #expect(server.acceptedLocalHost?.hasPrefix("127.0.0.1") == true)
     }

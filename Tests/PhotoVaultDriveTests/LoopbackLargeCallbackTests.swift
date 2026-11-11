@@ -22,7 +22,7 @@ import Testing
         let list = ids(2000)
         let browser = Task { try await fetch(port, "/oauth2/callback?code=c&state=st&picked_file_ids=\(list)") }
         #expect(try await server.awaitCode() == "c")
-        server.respond(success: true)
+        server.respond(.success)
         #expect(try await browser.value.1 == 200)
         #expect(server.receivedCallback?.pickedFileIds == list)
     }
@@ -51,7 +51,7 @@ import Testing
         #expect(stray?.1 == 413)
         let real = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
         #expect(try await waiting.value == "c")
-        server.respond(success: true)
+        server.respond(.success)
         #expect(try await real.value.1 == 200)
     }
 
@@ -99,7 +99,7 @@ import Testing
         #expect(stray == nil || stray?.1 == 413)
         let real = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
         #expect(try await waiting.value == "c")
-        server.respond(success: true)
+        server.respond(.success)
         _ = try await real.value
     }
 

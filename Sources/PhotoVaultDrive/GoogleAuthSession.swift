@@ -57,7 +57,7 @@ public actor GoogleAuthSession: DriveAuthorizing {
     public func signIn() async throws -> GoogleIdentity {
         let result = try await oauth.signIn()
         guard let refresh = result.tokens.refreshToken else {
-            throw DestinationError.itemRejected(reason: "refresh token missing")
+            throw DestinationError.itemRejected(reason: OAuthClient.refreshTokenMissing)
         }
         try install(refreshToken: refresh, accessToken: result.tokens.accessToken, expiresAt: result.tokens.expiresAt)
         log.log(.info, category: "drive.auth", "signed in")
@@ -68,7 +68,7 @@ public actor GoogleAuthSession: DriveAuthorizing {
     public func beginAccountChange() async throws -> StagedAccount {
         let result = try await oauth.signIn()
         guard let refresh = result.tokens.refreshToken else {
-            throw DestinationError.itemRejected(reason: "refresh token missing")
+            throw DestinationError.itemRejected(reason: OAuthClient.refreshTokenMissing)
         }
         let staged = StagedAccount(identity: result.identity, refreshToken: refresh,
                                    accessToken: result.tokens.accessToken, expiresAt: result.tokens.expiresAt)

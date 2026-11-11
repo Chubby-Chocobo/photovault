@@ -68,7 +68,7 @@ private enum RawSocket {
         #expect(wrong == 404)
         let browser = Task { try await fetch(port, "/oauth2/callback?code=THE-CODE&state=st") }
         #expect(try await server.awaitCode() == "THE-CODE")
-        server.respond(success: true)
+        server.respond(.success)
         let (page, status) = try await browser.value
         #expect(status == 200)
         #expect(!String(decoding: page, as: UTF8.self).contains("THE-CODE"))
@@ -97,19 +97,54 @@ private enum RawSocket {
         #expect(status == 400)
         let browser = Task { try await fetch(port, "/oauth2/callback?code=real&state=st") }
         #expect(try await server.awaitCode() == "real")
-        server.respond(success: true)
+        server.respond(.success)
         #expect(try await browser.value.1 == 200)
     }
 
-    @Test func browserSeesFailureWhenExchangeFails() async throws {
+    @Test(arguments: CallbackPage.allCases)
+    func theBrowserGetsThePageTheAppChose(page: CallbackPage) async throws {
+        let server = try LoopbackRedirectServer(expectedState: "the-state")
+        let port = try await server.start()
+        let browser = Task { try await fetch(port, "/oauth2/callback?code=THE-CODE&state=the-state&picked_file_ids=PICKED") }
+        _ = try await server.awaitCode()
+        server.respond(page)
+        let (body, status) = try await browser.value
+        let text = String(decoding: body, as: UTF8.self)
+        #expect(status == (page == .success ? 200 : 400))
+        #expect(text == page.html)
+        for echoed in ["THE-CODE", "the-state", "PICKED"] { #expect(!text.contains(echoed)) }
+    }
+
+    @Test func everyPageSaysSomethingDifferent() {
+        #expect(Set(CallbackPage.allCases.map(\.html)).count == CallbackPage.allCases.count)
+        #expect(CallbackPage.failed.html.contains("Sign-in failed. Close this tab and try again in PhotoVault."))
+        let scope = CallbackPage.driveScopeMissing.html
+        #expect(scope.contains("See, edit, create, and delete only the specific Google Drive files you use with this app"))
+        #expect(scope.contains("Xem, chỉnh sửa, tạo và xoá các tệp cụ thể trên Google Drive mà bạn dùng với ứng dụng này"))
+        #expect(scope.contains("This only lets PhotoVault use the files it creates."))
+        #expect(CallbackPage.persistentSignInMissing.html.contains("Google didn't grant persistent sign-in."))
+    }
+
+    @Test func theGenericPageIsSentWhenNobodyResponds() async throws {
+        // Nobody calls `respond`, so the only page that can arrive is the fallback, however late it fires.
+        let server = try LoopbackRedirectServer(expectedState: "st", replyTimeout: 0.1)
+        let port = try await server.start()
+        let browser = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
+        _ = try await server.awaitCode()
+        let (body, status) = try await browser.value
+        #expect(status == 400 && String(decoding: body, as: UTF8.self) == CallbackPage.failed.html)
+        server.respond(.success)
+    }
+
+    @Test func aPageChosenInTimeIsNotReplacedByTheFallback() async throws {
         let server = try LoopbackRedirectServer(expectedState: "st")
         let port = try await server.start()
         let browser = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
         _ = try await server.awaitCode()
-        server.respond(success: false)
-        let (page, status) = try await browser.value
-        #expect(status == 400)
-        #expect(String(decoding: page, as: UTF8.self).contains("Sign-in failed"))
+        server.respond(.driveScopeMissing)
+        server.respond(.failed)
+        let (body, _) = try await browser.value
+        #expect(String(decoding: body, as: UTF8.self) == CallbackPage.driveScopeMissing.html)
     }
 
     @Test func deniedAuthorizationEndsTheFlow() async throws {
@@ -133,7 +168,7 @@ private enum RawSocket {
         _ = try await server.awaitCode()
         // A reload or a prefetch of the same redirect with other ids, while the first page is still waiting.
         _ = try? await fetch(port, "/oauth2/callback?code=c2&state=st&picked_file_ids=X")
-        server.respond(success: true)
+        server.respond(.success)
         _ = try await first.value
         #expect(server.receivedCallback?.pickedFileIds == "A,B")
     }
@@ -143,7 +178,7 @@ private enum RawSocket {
         let port = try await server.start()
         let browser = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
         _ = try await server.awaitCode()
-        server.respond(success: true)
+        server.respond(.success)
         _ = try await browser.value
         #expect(await pollUntil { server.hasStoppedListening })
         await #expect(throws: (any Error).self) { _ = try await fetch(port, "/oauth2/callback?code=c2&state=st") }

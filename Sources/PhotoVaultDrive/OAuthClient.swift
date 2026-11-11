@@ -84,11 +84,23 @@ public struct OAuthClient: Sendable {
             let tokens = try await exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
             guard let idToken = tokens.idToken else { throw DestinationError.itemRejected(reason: "id token missing") }
             let identity = try IDToken.identity(from: idToken, clientID: config.clientID, now: clock.now)
-            server.respond(success: true)
+            // Checked here, not by the caller, so the browser page can say why the sign-in will not last.
+            guard tokens.refreshToken != nil else { throw DestinationError.itemRejected(reason: Self.refreshTokenMissing) }
+            server.respond(.success)
             return SignInResult(identity: identity, tokens: tokens)
         } catch {
-            server.respond(success: false)
+            server.respond(Self.callbackPage(for: error))
             throw error
+        }
+    }
+
+    /// The browser page for a failed sign-in: the reasons this client writes itself get their own page, anything else the generic one.
+    static func callbackPage(for error: any Error) -> CallbackPage {
+        guard case .itemRejected(let reason)? = error as? DestinationError else { return .failed }
+        switch reason {
+        case fileScopeMissing: return .driveScopeMissing
+        case refreshTokenMissing: return .persistentSignInMissing
+        default: return .failed
         }
     }
 
@@ -123,6 +135,8 @@ public struct OAuthClient: Sendable {
     /// The `itemRejected` reason of a token response that lacks the `drive.file` permission.
     public static let fileScope = "https://www.googleapis.com/auth/drive.file"
     static let fileScopeMissing = "drive.file scope not granted"
+    /// The `itemRejected` reason of a sign-in that Google answered without a refresh token.
+    static let refreshTokenMissing = "refresh token missing"
 
     private struct TokenResponse: Decodable {
         var access_token: String
