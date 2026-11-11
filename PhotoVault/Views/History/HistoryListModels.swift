@@ -30,6 +30,12 @@ enum ListLoad {
         if case .failure(let error) = result { return !(error is CancellationError) }
         return false
     }
+
+    /// A read cancelled by the owner (typing again, switching away): the rows shown stay until the next read ends.
+    static func cancelled(_ result: Result<some Any, Error>) -> Bool {
+        if case .failure(let error) = result { return error is CancellationError }
+        return false
+    }
 }
 
 /// One paged list of transfer events. Pages come from the store off the main thread; a reload that is overtaken
@@ -51,6 +57,8 @@ final class EventListModel {
         isLoading = true
         let result = await reads.run(app: app) { db in try HistoryRepository.events(db, filter: filter) }
         guard current == generation else { return }
+        isLoading = false
+        guard !ListLoad.cancelled(result) else { return }
         self.filter = filter
         rows = (try? result.get()) ?? []
         failed = ListLoad.failed(result)
@@ -65,6 +73,8 @@ final class EventListModel {
         isLoading = true
         let result = await reads.run(app: app) { db in try HistoryRepository.events(db, filter: filter, after: cursor) }
         guard current == generation else { return }
+        isLoading = false
+        guard !ListLoad.cancelled(result) else { return }
         let page = (try? result.get()) ?? []
         rows += page
         failed = ListLoad.failed(result)
@@ -103,6 +113,8 @@ final class ImportItemListModel {
         isLoading = true
         let result = await reads.run(app: app) { db in try ImportHistoryRepository.items(db, filter: filter) }
         guard current == generation else { return }
+        isLoading = false
+        guard !ListLoad.cancelled(result) else { return }
         self.filter = filter
         rows = (try? result.get()) ?? []
         failed = ListLoad.failed(result)
@@ -116,6 +128,8 @@ final class ImportItemListModel {
         isLoading = true
         let result = await reads.run(app: app) { db in try ImportHistoryRepository.items(db, filter: filter, after: last) }
         guard current == generation else { return }
+        isLoading = false
+        guard !ListLoad.cancelled(result) else { return }
         let page = (try? result.get()) ?? []
         rows += page
         failed = ListLoad.failed(result)
