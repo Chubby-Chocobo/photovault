@@ -143,9 +143,10 @@ struct IntegrityChecker: Sendable {
 
     /// Marks jobs missing, but only those that are still exactly what the check looked at: a job
     /// that was refreshed or moved since the snapshot (other `remoteId` or hash) is not judged by
-    /// an old picture. Returns the jobs that were marked.
+    /// an old picture. Each marked file's check result (`missing` unless `results` says how it differs)
+    /// is written in the same transaction. Returns the jobs that were marked.
     @discardableResult
-    func markMissing(_ jobs: [DoneJob]) async throws -> Set<JobIdentity> {
+    func markMissing(_ jobs: [DoneJob], results: [JobIdentity: IntegrityCheckResult] = [:]) async throws -> Set<JobIdentity> {
         guard !jobs.isEmpty else { return [] }
         let now = env.clock.now
         return try await env.store.write { db in
@@ -155,6 +156,7 @@ struct IntegrityChecker: Sendable {
                       current.remoteId == snapshot.remoteId, current.uploadedHash == snapshot.uploadedHash else { continue }
                 do {
                     _ = try JobRepository.apply(db, .missingAtDestination, to: snapshot.identity, now: now)
+                    try IntegrityCheckRepository.record(db, identity: snapshot.identity, result: results[snapshot.identity] ?? .missing, at: now)
                     try DirtyQueue.mark(db, [.view], asset: snapshot.identity.assetKey)
                     marked.insert(snapshot.identity)
                 } catch is JobTransitionError {

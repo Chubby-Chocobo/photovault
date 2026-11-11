@@ -19,6 +19,19 @@ public enum ImportHistoryRepository {
         }
     }
 
+    /// Original-file uploads of the import's files that are deferred or skipped now, for "retry all".
+    public static func failedJobs(_ db: Database, sourceId: SourceID) throws -> [JobIdentity] {
+        try Row.fetchAll(db, sql: """
+            SELECT j.destination_id, j.asset_key, j.res_type FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
+            WHERE a.source_id = ? AND j.res_type < 1000 AND j.state IN ('deferred', 'skipped') ORDER BY j.id
+            """, arguments: [sourceId.rawValue]).map { row in
+            let table = "upload_job"
+            return JobIdentity(
+                destinationId: try row.destinationId("destination_id", table: table), assetKey: try row.assetKey("asset_key", table: table),
+                resType: ResourceType(rawValue: row["res_type"]))
+        }
+    }
+
     static func failedUploads(_ db: Database, sourceId: SourceID) throws -> Int {
         try Int.fetchOne(db, sql: """
             SELECT COUNT(*) FROM asset a JOIN upload_job j ON j.asset_key = a.asset_key
