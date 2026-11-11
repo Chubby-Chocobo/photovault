@@ -5,9 +5,13 @@ import PhotoVaultEngine
 import SwiftUI
 
 /// The `MenuBarExtra` popover (FR-60), 360 pt wide as in the menu-bar mockup. While the engine runs, its
-/// content area has one fixed height and scrolls inside it, so the action rows below never move.
+/// content area is as tall as its content, up to what the screen can hold, and scrolls past that. While the
+/// popup is open that area only grows (`PopoverContentHeight`), so the action rows below never move up and
+/// back down; each time the popup opens it fits its content again.
 struct MenuBarView: View {
     @Environment(AppModel.self) private var model
+    @State private var contentHeight = PopoverContentHeight()
+    @State private var actionsHeight: Double = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -17,16 +21,26 @@ struct MenuBarView: View {
             case .needsOnboarding:
                 OnboardingPrompt()
             case .running:
-                ScrollView { RunningContent() }
-                    .frame(height: PopoverLayout.runningContentHeight(visibleScreenHeight: Double(NSScreen.main?.visibleFrame.height ?? 800)))
+                ScrollView {
+                    RunningContent()
+                        .onGeometryChange(for: Double.self) { Double($0.size.height) } action: { contentHeight.measured($0) }
+                }
+                .frame(height: contentHeight.height(limit: contentLimit).map { CGFloat($0) })
             }
             Divider()
             MenuBarActions()
+                .onGeometryChange(for: Double.self) { Double($0.size.height) } action: { actionsHeight = $0 }
         }
         .id(model.language)
         .padding(12)
         .frame(width: PopoverLayout.width)
+        .background(PopupWindowObserver { isOpen in isOpen ? contentHeight.opened() : contentHeight.closed() })
         .task { await model.refreshSnapshot() }
+    }
+
+    private var contentLimit: Double {
+        PopoverLayout.contentLimit(
+            visibleScreenHeight: Double(NSScreen.main?.visibleFrame.height ?? 800), actionsHeight: actionsHeight)
     }
 }
 

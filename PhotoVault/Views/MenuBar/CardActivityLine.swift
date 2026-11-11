@@ -12,13 +12,28 @@ struct CardActivityLine: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            ProgressView().controlSize(.mini)
-                .opacity(isBusy ? 1 : 0).accessibilityHidden(!isBusy)
+            SlotSpinner(isBusy: isBusy)
             FittedLineText(line: line ?? FittedLine(lead: ""))
                 .font(.caption)
                 .foregroundStyle(isWaiting ? Color.orange : Color.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+        // An empty slot is only there to keep the card's height; VoiceOver should not stop on it.
+        .accessibilityHidden(!isBusy && (line?.text.isEmpty ?? true))
+    }
+}
+
+/// A mini spinner that keeps its place when nothing is busy. A spinner hidden by opacity keeps its
+/// AppKit indicator and goes on animating unseen; `hidden()` keeps only its size, so nothing animates.
+struct SlotSpinner: View {
+    var isBusy: Bool
+
+    var body: some View {
+        if isBusy {
+            ProgressView().controlSize(.mini)
+        } else {
+            ProgressView().controlSize(.mini).hidden().accessibilityHidden(true)
+        }
     }
 }
