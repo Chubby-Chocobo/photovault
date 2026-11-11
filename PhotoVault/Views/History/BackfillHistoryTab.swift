@@ -6,6 +6,7 @@ import SwiftUI
 /// Every backfill run, newest first; a run's summary and files beside it.
 struct BackfillHistoryTab: View {
     @Environment(AppModel.self) private var model
+    var refresh = 0
     @State private var runs: [BackfillRunRow] = []
     @State private var selection: BackfillRunRow.ID?
     @State private var filter = HistoryFilterState()
@@ -27,8 +28,8 @@ struct BackfillHistoryTab: View {
             .frame(minWidth: 220, idealWidth: 250, maxWidth: 320)
             detail.frame(minWidth: 600)
         }
-        .task { await loadRuns() }
-        .task(id: TaskKey(run: selection, filter: filter)) {
+        .task(id: refresh) { await loadRuns() }
+        .task(id: TaskKey(run: selection, filter: filter, refresh: refresh)) {
             guard let selection else { return }
             if !filter.search.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
             guard !Task.isCancelled else { return }
@@ -39,6 +40,7 @@ struct BackfillHistoryTab: View {
     private struct TaskKey: Equatable {
         var run: Int64?
         var filter: HistoryFilterState
+        var refresh: Int
     }
 
     @ViewBuilder private var detail: some View {
@@ -48,17 +50,22 @@ struct BackfillHistoryTab: View {
                     Text(HistoryRunText.title(run, destinationNames: model.destinationNames)).font(.headline)
                     Text(HistoryRunText.period(start: run.startedAt, end: run.finishedAt, approximate: run.approximate)).font(.callout)
                     Text(HistoryRunText.totals(run.totals)).font(.callout).foregroundStyle(.secondary)
+                    if run.retryable > 0 {
+                        Text(tr(vi: "\(L10n.integer(run.retryable)) file đang lỗi hoặc bị bỏ qua, có thể thử lại",
+                                en: L10n.plural(run.retryable, one: "1 file failed or was skipped and can be retried",
+                                                other: "\(L10n.integer(run.retryable)) files failed or were skipped and can be retried")))
+                            .font(.callout).foregroundStyle(.orange)
+                    }
                     if run.approximate { Text(HistoryText.approximateNote).font(.caption).foregroundStyle(.secondary) }
                     HistoryFilterBar(state: $filter, destinations: model.destinations)
                     HStack {
-                        let failed = (run.totals[.failed]?.files ?? 0) + (run.totals[.skipped]?.files ?? 0)
                         Button(tr(vi: "Thử lại các file lỗi", en: "Retry failed files")) {
                             Task {
                                 await model.retryFailedFiles(ofRun: run.id)
                                 await loadRuns()
                             }
                         }
-                        .disabled(failed == 0)
+                        .disabled(run.retryable == 0)
                         Spacer()
                         Button(tr(vi: "Xuất CSV…", en: "Export CSV…"), systemImage: "square.and.arrow.up") {
                             Task { await list.exportCSV(app: model, suggestedName: "PhotoVault-backfill-\(run.id).csv") }

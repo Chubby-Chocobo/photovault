@@ -5,6 +5,7 @@ import SwiftUI
 /// Files of the Photos library and what happened to them at each destination, with the daily timeline.
 struct PhotosHistoryTab: View {
     @Environment(AppModel.self) private var model
+    var refresh = 0
     @State private var filter = HistoryFilterState()
     @State private var list = EventListModel()
     @State private var showsTimeline = true
@@ -14,7 +15,7 @@ struct PhotosHistoryTab: View {
             VStack(alignment: .leading, spacing: 10) {
                 HistoryFilterBar(state: $filter, destinations: model.destinations)
                 DisclosureGroup(tr(vi: "Dòng thời gian theo ngày", en: "Daily timeline"), isExpanded: $showsTimeline) {
-                    TimelineChartView(destinationId: filter.destinationId).padding(.top, 4)
+                    TimelineChartView(destinationId: filter.destinationId, sourceId: .photos, refresh: refresh).padding(.top, 4)
                 }
                 HStack {
                     Spacer()
@@ -29,11 +30,16 @@ struct PhotosHistoryTab: View {
             Divider()
             EventListView(list: list)
         }
-        .task(id: filter) {
+        .task(id: TaskKey(filter: filter, refresh: refresh)) {
             // Typing in the search field reloads once the owner pauses.
             if !filter.search.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
             guard !Task.isCancelled else { return }
             await list.reload(filter.filter(scope: .photos, now: Date(), calendar: .current), app: model)
         }
+    }
+
+    private struct TaskKey: Equatable {
+        var filter: HistoryFilterState
+        var refresh: Int
     }
 }

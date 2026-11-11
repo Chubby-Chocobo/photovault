@@ -19,6 +19,8 @@ struct TimelineChartView: View {
 
     @Environment(AppModel.self) private var model
     var destinationId: DestinationID?
+    var sourceId: SourceID?
+    var refresh = 0
     @State private var span = 30
     @State private var metric: Metric = .files
     @State private var days: [TimelineDay] = []
@@ -48,20 +50,22 @@ struct TimelineChartView: View {
             .chartYAxisLabel(metric == .files ? tr(vi: "file", en: "files") : "GB")
             .frame(height: 120)
         }
-        .task(id: TaskKey(span: span, destination: destinationId)) { await load() }
+        .task(id: TaskKey(span: span, destination: destinationId, refresh: refresh)) { await load() }
     }
 
     private struct TaskKey: Equatable {
         var span: Int
         var destination: DestinationID?
+        var refresh: Int
     }
 
     private func load() async {
         let calendar = Calendar.current
         let range = HistoryTimeline.range(days: span, now: Date(), calendar: calendar)
         let destination = destinationId
+        let source = sourceId
         let slots = (try? await model.historyRead { db in
-            try HistoryRepository.timeline(db, from: range.from, until: range.until, destinationId: destination)
+            try HistoryRepository.timeline(db, from: range.from, until: range.until, destinationId: destination, sourceId: source)
         }) ?? []
         days = HistoryTimeline.days(slots, from: range.from, until: range.until, calendar: calendar)
     }

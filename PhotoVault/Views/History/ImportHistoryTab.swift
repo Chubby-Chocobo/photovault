@@ -6,6 +6,7 @@ import SwiftUI
 /// Every one-time import (folder, Google Drive, Dropbox), newest first; an import's summary and files beside it.
 struct ImportHistoryTab: View {
     @Environment(AppModel.self) private var model
+    var refresh = 0
     @State private var imports: [ImportRunRow] = []
     @State private var selection: SourceID?
     @State private var state: ImportItemState?
@@ -28,8 +29,8 @@ struct ImportHistoryTab: View {
             .frame(minWidth: 200, idealWidth: 240, maxWidth: 320)
             detail.frame(minWidth: 600)
         }
-        .task { await loadImports() }
-        .task(id: TaskKey(source: selection, state: state, search: search)) {
+        .task(id: refresh) { await loadImports() }
+        .task(id: TaskKey(source: selection, state: state, search: search, refresh: refresh)) {
             guard let selection else { return }
             if !search.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
             guard !Task.isCancelled else { return }
@@ -41,6 +42,7 @@ struct ImportHistoryTab: View {
         var source: SourceID?
         var state: ImportItemState?
         var search: String
+        var refresh: Int
     }
 
     @ViewBuilder private var detail: some View {
