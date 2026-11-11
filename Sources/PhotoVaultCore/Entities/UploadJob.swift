@@ -34,6 +34,8 @@ public struct UploadJob: Hashable, Codable, Sendable {
     public var deferredSince: Date?
     public var lastError: String?
     public var updatedAt: Date
+    /// The backfill run the job joined when it was created or reinstated as a backfill job; nil otherwise.
+    public var backfillRunId: Int64?
 
     public init(
         id: Int64? = nil, destinationId: DestinationID, assetKey: AssetKey, resType: ResourceType,
@@ -42,7 +44,7 @@ public struct UploadJob: Hashable, Codable, Sendable {
         sessionRef: String? = nil, sessionMd5: String? = nil, uploadedHash: String? = nil,
         targetGen: Int = 1, doneGen: Int = 0, uploadingGen: Int? = nil, mismatchCount: Int = 0,
         attempts: Int = 0, nextAttemptAt: Date? = nil, deferredSince: Date? = nil, lastError: String? = nil,
-        updatedAt: Date
+        updatedAt: Date, backfillRunId: Int64? = nil
     ) {
         self.id = id
         self.destinationId = destinationId
@@ -67,6 +69,7 @@ public struct UploadJob: Hashable, Codable, Sendable {
         self.deferredSince = deferredSince
         self.lastError = lastError
         self.updatedAt = updatedAt
+        self.backfillRunId = backfillRunId
     }
 
     public var identity: JobIdentity { JobIdentity(destinationId: destinationId, assetKey: assetKey, resType: resType) }

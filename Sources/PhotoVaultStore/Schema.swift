@@ -11,6 +11,7 @@ enum Schema {
         migrator.registerMigration("v5-sources", migrate: createSources)
         migrator.registerMigration("v6-day-place", migrate: createDayPlace)
         migrator.registerMigration("v7-import-retry", migrate: addImportRetry)
+        migrator.registerMigration("v8-transfer-history", migrate: createTransferHistory)
         return migrator
     }
 
