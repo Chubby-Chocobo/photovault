@@ -107,7 +107,7 @@ import Testing
         h.injector.onReach { point in
             if point == .afterImportGroupCommit, hits.next() == 2 { throw SimulatedCrash(point: point.rawValue) }
         }
-        let cancelled = try await first.startAndRun(h)
+        let cancelled = try await first.startAndRun(h, afterFirstUpload: true)
         try await h.coordinator.cancelImport(cancelled)
         h.injector.onReach(nil)
         #expect(await h.drive.files.count == 1)

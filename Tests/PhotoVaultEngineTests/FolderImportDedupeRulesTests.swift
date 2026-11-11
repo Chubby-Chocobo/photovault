@@ -79,7 +79,7 @@ import Testing
         h.injector.onReach { point in
             if point == .afterImportGroupCommit, hits.next() == 2 { throw SimulatedCrash(point: point.rawValue) }
         }
-        let cancelled = try await first.startAndRun(h)
+        let cancelled = try await first.startAndRun(h, afterFirstUpload: true)
         try await h.coordinator.cancelImport(cancelled)
         h.injector.onReach(nil)
         // The uploaded asset stays live but belongs to a cancelled import.
@@ -110,7 +110,7 @@ import Testing
         h.injector.onReach { point in
             if point == .afterImportGroupCommit, hits.next() == 2 { throw SimulatedCrash(point: point.rawValue) }
         }
-        let id = try await folder.startAndRun(h)
+        let id = try await folder.startAndRun(h, afterFirstUpload: true)
         try await h.coordinator.cancelImport(id)
         h.injector.onReach(nil)
         #expect(await h.drive.files.count == 1)
