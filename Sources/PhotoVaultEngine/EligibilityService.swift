@@ -36,7 +36,7 @@ struct EligibilityService: Sendable {
     @discardableResult
     static func recompute(
         _ db: Database, asset: AssetRecord, context: PipelineContext, only: DestinationID? = nil,
-        backfillOrigin: JobOrigin = .backfill, extensions: [any JobPlanningExtension] = []
+        backfillOrigin: JobOrigin = .backfill, runTrigger: BackfillTrigger = .library, extensions: [any JobPlanningExtension] = []
     ) throws -> Int {
         // A deleted asset is no longer eligible anywhere. Each job that has not uploaded anything
         // (pending or deferred) is cancelled on its own; done jobs stay, the backup is never touched (T23).
@@ -65,7 +65,7 @@ struct EligibilityService: Sendable {
                 let desired = JobTransitions.Desired(
                     identity: JobIdentity(destinationId: destination.id, assetKey: asset.assetKey, resType: type),
                     origin: origin, targetGen: resource.contentGen)
-                if try JobRepository.upsert(db, desired: desired, now: context.now) != nil { written += 1 }
+                if try JobRepository.upsert(db, desired: desired, now: context.now, runTrigger: runTrigger) != nil { written += 1 }
             }
             if planned.isEmpty {
                 written += try JobRepository.cancelAll(db, assetKey: asset.assetKey, destinationId: destination.id, now: context.now).count
@@ -98,9 +98,14 @@ struct EligibilityService: Sendable {
     }
 
     /// Recomputes every live asset (settings, rule or scope change; new destination), in batches.
-    /// - Parameter backfillOrigin: origin for jobs of assets older than the destination's baseline.
+    /// - Parameters:
+    ///   - backfillOrigin: origin for jobs of assets older than the destination's baseline.
+    ///   - runTrigger: the cause of the backfill run those jobs join. A command passes its own after closing the open
+    ///     run of that cause, so each command starts a run of its own.
     @discardableResult
-    func recomputeAll(destination: DestinationID? = nil, backfillOrigin: JobOrigin = .backfill) async throws -> Int {
+    func recomputeAll(
+        destination: DestinationID? = nil, backfillOrigin: JobOrigin = .backfill, runTrigger: BackfillTrigger = .library
+    ) async throws -> Int {
         var cursor = ""
         var written = 0
         let env = env
@@ -117,7 +122,7 @@ struct EligibilityService: Sendable {
                 for key in keys {
                     guard let asset = try AssetRepository.fetch(db, key: key) else { continue }
                     count += try Self.recompute(db, asset: asset, context: context, only: destination,
-                                                backfillOrigin: backfillOrigin, extensions: extensions)
+                                                backfillOrigin: backfillOrigin, runTrigger: runTrigger, extensions: extensions)
                 }
                 return (count, keys.last?.rawValue)
             }
@@ -125,5 +130,11 @@ struct EligibilityService: Sendable {
             written += batch.written
             cursor = last
         }
+    }
+
+    /// An owner command starts its own backfill run: the open run of the same cause takes no more jobs.
+    func startRun(_ trigger: BackfillTrigger, destination: DestinationID? = nil) async throws {
+        let now = env.clock.now
+        try await env.store.write { db in try BackfillRunRepository.close(db, trigger: trigger, destinationId: destination, now: now) }
     }
 }
