@@ -31,7 +31,10 @@ public struct URLSessionTransport: HTTPTransport {
     fileprivate let session: URLSession
     fileprivate let streamer: URLSessionStreamer
 
-    public init(timeout: TimeInterval = 120) {
+    /// The longest a request may go without data before it fails.
+    public static let defaultRequestTimeout: TimeInterval = 120
+
+    public init(timeout: TimeInterval = URLSessionTransport.defaultRequestTimeout) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
         configuration.waitsForConnectivity = false

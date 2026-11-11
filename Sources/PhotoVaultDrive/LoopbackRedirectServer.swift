@@ -5,15 +5,20 @@ import Network
 /// One-shot HTTP listener bound to 127.0.0.1 that receives the OAuth redirect (RFC 8252 section 7.3).
 /// It resolves with the first callback that carries the expected `state`, then stops listening; requests
 /// on other paths get a 404 and a callback with the wrong `state` gets a 400, neither consumes the slot.
-/// The browser connection of the accepted callback stays open until `respond(success:)` so the page can
-/// say whether the token exchange worked. Idle or slow connections are closed after `connectionTimeout`.
-/// It also cancels after `timeout`.
+/// The browser connection of the accepted callback stays open until `respond(_:)` so the page can
+/// say how the token exchange ended; if nobody answers within `replyTimeout` it gets the generic failure page.
+/// Idle or slow connections are closed after `connectionTimeout`. It also cancels after `timeout`.
 public final class LoopbackRedirectServer: @unchecked Sendable {
     public static let defaultTimeout: TimeInterval = 300
+    /// How long the accepted callback waits for `respond(_:)` before it gets the generic failure page. Between the code
+    /// and the page a flow makes at most two requests (the token exchange, then an account lookup), so the fallback must
+    /// not fire while a slow but successful sign-in is still finishing.
+    public static let defaultReplyTimeout: TimeInterval = 2 * URLSessionTransport.defaultRequestTimeout + 30
 
     private let expectedState: String
     private let timeout: TimeInterval
     private let connectionTimeout: TimeInterval
+    let replyTimeout: TimeInterval
     private let listener: NWListener
     private let queue = DispatchQueue(label: "photovault.loopback")
     private let lock = NSLock()
@@ -28,10 +33,12 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private var listenerStopped = false
 
     public init(expectedState: String, timeout: TimeInterval = LoopbackRedirectServer.defaultTimeout,
-                connectionTimeout: TimeInterval = 10, port: UInt16 = 0) throws {
+                connectionTimeout: TimeInterval = 10, replyTimeout: TimeInterval = LoopbackRedirectServer.defaultReplyTimeout,
+                port: UInt16 = 0) throws {
         self.expectedState = expectedState
         self.timeout = timeout
         self.connectionTimeout = connectionTimeout
+        self.replyTimeout = replyTimeout
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port) ?? .any)
         listener = try NWListener(using: parameters)
@@ -75,22 +82,13 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     /// True once the listener has stopped and takes no new connection.
     var hasStoppedListening: Bool { lock.withLock { listenerStopped } }
 
-    /// Tells the browser that the selection had more items than the app takes, and closes the callback connection.
-    public func respondSelectionTooLarge() {
+    /// Tells the browser how the flow ended and closes the callback connection. Only the first call sends a page.
+    public func respond(_ page: CallbackPage) {
         let connection = lock.withLock { () -> NWConnection? in
             defer { callbackConnection = nil }
             return callbackConnection
         }
-        if let connection { reply(connection, status: "400 Bad Request", body: Self.tooLargePage) }
-    }
-
-    /// Tells the browser how the sign-in ended and closes the callback connection.
-    public func respond(success: Bool) {
-        let connection = lock.withLock { () -> NWConnection? in
-            defer { callbackConnection = nil }
-            return callbackConnection
-        }
-        if let connection { reply(connection, status: success ? "200 OK" : "400 Bad Request", body: success ? Self.successPage : Self.failurePage) }
+        if let connection { reply(connection, status: page.status, body: page.html) }
     }
 
     /// Waits for the callback and returns the validated authorization code.
@@ -180,10 +178,10 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
                     ? buffer.startIndex..<buffer.endIndex : stateWindow) != nil
                 if mayCarryState,
                    LoopbackRequestParser.carriesState(String(decoding: buffer, as: UTF8.self), expectedState: self.expectedState) {
-                    self.answer(connection, status: "400 Bad Request", body: Self.tooLargePage)
+                    self.answer(connection, status: CallbackPage.selectionTooLarge.status, body: CallbackPage.selectionTooLarge.html)
                     self.finish(.failure(.requestTooLarge))
                 } else if hasRequestLine || isComplete || error != nil || buffer.count >= LoopbackRequestParser.strayRequestBytes {
-                    self.answer(connection, status: "413 Content Too Large", body: Self.failurePage)
+                    self.answer(connection, status: "413 Content Too Large", body: CallbackPage.failed.html)
                 } else {
                     self.receive(connection, buffer: buffer)
                 }
@@ -214,12 +212,12 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
         }
         // A wrong state is a stray or hostile request: refuse it and keep waiting for the real redirect.
         guard let state = callback.state, LoopbackRequestParser.constantTimeEquals(state, expectedState) else {
-            answer(connection, status: "400 Bad Request", body: Self.failurePage)
+            answer(connection, status: "400 Bad Request", body: CallbackPage.failed.html)
             return
         }
         switch Result(catching: { try LoopbackRequestParser.authorizationCode(from: callback, expectedState: expectedState) }) {
         case .failure(let error):
-            answer(connection, status: "400 Bad Request", body: Self.failurePage)
+            answer(connection, status: "400 Bad Request", body: CallbackPage.failed.html)
             finish(.failure(error as? LoopbackError ?? .malformedRequest))
         case .success(let code):
             _ = forget(connection)
@@ -230,31 +228,12 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
                 callbackConnection = connection
                 return true
             }
-            guard accepted else { reply(connection, status: "400 Bad Request", body: Self.failurePage); return }
+            guard accepted else { reply(connection, status: "400 Bad Request", body: CallbackPage.failed.html); return }
             finish(.success(code))
-            // The page waits for `respond(success:)`; never leave the browser hanging if nobody calls it.
-            queue.asyncAfter(deadline: .now() + 60) { [weak self] in self?.respond(success: false) }
+            // The page waits for `respond(_:)`; never leave the browser hanging if nobody calls it.
+            queue.asyncAfter(deadline: .now() + replyTimeout) { [weak self] in self?.respond(.failed) }
         }
     }
-
-    /// Static page; nothing from the request is echoed.
-    static let successPage = """
-    <!doctype html><html><head><meta charset="utf-8"><title>PhotoVault</title></head>\
-    <body><p>Đã xong. Bạn có thể đóng tab này và quay lại PhotoVault.</p>\
-    <p>Done. You can close this tab and return to PhotoVault.</p></body></html>
-    """
-
-    static let failurePage = """
-    <!doctype html><html><head><meta charset="utf-8"><title>PhotoVault</title></head>\
-    <body><p>Đăng nhập không thành công. Hãy đóng tab này và thử lại trong PhotoVault.</p>\
-    <p>Sign-in failed. Close this tab and try again in PhotoVault.</p></body></html>
-    """
-
-    static let tooLargePage = """
-    <!doctype html><html><head><meta charset="utf-8"><title>PhotoVault</title></head>\
-    <body><p>Bạn đã chọn quá nhiều mục cùng lúc. Hãy đóng tab này và chọn ít hơn trong PhotoVault.</p>\
-    <p>Too many items were selected at once. Close this tab and pick fewer in PhotoVault.</p></body></html>
-    """
 
     private func reply(_ connection: NWConnection, status: String, body: String) {
         let payload = Data(body.utf8)
