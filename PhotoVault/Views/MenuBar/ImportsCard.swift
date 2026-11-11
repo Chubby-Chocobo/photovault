@@ -70,7 +70,7 @@ struct ImportsCard: View {
     private func waitBlock(title: String, reason: String, isBusy: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                ProgressView().controlSize(.mini).opacity(isBusy ? 1 : 0)
+                SlotSpinner(isBusy: isBusy)
                 Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).help(title)
             }
             Text(reason).font(.caption2).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.tail).help(reason)
