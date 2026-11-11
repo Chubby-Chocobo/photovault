@@ -12,6 +12,8 @@ struct MenuBarView: View {
     @Environment(AppModel.self) private var model
     @State private var contentHeight = PopoverContentHeight()
     @State private var actionsHeight: Double = 0
+    /// The visible height of the popup's screen, once its window has said which screen that is.
+    @State private var screenHeight: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -34,13 +36,15 @@ struct MenuBarView: View {
         .id(model.language)
         .padding(12)
         .frame(width: PopoverLayout.width)
-        .background(PopupWindowObserver { isOpen in isOpen ? contentHeight.opened() : contentHeight.closed() })
+        .background(PopupWindowObserver(
+            onOpenChange: { isOpen in isOpen ? contentHeight.opened() : contentHeight.closed() },
+            onScreenHeight: { height in if screenHeight != height { screenHeight = height } }))
         .task { await model.refreshSnapshot() }
     }
 
     private var contentLimit: Double {
         PopoverLayout.contentLimit(
-            visibleScreenHeight: Double(NSScreen.main?.visibleFrame.height ?? 800), actionsHeight: actionsHeight)
+            visibleScreenHeight: screenHeight ?? Double(NSScreen.main?.visibleFrame.height ?? 800), actionsHeight: actionsHeight)
     }
 }
 

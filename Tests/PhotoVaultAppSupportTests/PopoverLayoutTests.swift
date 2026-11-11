@@ -44,6 +44,15 @@ struct PopoverLayoutTests {
         #expect(height.height(limit: 600) == 310)
     }
 
+    @Test func anOpenWithoutACloseBeforeItStillFitsTheContentAgain() {
+        var height = PopoverContentHeight()
+        height.opened()
+        height.measured(420)
+        height.measured(310)
+        height.opened()
+        #expect(height.height(limit: 600) == 310)
+    }
+
     @Test func whileClosedTheAreaFollowsTheContent() {
         var height = PopoverContentHeight()
         height.closed()
@@ -62,5 +71,43 @@ struct PopoverLayoutTests {
         #expect(height.height(limit: 500) == 500)
         height.measured(300)
         #expect(height.height(limit: 800) == 800)
+    }
+}
+
+struct PopupOpenStateTests {
+    @Test func theFirstReportIsAlwaysPassedOn() {
+        var state = PopupOpenState()
+        #expect(state.update(isVisible: false, isKey: false) == false)
+        var shown = PopupOpenState()
+        #expect(shown.update(isVisible: true, isKey: false) == true)
+    }
+
+    @Test func aRepeatedReportChangesNothing() {
+        var state = PopupOpenState()
+        _ = state.update(isVisible: true, isKey: false)
+        // Becoming key while already showing must not open it again, which would restart its height.
+        #expect(state.update(isVisible: true, isKey: true) == nil)
+        #expect(state.update(isVisible: true, isKey: true) == nil)
+        #expect(state.isOpen == true)
+    }
+
+    @Test func showingOpensItWithoutKeyStatus() {
+        var state = PopupOpenState()
+        _ = state.update(isVisible: false, isKey: false)
+        #expect(state.update(isVisible: true, isKey: false) == true)
+        #expect(state.update(isVisible: false, isKey: false) == false)
+    }
+
+    @Test func keyStatusOpensItBeforeItReportsItselfVisible() {
+        var state = PopupOpenState()
+        _ = state.update(isVisible: false, isKey: false)
+        #expect(state.update(isVisible: false, isKey: true) == true)
+    }
+
+    @Test func losingKeyStatusWhileStillShowingKeepsItOpen() {
+        var state = PopupOpenState()
+        _ = state.update(isVisible: true, isKey: true)
+        #expect(state.update(isVisible: true, isKey: false) == nil)
+        #expect(state.update(isVisible: false, isKey: false) == false)
     }
 }

@@ -1,25 +1,39 @@
 import AppKit
+import PhotoVaultAppSupport
 import SwiftUI
 
-/// Tells when the menu bar popup opens and closes. A `MenuBarExtra` window keeps its SwiftUI content alive
-/// between openings, so `onAppear` is no signal; the window itself is: it becomes key when it opens and stops
-/// being key when it closes (it closes because it lost key status).
+/// Tells when the menu bar popup opens and closes, and how tall its screen's visible area is. A
+/// `MenuBarExtra` window keeps its SwiftUI content alive between openings, so `onAppear` is no signal; the
+/// window itself is. It is ordered in when the popup opens and out when it closes (`isVisible`, observed),
+/// and key status is a second signal (`PopupOpenState`). Every report reads the window as it is when the
+/// report is made, never a value saved earlier.
 struct PopupWindowObserver: NSViewRepresentable {
-    var onChange: (_ isOpen: Bool) -> Void
+    var onOpenChange: (_ isOpen: Bool) -> Void
+    /// The visible height (without the menu bar and the Dock) of the screen the popup is on.
+    var onScreenHeight: (_ visibleScreenHeight: Double) -> Void
 
     func makeNSView(context: Context) -> ObserverView {
-        ObserverView(onChange: onChange)
+        ObserverView(onOpenChange: onOpenChange, onScreenHeight: onScreenHeight)
     }
 
     func updateNSView(_ view: ObserverView, context: Context) {
-        view.onChange = onChange
+        view.onOpenChange = onOpenChange
+        view.onScreenHeight = onScreenHeight
     }
 
     final class ObserverView: NSView {
-        var onChange: (Bool) -> Void
+        var onOpenChange: (Bool) -> Void
+        var onScreenHeight: (Double) -> Void
+        private var state = PopupOpenState()
+        private var visibility: NSKeyValueObservation?
+        private static let signals: [Notification.Name] = [
+            NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+            NSWindow.didChangeOcclusionStateNotification, NSWindow.didChangeScreenNotification,
+        ]
 
-        init(onChange: @escaping (Bool) -> Void) {
-            self.onChange = onChange
+        init(onOpenChange: @escaping (Bool) -> Void, onScreenHeight: @escaping (Double) -> Void) {
+            self.onOpenChange = onOpenChange
+            self.onScreenHeight = onScreenHeight
             super.init(frame: .zero)
         }
 
@@ -28,24 +42,31 @@ struct PopupWindowObserver: NSViewRepresentable {
 
         override func viewWillMove(toWindow newWindow: NSWindow?) {
             super.viewWillMove(toWindow: newWindow)
-            let center = NotificationCenter.default
-            center.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: window)
-            center.removeObserver(self, name: NSWindow.didResignKeyNotification, object: window)
+            visibility = nil
+            for name in Self.signals { NotificationCenter.default.removeObserver(self, name: name, object: window) }
         }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
-            // Selector observers go away with this view, so nothing is left to remove later.
-            let center = NotificationCenter.default
-            center.addObserver(self, selector: #selector(windowDidBecomeKey), name: NSWindow.didBecomeKeyNotification, object: window)
-            center.addObserver(self, selector: #selector(windowDidResignKey), name: NSWindow.didResignKeyNotification, object: window)
-            // The window may already be key when this view joins it; report that after the current update.
-            let isKey = window.isKeyWindow
-            DispatchQueue.main.async { [weak self] in self?.onChange(isKey) }
+            // Selector observers go away with this view; the KVO token goes with it too.
+            for name in Self.signals {
+                NotificationCenter.default.addObserver(self, selector: #selector(windowChanged), name: name, object: window)
+            }
+            visibility = window.observe(\.isVisible) { [weak self] _, _ in
+                // KVO arrives on the thread that changed the window, which for a window is the main thread.
+                MainActor.assumeIsolated { self?.report() }
+            }
+            // The window may already be showing; report it after the current update, as it is then.
+            DispatchQueue.main.async { [weak self] in self?.report() }
         }
 
-        @objc private func windowDidBecomeKey(_ note: Notification) { onChange(true) }
-        @objc private func windowDidResignKey(_ note: Notification) { onChange(false) }
+        @objc private func windowChanged(_ note: Notification) { report() }
+
+        private func report() {
+            guard let window else { return }
+            if let height = window.screen?.visibleFrame.height { onScreenHeight(Double(height)) }
+            if let isOpen = state.update(isVisible: window.isVisible, isKey: window.isKeyWindow) { onOpenChange(isOpen) }
+        }
     }
 }
