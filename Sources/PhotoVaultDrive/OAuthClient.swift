@@ -84,7 +84,8 @@ public struct OAuthClient: Sendable {
             let tokens = try await exchange(code: code, verifier: pkce.verifier, redirectURI: redirectURI)
             guard let idToken = tokens.idToken else { throw DestinationError.itemRejected(reason: "id token missing") }
             let identity = try IDToken.identity(from: idToken, clientID: config.clientID, now: clock.now)
-            // Checked here, not by the caller, so the browser page can say why the sign-in will not last.
+            // Checked before the browser is answered, so its page can say why the sign-in would not last.
+            // GoogleAuthSession only unwraps the token.
             guard tokens.refreshToken != nil else { throw DestinationError.itemRejected(reason: Self.refreshTokenMissing) }
             server.respond(.success)
             return SignInResult(identity: identity, tokens: tokens)

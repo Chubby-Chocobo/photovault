@@ -121,7 +121,8 @@ private enum RawSocket {
         let scope = CallbackPage.driveScopeMissing.html
         #expect(scope.contains("See, edit, create, and delete only the specific Google Drive files you use with this app"))
         #expect(scope.contains("Xem, chỉnh sửa, tạo và xoá các tệp cụ thể trên Google Drive mà bạn dùng với ứng dụng này"))
-        #expect(scope.contains("This only lets PhotoVault use the files it creates."))
+        #expect(scope.contains("This only lets PhotoVault use the files it creates or the files you pick for it."))
+        #expect(scope.contains("Quyền này chỉ cho PhotoVault dùng các tệp do PhotoVault tạo hoặc các tệp bạn chọn cho PhotoVault."))
         #expect(CallbackPage.persistentSignInMissing.html.contains("Google didn't grant persistent sign-in."))
     }
 
@@ -136,15 +137,29 @@ private enum RawSocket {
         server.respond(.success)
     }
 
-    @Test func aPageChosenInTimeIsNotReplacedByTheFallback() async throws {
+    @Test func onlyTheFirstPageIsSent() async throws {
         let server = try LoopbackRedirectServer(expectedState: "st")
         let port = try await server.start()
-        let browser = Task { try await fetch(port, "/oauth2/callback?code=c&state=st") }
+        let fd = try #require(RawSocket.connect(host: "127.0.0.1", port: port))
+        defer { close(fd) }
+        let request = Array("GET /oauth2/callback?code=c&state=st HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".utf8)
+        _ = request.withUnsafeBytes { write(fd, $0.baseAddress, request.count) }
         _ = try await server.awaitCode()
+        // A second answer, like the fallback firing after the real one, must not reach the socket.
         server.respond(.driveScopeMissing)
         server.respond(.failed)
-        let (body, _) = try await browser.value
-        #expect(String(decoding: body, as: UTF8.self) == CallbackPage.driveScopeMissing.html)
+        // A browser stops at Content-Length and would hide a second reply; the raw socket reads everything until the server closes.
+        let (data, closed) = RawSocket.readAll(fd)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(closed)
+        #expect(text.components(separatedBy: "HTTP/1.1 ").count - 1 == 1)
+        #expect(text.hasSuffix(CallbackPage.driveScopeMissing.html))
+    }
+
+    @Test func theFallbackWaitsLongerThanTheRequestsMadeBeforeTheReply() throws {
+        // Between the code and the page a flow makes at most two requests (the token exchange, then an account lookup).
+        #expect(LoopbackRedirectServer.defaultReplyTimeout > 2 * URLSessionTransport.defaultRequestTimeout)
+        #expect(try LoopbackRedirectServer(expectedState: "st").replyTimeout == LoopbackRedirectServer.defaultReplyTimeout)
     }
 
     @Test func deniedAuthorizationEndsTheFlow() async throws {

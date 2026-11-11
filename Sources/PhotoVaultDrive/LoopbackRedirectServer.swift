@@ -10,11 +10,15 @@ import Network
 /// Idle or slow connections are closed after `connectionTimeout`. It also cancels after `timeout`.
 public final class LoopbackRedirectServer: @unchecked Sendable {
     public static let defaultTimeout: TimeInterval = 300
+    /// How long the accepted callback waits for `respond(_:)` before it gets the generic failure page. Between the code
+    /// and the page a flow makes at most two requests (the token exchange, then an account lookup), so the fallback must
+    /// not fire while a slow but successful sign-in is still finishing.
+    public static let defaultReplyTimeout: TimeInterval = 2 * URLSessionTransport.defaultRequestTimeout + 30
 
     private let expectedState: String
     private let timeout: TimeInterval
     private let connectionTimeout: TimeInterval
-    private let replyTimeout: TimeInterval
+    let replyTimeout: TimeInterval
     private let listener: NWListener
     private let queue = DispatchQueue(label: "photovault.loopback")
     private let lock = NSLock()
@@ -29,7 +33,8 @@ public final class LoopbackRedirectServer: @unchecked Sendable {
     private var listenerStopped = false
 
     public init(expectedState: String, timeout: TimeInterval = LoopbackRedirectServer.defaultTimeout,
-                connectionTimeout: TimeInterval = 10, replyTimeout: TimeInterval = 60, port: UInt16 = 0) throws {
+                connectionTimeout: TimeInterval = 10, replyTimeout: TimeInterval = LoopbackRedirectServer.defaultReplyTimeout,
+                port: UInt16 = 0) throws {
         self.expectedState = expectedState
         self.timeout = timeout
         self.connectionTimeout = connectionTimeout

@@ -23,11 +23,11 @@ public enum CallbackPage: Sendable, CaseIterable {
                 "Đăng nhập không thành công: Google chưa cho phép PhotoVault ghi vào Google Drive. Hãy đóng tab này, "
                     + "đăng nhập lại trong PhotoVault và tích ô “Xem, chỉnh sửa, tạo và xoá các tệp cụ thể trên Google Drive "
                     + "mà bạn dùng với ứng dụng này”.",
-                "Quyền này chỉ cho PhotoVault dùng các tệp do PhotoVault tạo.",
+                "Quyền này chỉ cho PhotoVault dùng các tệp do PhotoVault tạo hoặc các tệp bạn chọn cho PhotoVault.",
                 "Sign-in failed: Google didn't allow PhotoVault to write to Google Drive. Close this tab, sign in again "
                     + "from PhotoVault, and tick “See, edit, create, and delete only the specific Google Drive files you use "
                     + "with this app”.",
-                "This only lets PhotoVault use the files it creates.")
+                "This only lets PhotoVault use the files it creates or the files you pick for it.")
         case .persistentSignInMissing:
             Self.page(
                 "Đăng nhập không thành công: Google không cấp quyền duy trì đăng nhập. Hãy đóng tab này, thử lại trong "
