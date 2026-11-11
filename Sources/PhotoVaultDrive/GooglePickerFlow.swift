@@ -155,10 +155,10 @@ public struct GooglePickerFlow: Sendable {
                 throw PickerError.pickAccessDenied
             }
             let account = await Self.account(transport: transport, accessToken: tokens.accessToken)
-            step.server.respond(success: true)
+            step.server.respond(.success)
             return (ids, account)
         } catch {
-            if let picker = error as? PickerError, picker == .selectionTooLarge { step.server.respondSelectionTooLarge() } else { step.server.respond(success: false) }
+            step.server.respond(error as? PickerError == .selectionTooLarge ? .selectionTooLarge : .failed)
             throw error
         }
     }
@@ -177,10 +177,10 @@ public struct GooglePickerFlow: Sendable {
                 let signedIn = await Self.account(transport: transport, accessToken: tokens.accessToken)
                 guard Self.sameAccount(account, signedIn) else { throw PickerError.accountMismatch }
             }
-            step.server.respond(success: true)
+            step.server.respond(.success)
             return (tokens, refresh)
         } catch {
-            step.server.respond(success: false)
+            step.server.respond(.failed)
             throw error
         }
     }

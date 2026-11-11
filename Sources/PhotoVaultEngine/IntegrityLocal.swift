@@ -31,6 +31,7 @@ extension IntegrityChecker {
                 intact.append((job, item.size ?? job.expectedSize ?? 0))
             }
         }
+        var verified = Set<JobIdentity>()
         if let reader = env.localContent {
             let seed = Self.seed(env.clock.now)
             for chosen in Self.sample(intact, seed: seed) {
@@ -41,11 +42,17 @@ extension IntegrityChecker {
                 if actual != expected {
                     hashMismatch.insert(chosen.job.identity)
                     missing.append(chosen.job)
+                } else {
+                    verified.insert(chosen.job.identity)
                 }
             }
         }
         // Counted after marking: a file that was moved or refreshed since the snapshot is not judged.
-        let marked = try await markMissing(missing)
+        var differs: [JobIdentity: IntegrityCheckResult] = [:]
+        for identity in sizeMismatch { differs[identity] = .sizeMismatch }
+        for identity in hashMismatch { differs[identity] = .hashMismatch }
+        let marked = try await markMissing(missing, results: differs)
+        try await recordChecked(intact.map(\.job.identity).filter { !hashMismatch.contains($0) }.map { ($0, verified.contains($0) ? .hashVerified : .intact) })
         report.sizeMismatch = sizeMismatch.intersection(marked).count
         report.hashMismatch = hashMismatch.intersection(marked).count
         report.missing = marked.subtracting(sizeMismatch).subtracting(hashMismatch).count

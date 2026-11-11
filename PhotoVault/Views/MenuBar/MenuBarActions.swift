@@ -1,7 +1,7 @@
 import SwiftUI
 import PhotoVaultCore
 
-/// Actions list of the popover (FR-60): Pause/Resume all, Drive, NAS, activity, Settings, log, Quit.
+/// Actions list of the popover (FR-60): Pause/Resume all, Drive, NAS, activity, history, Settings, log, Quit.
 struct MenuBarActions: View {
     @Environment(AppModel.self) private var model
     @State private var showNasList = false
@@ -38,6 +38,7 @@ struct MenuBarActions: View {
                     }
                 }
                 row(tr(vi: "Hoạt động gần đây…", en: "Recent activity…"), "clock.arrow.circlepath") { model.open(.activity) }
+                row(tr(vi: "Lịch sử…", en: "History…"), "list.bullet.rectangle") { model.open(.history) }
             }
             row("Settings…", "gearshape", shortcut: "⌘,") { model.open(.settings(model.settingsTab)) }
                 .keyboardShortcut(",")

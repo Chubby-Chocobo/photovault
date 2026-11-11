@@ -13,10 +13,18 @@ public enum JobRepository {
     // MARK: Upsert and transitions
 
     /// Read → `JobTransitions.upsert` → write. Returns the written job, or nil when nothing changed.
+    /// An original-file job created or reinstated as a backfill job joins the open run of `runTrigger`.
     @discardableResult
-    public static func upsert(_ db: Database, desired: JobTransitions.Desired, now: Date) throws -> UploadJob? {
+    public static func upsert(
+        _ db: Database, desired: JobTransitions.Desired, now: Date, runTrigger: BackfillTrigger = .library
+    ) throws -> UploadJob? {
         let existing = try fetch(db, identity: desired.identity)
         guard var updated = JobTransitions.upsert(existing: existing, desired: desired, now: now) else { return nil }
+        if !updated.resType.isSidecar, updated.origin == .backfill || updated.origin == .destinationBackfill,
+           existing == nil || existing?.state == .cancelled {
+            updated.backfillRunId = try BackfillRunRepository.runId(
+                db, trigger: runTrigger, destinationId: updated.destinationId, now: now)
+        }
         try save(db, &updated)
         return updated
     }
@@ -50,7 +58,7 @@ public enum JobRepository {
             "uploaded_hash": job.uploadedHash, "target_gen": job.targetGen, "done_gen": job.doneGen,
             "uploading_gen": job.uploadingGen, "mismatch_count": job.mismatchCount, "attempts": job.attempts,
             "next_attempt_at": job.nextAttemptAt, "deferred_since": job.deferredSince,
-            "last_error": job.lastError, "updated_at": job.updatedAt,
+            "last_error": job.lastError, "updated_at": job.updatedAt, "backfill_run_id": job.backfillRunId,
         ]
         let arguments = StatementArguments(values.mapValues { $0?.databaseValue ?? .null })
         if let id = job.id {
@@ -146,7 +154,8 @@ public enum JobRepository {
             nextAttemptAt: row["next_attempt_at"],
             deferredSince: row["deferred_since"],
             lastError: row["last_error"],
-            updatedAt: try row.require("updated_at", table: table))
+            updatedAt: try row.require("updated_at", table: table),
+            backfillRunId: row["backfill_run_id"])
         job.kind = try row.enumValue("kind", table: table)
         return job
     }

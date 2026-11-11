@@ -60,11 +60,8 @@ public enum ActivityPresenter {
         }
     }
 
-    /// Lowercase without diacritics; `đ` has no decomposition, so it is folded by hand.
-    static func fold(_ text: String) -> String {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi"))
-            .replacingOccurrences(of: "đ", with: "d")  // l10n: verbatim
-    }
+    /// Lowercase without diacritics (`SearchFolding`).
+    static func fold(_ text: String) -> String { SearchFolding.fold(text) }
 
     /// Newest-first events -> day groups, filtered by kind and a case/diacritic-insensitive search.
     public static func groups(

@@ -171,7 +171,8 @@ public actor SyncCoordinator {
     public func settingsChanged() async throws {
         try await exclusive {
             try await refuseLegacyLayout()
-            try await eligibility.recomputeAll()
+            try await eligibility.startRun(.settings)
+            try await eligibility.recomputeAll(runTrigger: .settings)
             try await organization.settingsChanged()
         }
         await publish()
@@ -182,7 +183,8 @@ public actor SyncCoordinator {
     public func destinationAdded(_ id: DestinationID) async throws {
         try await exclusive {
             try await refuseLegacyLayout()
-            try await eligibility.recomputeAll(destination: id, backfillOrigin: .destinationBackfill)
+            try await eligibility.startRun(.destinationAdded, destination: id)
+            try await eligibility.recomputeAll(destination: id, backfillOrigin: .destinationBackfill, runTrigger: .destinationAdded)
             try await organization.settingsChanged()
         }
         await publish()
@@ -192,7 +194,8 @@ public actor SyncCoordinator {
     public func destinationRulesChanged(_ id: DestinationID) async throws {
         try await exclusive {
             try await refuseLegacyLayout()
-            try await eligibility.recomputeAll(destination: id, backfillOrigin: .backfill)
+            try await eligibility.startRun(.settings)
+            try await eligibility.recomputeAll(destination: id, backfillOrigin: .backfill, runTrigger: .settings)
         }
         await publish()
     }

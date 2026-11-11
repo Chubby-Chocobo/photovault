@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PhotoVaultCore
+import PhotoVaultTestSupport
 @testable import PhotoVaultDrive
 
 private let clock = FixedClock()
@@ -100,10 +101,82 @@ private func client(_ transport: StubTransport, opener: @escaping URLOpening = {
         #expect(PKCE.challenge(for: exchange.form["code_verifier"]!) == challenge)
     }
 
+    @Test(arguments: ExchangeReply.allCases)
+    func theBrowserPageSaysWhySignInFailed(reply: ExchangeReply) async throws {
+        let jwt = TestJWT.make(now: clock.now)
+        let transport = StubTransport { _ in reply.response(idToken: jwt) }
+        let page = BrowserPage()
+        let oauth = client(transport) { url in
+            let items = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
+            let target = URL(string: "\(items["redirect_uri"]!)?code=AUTH-CODE&state=\(items["state"]!)")!
+            Task.detached { page.set(try? await URLSession.shared.data(from: target).0) }
+            return true
+        }
+        do {
+            _ = try await oauth.signIn()
+            #expect(reply.reason == nil)
+        } catch {
+            #expect(error as? DestinationError == reply.reason.map { DestinationError.itemRejected(reason: $0) })
+        }
+        #expect(await pollUntil { page.text != nil })
+        #expect(page.text == reply.page.html)
+    }
+
+    @Test func onlyTheReasonsThisClientWritesGetTheirOwnPage() {
+        #expect(OAuthClient.callbackPage(for: DestinationError.itemRejected(reason: OAuthClient.fileScopeMissing)) == .driveScopeMissing)
+        #expect(OAuthClient.callbackPage(for: DestinationError.itemRejected(reason: OAuthClient.refreshTokenMissing)) == .persistentSignInMissing)
+        #expect(OAuthClient.callbackPage(for: DestinationError.itemRejected(reason: "id token expired")) == .failed)
+        #expect(OAuthClient.callbackPage(for: DestinationError.transient(reason: OAuthClient.fileScopeMissing)) == .failed)
+        #expect(OAuthClient.callbackPage(for: DestinationError.server(status: 503)) == .failed)
+        #expect(OAuthClient.callbackPage(for: URLError(.timedOut)) == .failed)
+    }
+
     @Test func browserFailureCancelsTheListener() async throws {
         let oauth = client(StubTransport { _ in tokenJSON() }, opener: { _ in false })
         await #expect(throws: DestinationError.transient(reason: "browser could not be opened")) { try await oauth.signIn() }
     }
+}
+
+/// What Google answers to the code exchange, and the page the browser must then get.
+enum ExchangeReply: CaseIterable, Sendable {
+    case everythingGranted, driveBoxCleared, noRefreshToken, noIDToken
+
+    var page: CallbackPage {
+        switch self {
+        case .everythingGranted: .success
+        case .driveBoxCleared: .driveScopeMissing
+        case .noRefreshToken: .persistentSignInMissing
+        case .noIDToken: .failed
+        }
+    }
+
+    /// The `itemRejected` reason `signIn` throws; nil when it succeeds.
+    var reason: String? {
+        switch self {
+        case .everythingGranted: nil
+        case .driveBoxCleared: "drive.file scope not granted"
+        case .noRefreshToken: "refresh token missing"
+        case .noIDToken: "id token missing"
+        }
+    }
+
+    func response(idToken: String) -> StubResponse {
+        let drive = "openid email https://www.googleapis.com/auth/drive.file"
+        switch self {
+        case .everythingGranted: return tokenJSON(id: idToken, scope: drive)
+        case .driveBoxCleared: return tokenJSON(id: idToken, scope: "openid email")
+        case .noRefreshToken: return tokenJSON(refresh: nil, id: idToken, scope: drive)
+        case .noIDToken: return tokenJSON(scope: drive)
+        }
+    }
+}
+
+/// The page the fake browser got back; nil until it arrives.
+final class BrowserPage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Data?
+    func set(_ data: Data?) { lock.withLock { value = data } }
+    var text: String? { lock.withLock { value.map { String(decoding: $0, as: UTF8.self) } } }
 }
 
 final class OpenedURL: @unchecked Sendable {

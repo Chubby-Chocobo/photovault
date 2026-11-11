@@ -69,8 +69,16 @@ extension IntegrityChecker {
         }
         report.checked = jobs.count
         var gone: [DoneJob] = []
-        for job in jobs where try await presence(job.remoteId) == .gone { gone.append(job) }
+        var present: [JobIdentity] = []
+        for job in jobs {
+            switch try await presence(job.remoteId) {
+            case .gone: gone.append(job)
+            case .present: present.append(job.identity)
+            case .underTrashedFolder: continue
+            }
+        }
         report.missing = try await markMissing(gone).count
+        try await recordChecked(present.map { ($0, .intact) })
         try await healReturned(id, presence: presence)
         try await reconcileShortcuts(
             record, destination: destination, known: knownShortcuts, listing: listing, presence: presence, report: &report)
@@ -133,6 +141,7 @@ extension IntegrityChecker {
             for job in jobs {
                 guard let current = try JobRepository.fetch(db, identity: job.identity), current.state == .missingRemote else { continue }
                 _ = try JobRepository.apply(db, .foundAgain, to: job.identity, now: now)
+                try IntegrityCheckRepository.record(db, identity: job.identity, result: .intact, at: now)
                 // Sidecars, views and descriptions may have changed while the file was away.
                 try DirtyQueue.mark(db, [.sidecar, .view, .description], asset: job.assetKey)
             }

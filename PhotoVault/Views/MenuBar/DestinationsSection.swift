@@ -32,15 +32,15 @@ private struct DestinationRow: View {
             Image(systemName: destination.id.kind == .googleDrive ? "icloud" : "externaldrive")
                 .frame(width: 20).foregroundStyle(.secondary).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(destination.displayName).font(.callout.weight(.medium))
+                Text(destination.displayName).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle).help(destination.displayName)
                 HStack(spacing: 5) {
                     StatusDot(color: status.tone.color)
-                    Text(status.label).font(.caption)
-                    Text(status.code).font(.caption2).foregroundStyle(.tertiary)
+                    Text(status.label).font(.caption).lineLimit(1).help(status.label)
+                    Text(status.code).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
-                Text(tr(
+                FittedLineText(line: FittedLine(lead: tr(
                     vi: "Chờ \(VietnameseFormat.integer(destination.pending)) · Lần thành công cuối: \(RelativeTimeText.ago(destination.lastSuccessAt, now: Date()))",
-                    en: "Pending \(VietnameseFormat.integer(destination.pending)) · Last success: \(RelativeTimeText.ago(destination.lastSuccessAt, now: Date()))"))
+                    en: "Pending \(VietnameseFormat.integer(destination.pending)) · Last success: \(RelativeTimeText.ago(destination.lastSuccessAt, now: Date()))")))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)

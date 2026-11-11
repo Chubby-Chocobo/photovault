@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import PhotoVaultCore
 
 public enum StoreError: Error, Equatable, Sendable {
     case corruptRow(table: String, column: String)
@@ -26,7 +27,10 @@ public final class Store: Sendable {
     static func open(at url: URL, backups: DatabaseBackup?, migrator: DatabaseMigrator) throws -> Store {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var configuration = Configuration()
-        configuration.prepareDatabase(Self.makeDurable)
+        configuration.prepareDatabase { db in
+            try Self.makeDurable(db)
+            Self.addFunctions(db)
+        }
         let pool = try DatabasePool(path: url.path, configuration: configuration)
         // GRDB sets `synchronous = NORMAL` on the writer after `prepareDatabase`; undo that.
         try pool.writeWithoutTransaction(Self.makeDurable)
@@ -51,9 +55,18 @@ public final class Store: Sendable {
         try db.execute(sql: "PRAGMA checkpoint_fullfsync = ON")
     }
 
+    /// SQL functions the queries use: `pv_fold(text)` is `SearchFolding.fold`, for case- and diacritic-insensitive search.
+    @Sendable static func addFunctions(_ db: Database) {
+        db.add(function: DatabaseFunction("pv_fold", argumentCount: 1, pure: true) { values in
+            (String.fromDatabaseValue(values[0])).map(SearchFolding.fold)
+        })
+    }
+
     /// In-memory database for tests and previews.
     public static func inMemory() throws -> Store {
-        let queue = try DatabaseQueue()
+        var configuration = Configuration()
+        configuration.prepareDatabase { db in Self.addFunctions(db) }
+        let queue = try DatabaseQueue(configuration: configuration)
         try Schema.makeMigrator().migrate(queue)
         return Store(writer: queue)
     }
