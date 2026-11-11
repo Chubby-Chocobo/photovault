@@ -49,13 +49,19 @@ private final class PipelineProbe: @unchecked Sendable {
     }
 
     func sampleStaging() {
+        let total = stagedBytes()
+        lock.withLock { peak = max(peak, total) }
+    }
+
+    /// Bytes in the staging folder now.
+    func stagedBytes() -> Int64 {
         let files = FileManager.default.enumerator(at: staging, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey])
         var total: Int64 = 0
         while let url = files?.nextObject() as? URL {
             let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
             if values?.isRegularFile == true { total += Int64(values?.fileSize ?? 0) }
         }
-        lock.withLock { peak = max(peak, total) }
+        return total
     }
 }
 
@@ -221,9 +227,6 @@ private struct SignalStage: CycleStage {
         }
         #expect(overlapped.get() == ["p2.jpg"], "the second batch's first read was in hand while the first batch uploaded")
         #expect(source.reads == (0..<Self.files).map { "p\($0).jpg" }, "every file is read once, in order")
-        // The staging limit admits exports while staged + in-flight bytes are below it; at most two exports run at once.
-        let bound = Int64(3 * Self.fileSize + 2 * Self.fileSize)
-        #expect(probe.peakStagedBytes <= bound, "staging held \(probe.peakStagedBytes) bytes, bound \(bound)")
         try await expectAllDeliveredOnce(p)
     }
 
@@ -427,5 +430,132 @@ private struct SignalStage: CycleStage {
         let second = try #require(rounds.get().first { $0.reads >= 4 }, "\(rounds.get())")
         #expect(second.uploads == 2, "uploads by the end of the round that read the second batch: \(second.uploads)")
         try await expectAllDeliveredOnce(p)
+    }
+
+    // MARK: Bounds
+
+    /// The pipeline with one export and one upload at a time, rebuilt over the same database.
+    private func oneAtATime(_ p: Pipeline, stages: [any CycleStage]) async throws -> SyncCoordinator {
+        p.h.tuning.maxConcurrentExports = 1
+        p.h.tuning.maxConcurrentUploadsPerDestination = 1
+        try await p.h.restart()
+        return SyncCoordinator(env: p.h.env, stages: stages)
+    }
+
+    @Test func exportsStopAtTheStagingLimitWhileUploadsAreHeld() async throws {
+        let p = try await pipeline()
+        let probe = p.probe
+        let source = p.source
+        // Reads, exports and staged bytes each time a read half ends.
+        let ends = Box<[(reads: Int, exports: Int, staged: Int64)]>([])
+        let coordinator = try await oneAtATime(p, stages: [
+            SignalStage(step: .export) { ends.mutate { $0.append((source.reads.count, source.exports, probe.stagedBytes())) } },
+        ])
+        let uploadsGo = Latch()
+        await p.h.drive.setUploadHook { _ in await probe.upload { _ in await uploadsGo.wait() } }
+        let cycle = Task { await coordinator.run(trigger: .manual) }
+        let limit = Int64(3 * Self.fileSize)
+        let read = await pollUntil(timeout: hangGuard) { ends.get().contains { $0.reads >= 4 } }
+        try #require(read, "the second batch was read while the first one's upload is held")
+        let end = try #require(ends.get().first { $0.reads >= 4 })
+        // Two files of the first batch are staged; the limit of three admits one more and stops there.
+        #expect(end.exports == 3, "exports by the end of the read half: \(end.exports)")
+        #expect(end.staged == limit, "staged bytes: \(end.staged)")
+        #expect(probe.uploadsInFlight == 1, "the upload is still held")
+        uploadsGo.fire()
+        _ = await cycle.value
+        await p.h.settle()
+        #expect(probe.peakStagedBytes <= limit, "staging held \(probe.peakStagedBytes) bytes, limit \(limit)")
+        try await expectAllDeliveredOnce(p)
+    }
+
+    @Test func aCancelWithNoCommandWaitingStagesNothingMoreOfTheImport() async throws {
+        let p = try await pipeline()
+        let interrupts = p.h.coordinator.importInterrupts
+        let id = p.id
+        let asked = Latch()
+        // The cancel lands right after the second batch's first group is recorded; no owner command waits for the lane.
+        p.h.injector.onReach { point in
+            guard point == .afterImportGroupCommit, !asked.isFired else { return }
+            asked.fire()
+            interrupts.requestCancel(id)
+        }
+        _ = await p.h.run()
+        #expect(asked.isFired)
+        #expect(p.source.reads == ["p0.jpg", "p1.jpg", "p2.jpg"], "no file is read after the cancel")
+        #expect(p.source.exports == 2, "the group recorded before the cancel is not staged")
+        #expect(try p.h.source(id)?.status == .cancelled, "the next round ends the import")
+        #expect(await p.h.drive.files.count == 2, "the first batch, staged before, still uploads")
+        #expect(try p.h.jobs(.pending).isEmpty)
+    }
+
+    @Test func readsWaitWhileAFullBatchIsReadButNotStaged() async throws {
+        let size = Self.fileSize
+        let h = try await Harness { tuning in
+            tuning.importBatchGroups = 6
+            tuning.importBatchBytes = Int64(2 * size)
+            tuning.maxConcurrentExports = 1
+        }
+        try h.addDrive(scope: .full)
+        try await h.baseline(.googleDrive)
+        // A staging limit below one import batch, and no uploads to drain it.
+        try await h.update { $0.stagingSoftLimitBytes = Int64(size) }
+        let folder = try ImportFolder()
+        for index in 0..<8 {
+            let date = h.clock.now.addingTimeInterval(-86_400 * Double(index + 2))
+            try folder.add("p\(index).jpg", String(repeating: "\(index)", count: size), metadata: ImportFolder.photo(at: date))
+        }
+        let source = SlowCloudFolder(folder, probe: PipelineProbe(staging: h.staging))
+        h.system.set(SystemSnapshot(networkAvailable: false))
+        let id = try await h.coordinator.startImport(
+            source: source, kind: .googleDrive, displayName: "Trip", config: SourceConfig(account: "someone@example.com", remoteItems: [""]))
+        _ = await h.run()
+        // One batch read: one file staged, one waiting. The second batch is read because less than a batch waited; then a
+        // batch and a half waits and reading stops until exports catch up.
+        #expect(source.reads == ["p0.jpg", "p1.jpg", "p2.jpg", "p3.jpg"])
+        #expect(source.exports == 1)
+        h.system.set(SystemSnapshot())
+        await h.settle(rounds: 8)
+        let p = Pipeline(h: h, source: source, probe: PipelineProbe(staging: h.staging), id: id)
+        try await expectAllDeliveredOnce(p, sourceFiles: 8)
+    }
+
+    @Test func aNewPhotoBehindAFullStagingStillUploadsFirst() async throws {
+        let p = try await pipeline()
+        try await p.h.update { $0.stagingSoftLimitBytes = Int64(2 * Self.fileSize) }
+        let probe = p.probe
+        let source = p.source
+        let rounds = Box(0)
+        let coordinator = try await oneAtATime(p, stages: [SignalStage(step: .fanOut) { rounds.mutate { $0 += 1 } }])
+        let photos = p.h.fakePhotos
+        let fresh = p.h.snapshot("fresh", daysAgo: 0.1)
+        let arrived = Box<Int?>(nil)
+        let uploadedAt = Box<Int?>(nil)
+        source.holdReads()
+        // While the first upload runs, the next batch's read is in hand and a new photo arrives. The read goes on once that
+        // upload is recorded, so the exporter fills staging up to the limit with import files before the photo is seen.
+        await p.h.drive.setUploadHook { request in
+            if request.job.assetKey == .local("fresh") { uploadedAt.set(rounds.get()) }
+            await probe.upload { index in
+                guard index == 0 else { return }
+                _ = await pollUntil(timeout: hangGuard) { source.heldReads > 0 }
+                await photos.add(fresh, header: camera, recordChange: true)
+                arrived.set(rounds.get())
+                _ = await coordinator.run(trigger: .photosChanged)
+            }
+        }
+        let h = p.h
+        let releaser = Task {
+            _ = await pollUntil(timeout: hangGuard) { (try? h.jobs(.done).isEmpty == false) ?? false }
+            source.releaseReads()
+        }
+        _ = await coordinator.run(trigger: .manual)
+        await releaser.value
+        let arrival = try #require(arrived.get())
+        let upload = try #require(uploadedAt.get(), "the photo was uploaded")
+        // Rounds that ended between the photo's arrival and its upload: the one it arrived in, and the one whose upload pass
+        // freed the staging import files filled.
+        #expect(upload - arrival <= 2, "the photo waited \(upload - arrival) rounds")
+        #expect(await p.h.drive.files.count == Self.files + 1)
     }
 }

@@ -5,6 +5,8 @@ import PhotoVaultStore
 /// What the read half of a round did: Photos classification, the import stage, exports into staging.
 struct ReadPass: Sendable {
     var classified = 0
+    /// The disk guard refused a classification read (staging full or critical disk).
+    var classifyBlocked = false
     var export = ExportPassResult()
     /// Stages of the classify and export steps that did work.
     var stageWork = 0
@@ -30,9 +32,10 @@ private enum OverlappedPart: Sendable {
 /// cloud-to-cloud import takes about as long as the slower direction instead of both added up.
 ///
 /// The upload pass sends the files staged when the round began; the read half reads the next import batch and stages it.
-/// The round's end is the barrier that bounds the look-ahead: the read half reads at most one import batch per round and
-/// its exports stop at the staging limit (`ResourceGuard`), so it is never more than one batch ahead of an upload pass.
-/// Uploads free staging file by file, which lets the exporter admit more in the same round. Leaving the files staged
+/// Two bounds keep the read half from running ahead of the uploads. Staged bytes stay under the staging limit
+/// (`ResourceGuard`); uploads free staging file by file, which lets the exporter admit more in the same round. Import reads
+/// wait while the files already read and not yet staged make a full import batch (`ImportStage.ingestBatch`), so with a
+/// staging limit below one batch the reads still advance at the pace of the exports, not one batch every round. Leaving the files staged
 /// during the round to the next one keeps both directions busy in every round: an upload pass that also took them would
 /// leave the next round's upload pass nothing to send while its batch is read.
 ///
@@ -73,7 +76,9 @@ extension SyncCoordinator {
     /// Steps 3 and 4: Photos classification, the import stage (step `.classify`), exports into staging.
     private func readPass(_ trigger: SyncTrigger) async throws -> ReadPass {
         var read = ReadPass()
-        read.classified = try await classifier.runPass().classified
+        let classified = try await classifier.runPass()
+        read.classified = classified.classified
+        read.classifyBlocked = classified.blocked
         read.stageWork += try await runStages(.classify, trigger)
         read.export = try await exporter.runPass()
         read.stageWork += try await runStages(.export, trigger)

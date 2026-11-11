@@ -54,6 +54,17 @@ Round, after this change:
   staged during the round, it emptied staging and the next round had nothing to upload while reading, so rounds
   alternated (read-only, then read+upload) and the gain was small. With the round-start snapshot (`stagedAtStart`)
   every round reads batch N+1 while uploading batch N.
+- **Reads wait while a full batch is read but not staged.** The round alone does not bound the hashed-ahead backlog:
+  with a staging limit below `importBatchBytes`, reads advance a batch per round while exports advance about the limit,
+  and issue #69 asks not to download far ahead of the uploads. `ingestBatch` now skips while the import's read-but-not-
+  staged bytes (`EngineQueries.importExportBacklogBytes`, same conditions as an export candidate) reach `importBatchBytes`.
+  Cost: one indexed sum per import per round. Effect: reads stay within two batches of the exports; with uploads held,
+  reading stops instead of hashing the whole folder.
+- **Photos first lasts until the new photo is staged.** A read-first round whose read half the disk guard stopped, or
+  after which an incremental Photos export still waits (`EngineQueries.photosExportWaiting`), makes the next round read
+  first too. Without it a photo arriving while staging is full of import files lost a round to the overlap.
+- **Pause stops new exports.** The export pass starts no new export while the owner has paused (and while a command
+  waits). Before, exports ran to the staging limit while paused. Pause means no transfer work; decided with the lead.
 - **Staging bound unchanged.** Exports keep going through `ResourceGuard.admit` (staged + in-flight bytes below
   `stagingSoftLimitBytes`, disk watermarks); import reads keep `hasRoomToDownload`. Uploads free staging per file
   (`releaseUnneeded(asset:)`), which lets the exporter admit more within the same round.
@@ -91,7 +102,12 @@ Round, after this change:
   file reaches the destination exactly once and staging is empty;
 - an export cut off by an upload-half error is done again by the next cycle without a relaunch;
 - a waiting command runs before the next export starts;
-- files staged during a round are left for the next round's upload pass.
+- files staged during a round are left for the next round's upload pass;
+- exports stop at the staging limit while uploads are held, and staging never exceeds it;
+- a cancel asked with no command waiting stages nothing more of the import;
+- reads wait while a full batch is read but not staged (staging limit below a batch, uploads held);
+- a new photo arriving while staging is full uploads within two rounds.
+Each of these was checked against a mutant that removes the rule (the test fails).
 
 ## Acceptance
 

@@ -97,8 +97,8 @@ extension SyncCoordinator {
     /// and what already reached a destination stays. Running the same import again brings them back.
     public func cancelImport(_ id: SourceID) async throws {
         // At once, without the lane: the intent is stored first (when that fails the import keeps running and the error
-        // reaches the owner), then the import stops reading. The bookkeeping follows when the lane is free (here, or in the
-        // cycle's next import stage, whichever comes first).
+        // reaches the owner), then the import stops reading and exporting. The bookkeeping follows when the lane is free and no
+        // upload is in flight (here at the pass boundary, or at the start of the cycle's next round, whichever comes first).
         let env = env
         try await env.store.write { db in try SourceRepository.requestCancel(db, id: id) }
         importInterrupts.requestCancel(id)

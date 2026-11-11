@@ -19,14 +19,14 @@ enum UploadOutcome: Sendable, Equatable {
     case unsupported
 }
 
-/// Asked before every job starts; the coordinator re-checks pause, network, power and waiting
-/// owner commands here, so a long pass reacts within one job.
 /// A staged file, by asset and resource type.
 struct StagedFile: Hashable, Sendable {
     var assetKey: AssetKey
     var type: ResourceType
 }
 
+/// Asked before every job starts; the coordinator re-checks pause, network, power and waiting
+/// owner commands here, so a long pass reacts within one job.
 struct UploadGate: Sendable {
     var mayStart: @Sendable () async -> Bool
     static let open = UploadGate(mayStart: { true })
@@ -118,6 +118,31 @@ actor UploadRunner {
         }
     }
 
+    /// The next ranked window of ready jobs not tried in this pass (one ranking query per window, not per job). Jobs whose
+    /// file was staged after the pass began go to `later`; a full window of only such jobs is widened, so the jobs ranked
+    /// below it are still found.
+    private func refill(
+        _ id: DestinationID, attempted: Set<Int64>, later: inout Set<Int64>, staged: Set<StagedFile>?
+    ) async throws -> [JobRepository.ReadyJob] {
+        let now = env.clock.now
+        while true {
+            let window = 200 + attempted.count + later.count
+            let rows = try await env.store.read { db in try JobRepository.readyToUpload(db, destinationId: id, now: now, limit: window) }
+            var buffer: [JobRepository.ReadyJob] = []
+            var deferred = 0
+            for item in rows {
+                guard let jobId = item.job.id, !attempted.contains(jobId), !later.contains(jobId) else { continue }
+                if let staged, let resource = item.resource, !staged.contains(StagedFile(assetKey: resource.assetKey, type: resource.type)) {
+                    later.insert(jobId)
+                    deferred += 1
+                } else {
+                    buffer.append(item)
+                }
+            }
+            if !buffer.isEmpty || deferred == 0 || rows.count < window { return buffer }
+        }
+    }
+
     private func runDestination(_ id: DestinationID, maxJobs: Int?, gate: UploadGate, staged: Set<StagedFile>?) async throws -> Int {
         guard let record = try await env.store.read({ db in try DestinationRepository.fetch(db, id: id) }), record.acceptsUploads,
               let destination = await env.destinations.destination(for: id) else { return 0 }
@@ -144,22 +169,7 @@ actor UploadRunner {
                         stop = true
                         break
                     }
-                    if buffer.isEmpty {
-                        // One ranking query per window, not per job.
-                        let now = env.clock.now
-                        let window = 200 + attempted.count + later.count
-                        let ready = try await env.store.read { db in
-                            try JobRepository.readyToUpload(db, destinationId: id, now: now, limit: window)
-                        }.filter { item in item.job.id.map { !attempted.contains($0) && !later.contains($0) } ?? false }
-                        buffer = []
-                        for item in ready {
-                            if let staged, let resource = item.resource, !staged.contains(StagedFile(assetKey: resource.assetKey, type: resource.type)) {
-                                if let jobId = item.job.id { later.insert(jobId) }
-                            } else {
-                                buffer.append(item)
-                            }
-                        }
-                    }
+                    if buffer.isEmpty { buffer = try await refill(id, attempted: attempted, later: &later, staged: staged) }
                     guard !buffer.isEmpty else { break }
                     let next = buffer.removeFirst()
                     guard let jobId = next.job.id else { continue }
