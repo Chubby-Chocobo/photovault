@@ -26,8 +26,8 @@ private final class Race<T: Sendable>: @unchecked Sendable {
     }
 }
 
-/// What the owner asked of the running import stage, in memory and available at once: a cancel that must not wait for the
-/// engine's lane, and a pause. The stage checks it between files, and a read or listing in progress is told to stop.
+/// What the owner asked of the running import stage and export pass, in memory and available at once: a cancel that must not
+/// wait for the engine's lane, and a pause. Both check it between files, and a read or listing in progress is told to stop.
 /// The cancel is also stored (`SourceConfig.cancelRequested`) so a relaunch honours it.
 final class ImportInterrupts: @unchecked Sendable {
     private let lock = NSLock()

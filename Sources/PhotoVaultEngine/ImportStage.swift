@@ -38,10 +38,10 @@ struct ImportStage: CycleStage {
         var changed = false
         for source in open {
             try Task.checkCancellation()
-            // A cancel the owner asked for (now, or stored before a relaunch): finish its bookkeeping here, where the lane is ours.
-            if interrupts.isCancelRequested(source.id) || source.config.cancelRequested == true {
-                try await ImportCancellation.apply(source.id, env: env, extensions: extensions)
-                interrupts.clearCancel(source.id)
+            // A cancel the owner asked for (now, or stored before a relaunch): read nothing more. Its bookkeeping takes jobs out
+            // of the plan, so it waits for the start of the next round, where no upload runs (`ImportCancellation.settleRequested`),
+            // or for the owner's command at the pass boundary. Reporting work makes the cycle run that round.
+            if cancelRequested(source) {
                 changed = true
                 continue
             }
@@ -54,14 +54,14 @@ struct ImportStage: CycleStage {
                 continue
             }
             if try await advance(source, folder) { changed = true }
-            // A cancel that came during the pass: end it here, before the exporter reads the groups this pass committed.
-            if interrupts.isCancelRequested(source.id) {
-                try await ImportCancellation.apply(source.id, env: env, extensions: extensions)
-                interrupts.clearCancel(source.id)
-                changed = true
-            }
+            // A cancel that came during the pass: the exporter skips the groups this pass committed, and the next round ends the job.
+            if interrupts.isCancelRequested(source.id) { changed = true }
         }
         return changed
+    }
+
+    private func cancelRequested(_ source: SourceRecord) -> Bool {
+        interrupts.isCancelRequested(source.id) || source.config.cancelRequested == true
     }
 
     private func advance(_ source: SourceRecord, _ folder: any FolderImportSource) async throws -> Bool {

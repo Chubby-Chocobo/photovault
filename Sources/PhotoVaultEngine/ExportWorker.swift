@@ -11,6 +11,8 @@ struct ExportPassResult: Sendable, Equatable {
     var blockedBy: DiskGuardBlock?
     /// Set when Photos refused or lost the library; the pass ended early so the cycle re-checks access.
     var photosUnavailable = false
+    /// Set when the owner paused or a command waits: the pass ended early and has more to do after the pass boundary.
+    var yielded = false
 }
 
 /// Step 4 of the cycle (FR-30..34, FR-23, NFR-09). Each resource is exported once for every
@@ -33,10 +35,21 @@ actor ExportWorker {
     /// A resource that failed without a reason of its own waits this long before it is picked again.
     static let transientRetryDelay: TimeInterval = 60
 
-    init(env: EngineEnvironment, resourceGuard: ResourceGuard, staging: StagingManager) {
+    /// The owner's pause and import cancels: a paused pass starts no further export, and the files of an import whose
+    /// cancel was asked are not read again.
+    private let interrupts: ImportInterrupts
+    /// True while an owner command waits for the lane: the pass starts no further export.
+    private let commandWaiting: @Sendable () async -> Bool
+
+    init(
+        env: EngineEnvironment, resourceGuard: ResourceGuard, staging: StagingManager, interrupts: ImportInterrupts = ImportInterrupts(),
+        commandWaiting: @escaping @Sendable () async -> Bool = { false }
+    ) {
         self.env = env
         self.resourceGuard = resourceGuard
         self.staging = staging
+        self.interrupts = interrupts
+        self.commandWaiting = commandWaiting
     }
 
     private struct Candidate: Sendable {
@@ -82,6 +95,14 @@ actor ExportWorker {
             while true {
                 try Task.checkCancellation()
                 while !stop, inFlight.count < limit {
+                    // Runs beside the upload pass: a pause or a waiting command ends it after the files in hand, like the import
+                    // stage and the upload gate.
+                    let commandWaits = await commandWaiting()
+                    if interrupts.paused || commandWaits {
+                        result.yielded = true
+                        stop = true
+                        break
+                    }
                     let step = try await dispatchNext(excluding: inFlight.union(held).union(failed))
                     switch step {
                     case .none: stop = true
@@ -157,7 +178,7 @@ actor ExportWorker {
                 return (asset, resource, try EngineQueries.destinationsNeeding(db, key: key, type: type))
             }
             guard let (asset, resource, needing) = loaded, !needing.isEmpty else { return .held(candidate.id) }
-            if signInDeferred.contains(asset.sourceId) { return .held(candidate.id) }
+            if signInDeferred.contains(asset.sourceId) || interrupts.isCancelRequested(asset.sourceId) { return .held(candidate.id) }
             if let size = resource.sizeBytes, needing.allSatisfy({ ($0.rules.skipLargerThanBytes ?? .max) < size }) {
                 try await skipOversized(key: key, type: type, size: size, destinations: needing)
                 return .skippedByRule

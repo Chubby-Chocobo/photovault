@@ -190,7 +190,9 @@ import Testing
         await h.settle(rounds: 6)
         #expect(try h.read { db in try DayPlaceRepository.fetchAll(db, day: self.day) }.count == 2, "a third folder appears")
         let afterOn = try moveFiles(h)
-        #expect(afterOn > before)
+        // The hidden photo uploads beside the read that stages it or in the next round: before the day is split (its files
+        // then move) or after (it lands in its folder at once). Either way no other photo moves.
+        #expect(afterOn >= before)
         let hiddenMoves = try h.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM move_job WHERE op = 'moveFile' AND subject LIKE ?", arguments: ["%hid%"]) ?? 0
         }

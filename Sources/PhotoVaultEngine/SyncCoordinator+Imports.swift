@@ -89,11 +89,8 @@ extension SyncCoordinator {
 
     /// Finishes the cancels the owner asked for before a quit. Runs in the lane at launch.
     func finishStoredImportCancels() async throws {
-        let pending = try await env.store.read { db in
-            try SourceRepository.fetchAll(db).filter { $0.kind.isImport && $0.status.isOpen && $0.config.cancelRequested == true }.map(\.id)
-        }
-        for id in pending { try await ImportCancellation.apply(id, env: env, extensions: planningExtensions) }
-        if !pending.isEmpty { await publish() }
+        let settled = try await ImportCancellation.settleRequested(env: env, interrupts: importInterrupts, extensions: planningExtensions)
+        if settled > 0 { await publish() }
     }
 
     /// Stops ingesting and treats files not yet uploaded as removed: their pending jobs are cancelled

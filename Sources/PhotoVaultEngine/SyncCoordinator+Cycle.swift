@@ -113,6 +113,7 @@ extension SyncCoordinator {
         try await markEarlierBackfillOnce()
         report.uploadsHeld = !(await uploadsAllowedNow())
         try await DestinationHealth(env: env).refresh()
+        try await recovery.resetInterruptedExports()
         _ = try await recovery.resolveInterrupted()
         try await DeferredJobSweeper(env: env).sweep()
         try await hardening.triggers.detectDataAtDestinations()
@@ -120,6 +121,7 @@ extension SyncCoordinator {
         await lane.yieldToCommands()
 
         // 2. scan, change tracking
+        var reconciled = false
         let yieldToCommands: @Sendable () async -> Void = { [lane] in await lane.yieldToCommands() }
         let scan = try await scanner.run(afterBatch: yieldToCommands)
         await lane.yieldToCommands()
@@ -132,6 +134,7 @@ extension SyncCoordinator {
             case .needsReconciliation(let reason):
                 do {
                     try await reconciler.reconcile(reason: reason)
+                    reconciled = true
                     needsReconciliation = nil
                 } catch {
                     needsReconciliation = reason
@@ -150,6 +153,9 @@ extension SyncCoordinator {
 
         // 3–9. repeat while there is progress
         let gate = UploadGate { [self] in await mayStartUpload() }
+        // Photos assets that came in since the last upload pass go first: such a round reads (classifies and exports them)
+        // before its upload pass ranks what is ready, instead of beside it.
+        var photosFirst = report.scanned > 0 || report.changesProcessed > 0 || reconciled
         while report.rounds < env.tuning.maxCycleIterations {
             try Task.checkCancellation()
             // Pass boundary.
@@ -157,34 +163,38 @@ extension SyncCoordinator {
             if globallyPaused { return .paused }
             report.rounds += 1
             var progress = 0
-            if changesPending { progress += try await pickUpChanges() }
+            if changesPending {
+                let picked = try await pickUpChanges()
+                progress += picked
+                if picked > 0 { photosFirst = true }
+            }
+            // A cancel takes pending jobs out of the plan, so it is settled here, where no upload is in flight.
+            progress += try await ImportCancellation.settleRequested(env: env, interrupts: importInterrupts, extensions: planningExtensions)
             let uploadsAllowed = await uploadsAllowedNow()
             report.uploadsHeld = !uploadsAllowed
             await resourceGuard.enforce()
-            let classified = try await classifier.runPass()
-            report.classified += classified.classified
-            progress += classified.classified
-            try await runStages(.classify, trigger, &report, progress: &progress)
-            let exported = try await exporter.runPass()
-            report.exported += exported.exported
-            progress += exported.exported + exported.skippedByRule
-            try await runStages(.export, trigger, &report, progress: &progress)
-            // Photos access was lost or the library went away: nothing more can be exported in this
-            // cycle; what is already staged still uploads below, then the cycle ends.
-            if exported.photosUnavailable { env.log.log(.notice, category: "cycle", "photos unavailable; ending after this pass") }
             try await runStages(.editGate, trigger, &report, progress: &progress)
-            if uploadsAllowed {
-                let uploaded = try await uploader.runPass(gate: gate)
-                report.uploaded += uploaded.uploaded
-                report.uploadedByDestination.merge(uploaded.perDestination, uniquingKeysWith: +)
-                progress += uploaded.uploaded
+            // Steps 3, 4 and 6 overlap: the upload pass sends what is staged while the next files are read and staged.
+            let pass = try await overlappedPass(trigger, uploads: uploadsAllowed ? gate : nil, readFirst: photosFirst)
+            photosFirst = false
+            report.classified += pass.read.classified
+            report.exported += pass.read.export.exported
+            report.stageWork += pass.read.stageWork
+            report.add(pass.uploaded)
+            progress += pass.read.progress + pass.uploaded.uploaded
+            // Photos access was lost or the library went away: nothing more can be exported in this cycle. What this round
+            // staged after the upload pass ran dry still uploads, then the cycle ends.
+            let photosUnavailable = pass.read.export.photosUnavailable
+            if photosUnavailable {
+                env.log.log(.notice, category: "cycle", "photos unavailable; ending after this pass")
+                if uploadsAllowed { report.add(try await uploader.runPass(gate: gate)) }
             }
             for step in [CycleStep.fanOut, .sidecarsAndViews, .moves, .placeNamer] {
                 try await runStages(step, trigger, &report, progress: &progress)
             }
             try await staging.releaseUnneeded()
             try await staging.expireIdle()
-            if exported.photosUnavailable { break }
+            if photosUnavailable { break }
             if progress == 0 {
                 report.drained = true
                 break
@@ -213,12 +223,18 @@ extension SyncCoordinator {
     }
 
     private func runStages(_ step: CycleStep, _ trigger: SyncTrigger, _ report: inout CycleReport, progress: inout Int) async throws {
+        let worked = try await runStages(step, trigger)
+        report.stageWork += worked
+        progress += worked
+    }
+
+    /// Runs the stages of `step`; returns how many did work.
+    func runStages(_ step: CycleStep, _ trigger: SyncTrigger) async throws -> Int {
+        var worked = 0
         for stage in stages where stage.step == step {
-            if try await stage.run(trigger: trigger) {
-                report.stageWork += 1
-                progress += 1
-            }
+            if try await stage.run(trigger: trigger) { worked += 1 }
         }
+        return worked
     }
 
     /// "Last successful sync" (FR-61) means files reached a destination, or nothing waiting at an

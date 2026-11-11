@@ -147,7 +147,7 @@ final class HitCounter: @unchecked Sendable {
         h.injector.onReach { point in
             if point == .afterImportGroupCommit, hits.next() == 2 { throw SimulatedCrash(point: point.rawValue) }
         }
-        let id = try await folder.startAndRun(h)
+        let id = try await folder.startAndRun(h, afterFirstUpload: true)
         // Group one is uploaded; group two is ingested but the cycle stopped before exporting it.
         #expect(await h.drive.files.count == 1)
         try await h.coordinator.cancelImport(id)
@@ -226,10 +226,40 @@ final class HitCounter: @unchecked Sendable {
 
 extension ImportFolder {
     /// Starts the job and runs one cycle without settling, so a test can look at the state it leaves.
-    func startAndRun(_ h: Harness) async throws -> SourceID {
-        let id = try await h.coordinator.startFolderImport(source: source(), displayName: "Trip", bookmark: nil)
+    /// - Parameter afterFirstUpload: every read after the first waits until the first file's upload is recorded, so a test
+    ///   that stops the cycle while it reads the second group knows the first one is at the destination.
+    func startAndRun(_ h: Harness, afterFirstUpload: Bool = false) async throws -> SourceID {
+        let adapter: any FolderImportSource = afterFirstUpload
+            ? FirstUploadFirstSource(source()) { (try? h.jobs(.done).isEmpty == false) ?? false }
+            : source()
+        let id = try await h.coordinator.startFolderImport(source: adapter, displayName: "Trip", bookmark: nil)
         await h.settle(rounds: 1)
         return id
+    }
+}
+
+/// A Mac folder whose reads after the first wait until `ready()` holds. The upload pass runs beside the reads, so this
+/// fixes the order a test needs: the first file is uploaded before the second is read.
+private final class FirstUploadFirstSource: FolderImportSource, @unchecked Sendable {
+    private let inner: any FolderImportSource
+    private let ready: @Sendable () -> Bool
+    private let reads = HitCounter()
+
+    init(_ inner: any FolderImportSource, ready: @escaping @Sendable () -> Bool) {
+        self.inner = inner
+        self.ready = ready
+    }
+
+    var id: SourceID { inner.id }
+    func probe() async throws { try await inner.probe() }
+    func listFiles() async throws -> [FolderFileEntry] { try await inner.listFiles() }
+    func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
+        // The wait is a hang guard only: the upload it waits for runs beside this read.
+        if reads.next() > 1 { _ = await pollUntil(timeout: .seconds(300)) { ready() } }
+        return try await inner.inspect(relativePath: relativePath, uti: uti, mediaType: mediaType, control: control)
+    }
+    func exportResource(_ locator: ResourceLocator, to destination: URL, control: ExportControl) async throws -> ExportedFile {
+        try await inner.exportResource(locator, to: destination, control: control)
     }
 }
 
