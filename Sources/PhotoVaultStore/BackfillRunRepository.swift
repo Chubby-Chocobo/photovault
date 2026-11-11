@@ -41,6 +41,9 @@ public enum BackfillRunRepository {
                     AND origin IN (\(origins)))
             """
         try db.execute(sql: "UPDATE backfill_run SET finished_at = NULL WHERE finished_at IS NOT NULL AND \(waiting)")
+        // Files retried and uploaded between two drained cycles were never seen waiting: the run ends at their outcome.
+        let last = "(SELECT MAX(at) FROM transfer_event WHERE run_id = backfill_run.id)"
+        try db.execute(sql: "UPDATE backfill_run SET finished_at = \(last) WHERE finished_at IS NOT NULL AND \(last) > finished_at")
         try db.execute(sql: """
             UPDATE backfill_run
             SET finished_at = COALESCE((SELECT MAX(at) FROM transfer_event WHERE run_id = backfill_run.id), :now),
@@ -62,15 +65,6 @@ public enum BackfillRunRepository {
                 destinationId: try row.destinationId("destination_id", table: table), assetKey: try row.assetKey("asset_key", table: table),
                 resType: ResourceType(rawValue: row["res_type"]))
         }
-    }
-
-    /// The runs wait for their jobs again (the owner retried some of them).
-    public static func reopen(_ db: Database, runIds: Set<Int64>) throws {
-        guard !runIds.isEmpty else { return }
-        let marks = runIds.map { _ in "?" }.joined(separator: ", ")
-        try db.execute(
-            sql: "UPDATE backfill_run SET finished_at = NULL WHERE id IN (\(marks))",
-            arguments: StatementArguments(runIds.sorted()))
     }
 
     /// Newest first, each with the latest outcome of every file and the files still waiting.

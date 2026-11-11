@@ -192,4 +192,42 @@ enum HistoryFixture {
             #expect(try F.events(db).first?["source_id"] == source.rawValue)
         }
     }
+
+    @Test func aReUploadOfAMissingFileClearsItsMissingResult() throws {
+        let store = try Store.inMemory()
+        let after = try store.write { db -> (IntegrityCheckResult?, IntegrityCheckResult?) in
+            let key = try F.file(db, "a")
+            try JobRepository.upsert(db, desired: desired(F.drive, key), now: t0)
+            try F.upload(db, F.identity(key), at: t0)
+            _ = try JobRepository.apply(db, .missingAtDestination, to: F.identity(key), now: t0)
+            try IntegrityCheckRepository.record(db, identity: F.identity(key), result: .missing, at: t0)
+            _ = try JobRepository.apply(db, .reuploadConfirmed, to: F.identity(key), now: t0)
+            let waiting = try IntegrityCheckRepository.fetch(db, identity: F.identity(key))?.result
+            try F.upload(db, F.identity(key), at: t0.addingTimeInterval(60))
+            return (waiting, try IntegrityCheckRepository.fetch(db, identity: F.identity(key))?.result)
+        }
+        #expect(after.0 == .missing, "still missing until the new copy is up")
+        #expect(after.1 == nil, "the new copy has not been checked")
+    }
+
+    @Test func anEditedFileDropsTheCheckOfItsOlderContent() throws {
+        let store = try Store.inMemory()
+        let after = try store.write { db -> (IntegrityCheckResult?, IntegrityCheckResult?, [String]) in
+            let key = try F.file(db, "a")
+            let other = try F.file(db, "b")
+            for item in [key, other] {
+                try JobRepository.upsert(db, desired: desired(F.drive, item), now: t0)
+                try F.upload(db, F.identity(item), at: t0)
+                try IntegrityCheckRepository.record(db, identity: F.identity(item), result: .hashVerified, at: t0)
+            }
+            _ = try JobRepository.apply(db, .contentChanged(targetGen: 2), to: F.identity(key), now: t0)
+            try F.upload(db, F.identity(key), at: t0.addingTimeInterval(60), generation: 2)
+            return (
+                try IntegrityCheckRepository.fetch(db, identity: F.identity(key))?.result,
+                try IntegrityCheckRepository.fetch(db, identity: F.identity(other))?.result, try F.outcomes(db))
+        }
+        #expect(after.0 == nil)
+        #expect(after.1 == .hashVerified, "only the uploaded file's result goes")
+        #expect(after.2.last == "updated")
+    }
 }

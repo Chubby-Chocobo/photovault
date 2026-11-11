@@ -74,10 +74,10 @@ import Testing
             #expect(run.totals[.failed] == OutcomeTotal(files: 1, bytes: 20))
             #expect(run.waiting == 0)
 
-            try BackfillRunRepository.reopen(db, runIds: [run.id])
             _ = try JobRepository.apply(db, .retryDeferred, to: F.identity(b), now: t0)
             run = try #require(try BackfillRunRepository.fetchAll(db).first)
             #expect(run.finishedAt == nil && run.waiting == 1)
+            // Retried and uploaded within one cycle: no drained cycle saw the file waiting, yet the run ends later.
             try F.upload(db, F.identity(b), at: t0.addingTimeInterval(30))
             try BackfillRunRepository.finishSettled(db, now: t0.addingTimeInterval(99))
             run = try #require(try BackfillRunRepository.fetchAll(db).first)

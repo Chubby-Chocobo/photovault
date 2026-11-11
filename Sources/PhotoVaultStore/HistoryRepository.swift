@@ -51,7 +51,13 @@ public enum HistoryRepository {
         }
         if let from = filter.capturedFrom { terms.append("a.creation_date >= ?"); values.append(from) }
         if let until = filter.capturedUntil { terms.append("a.creation_date < ?"); values.append(until) }
-        if filter.deletedFromLibraryOnly { terms.append("a.deleted_at IS NOT NULL") }
+        if filter.deletedFromLibraryOnly {
+            // Only uploads whose copy is still kept: a photo deleted before it went up has no backup to show.
+            terms.append("""
+                a.deleted_at IS NOT NULL AND +e.outcome IN ('uploaded', 'updated')
+                AND EXISTS (SELECT 1 FROM upload_job j WHERE j.id = e.job_id AND j.done_gen > 0)
+                """)
+        }
         values.append(limit)
         let sql = """
             SELECT e.*, r.original_filename, r.is_raw, a.media_type, a.creation_date, a.deleted_at

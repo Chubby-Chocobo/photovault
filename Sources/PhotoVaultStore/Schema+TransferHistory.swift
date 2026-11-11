@@ -86,13 +86,17 @@ extension Schema {
 
     /// One row per outcome (decision record 0032): an upload that finished (`uploaded` when the destination had no
     /// copy from this job, else `updated`), a give-up (`failed`, not repeated while the same failure repeats), a skip
-    /// or a cancel. Sidecars (types 1000 and up) are not files the owner keeps a history of.
+    /// or a cancel. Sidecars (types 1000 and up) are not files the owner keeps a history of. A finished upload also
+    /// drops the file's last integrity result: it was about a copy that is no longer there (missing, or older content).
     static let historyTrigger = """
     CREATE TRIGGER upload_job_history AFTER UPDATE ON upload_job
     WHEN NEW.res_type < 1000 AND (
         (OLD.state = 'uploading' AND NEW.done_gen > OLD.done_gen)
         OR (NEW.state IS NOT OLD.state AND NEW.state IN ('deferred', 'skipped', 'cancelled')))
     BEGIN
+        DELETE FROM integrity_check
+        WHERE OLD.state = 'uploading' AND NEW.done_gen > OLD.done_gen
+          AND destination_id = NEW.destination_id AND asset_key = NEW.asset_key AND res_type = NEW.res_type;
         INSERT INTO transfer_event (at, job_id, destination_id, asset_key, res_type, source_id, origin, run_id, outcome, bytes, reason, detail)
         SELECT NEW.updated_at, NEW.id, NEW.destination_id, NEW.asset_key, NEW.res_type,
                COALESCE((SELECT source_id FROM asset WHERE asset_key = NEW.asset_key), 'photos'),

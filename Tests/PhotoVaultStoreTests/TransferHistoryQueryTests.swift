@@ -152,4 +152,19 @@ import Testing
             #expect(summary.totals[.failed] == OutcomeTotal(files: 1, bytes: 30))
         }
     }
+
+    @Test func theDeletedFilterListsOnlyBackupsThatAreKept() throws {
+        let store = try Store.inMemory()
+        try store.write { db in
+            let kept = try F.file(db, "kept", name: "KEPT.HEIC", deleted: t0)
+            let never = try F.file(db, "never", name: "NEVER_UPLOADED.HEIC", deleted: t0)
+            let failed = try F.file(db, "failed", name: "FAILED.HEIC", deleted: t0)
+            for key in [kept, never, failed] { try JobRepository.upsert(db, desired: desired(F.drive, key), now: t0) }
+            try F.upload(db, F.identity(kept), at: t0)
+            _ = try JobRepository.apply(db, .cancel, to: F.identity(never), now: t0.addingTimeInterval(10))
+            try F.failForGood(db, F.identity(failed), at: t0.addingTimeInterval(20))
+        }
+        #expect(try names(store, TransferEventFilter()).count == 3)
+        #expect(try names(store, TransferEventFilter(deletedFromLibraryOnly: true)) == ["KEPT.HEIC"])
+    }
 }
