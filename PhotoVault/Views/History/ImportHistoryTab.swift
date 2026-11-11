@@ -8,6 +8,7 @@ struct ImportHistoryTab: View {
     @Environment(AppModel.self) private var model
     var refresh = 0
     @State private var imports: [ImportRunRow] = []
+    @State private var failed = false
     @State private var selection: SourceID?
     @State private var state: ImportItemState?
     @State private var search = ""
@@ -24,7 +25,11 @@ struct ImportHistoryTab: View {
                 .padding(.vertical, 2)
             }
             .overlay {
-                if imports.isEmpty { Text(tr(vi: "Chưa nhập lần nào.", en: "No imports yet.")).foregroundStyle(.secondary) }
+                if failed {
+                    Text(HistoryText.readFailed).foregroundStyle(.red).multilineTextAlignment(.center).padding()
+                } else if imports.isEmpty {
+                    Text(tr(vi: "Chưa nhập lần nào.", en: "No imports yet.")).foregroundStyle(.secondary)
+                }
             }
             .frame(minWidth: 200, idealWidth: 240, maxWidth: 320)
             detail.frame(minWidth: 600)
@@ -90,16 +95,25 @@ struct ImportHistoryTab: View {
                     }
                 }
                 .disabled(row.failedUploads == 0)
+                .help(row.source.kind == .localFolder ? "" : tr(
+                    vi: "Nếu lần nhập đã xong, PhotoVault có thể cần bạn đăng nhập lại để đọc lại các file này",
+                    en: "If the import has finished, PhotoVault may ask you to sign in again to read these files"))
                 Button(tr(vi: "Xuất CSV…", en: "Export CSV…"), systemImage: "square.and.arrow.up") {
                     Task { await list.exportCSV(app: model, suggestedName: "PhotoVault-import.csv") }
                 }
-                .disabled(list.rows.isEmpty)
+                .disabled(list.rows.isEmpty || list.isLoading || list.filter?.sourceId != row.id)
             }
         }
     }
 
     private func loadImports() async {
-        imports = (try? await model.historyRead { db in try ImportHistoryRepository.imports(db) }) ?? []
+        do {
+            imports = try await model.historyRead { db in try ImportHistoryRepository.imports(db) } ?? []
+            failed = false
+        } catch is CancellationError {
+        } catch {
+            failed = true
+        }
         if selection == nil { selection = imports.first?.id }
     }
 }

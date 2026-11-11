@@ -22,7 +22,7 @@ struct PhotosHistoryTab: View {
                     Button(tr(vi: "Xuất CSV…", en: "Export CSV…"), systemImage: "square.and.arrow.up") {
                         Task { await list.exportCSV(app: model, suggestedName: "PhotoVault-history.csv") }
                     }
-                    .disabled(list.rows.isEmpty)
+                    .disabled(list.rows.isEmpty || list.isLoading)
                     .help(tr(vi: "Lưu danh sách đang xem thành file CSV", en: "Save the list shown as a CSV file"))
                 }
             }

@@ -39,7 +39,7 @@ struct EventListView: View {
             TableColumn(tr(vi: "File", en: "File")) { row in
                 HStack(spacing: 4) {
                     Text(row.fileName).lineLimit(1).truncationMode(.middle)
-                    if row.deletedFromLibraryAt != nil {
+                    if HistoryText.keptAfterDeletion(row) {
                         Image(systemName: "trash").foregroundStyle(.secondary).help(HistoryText.deletedFromLibrary)
                     }
                 }
@@ -66,10 +66,14 @@ struct EventListView: View {
 
     private var footer: some View {
         HStack {
-            Text(list.rows.isEmpty && !list.isLoading
-                ? tr(vi: "Không có file nào khớp.", en: "No files match.")
-                : tr(vi: "\(L10n.integer(list.rows.count)) dòng", en: L10n.plural(list.rows.count, one: "1 row", other: "\(L10n.integer(list.rows.count)) rows")))
-                .font(.caption).foregroundStyle(.secondary)
+            if list.failed {
+                Text(HistoryText.readFailed).font(.caption).foregroundStyle(.red)
+            } else {
+                Text(list.rows.isEmpty && !list.isLoading
+                    ? tr(vi: "Không có file nào khớp.", en: "No files match.")
+                    : tr(vi: "\(L10n.integer(list.rows.count)) dòng", en: L10n.plural(list.rows.count, one: "1 row", other: "\(L10n.integer(list.rows.count)) rows")))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if list.isLoading { ProgressView().controlSize(.small) }
             Spacer()
             if list.hasMore {

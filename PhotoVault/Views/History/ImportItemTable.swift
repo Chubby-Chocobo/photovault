@@ -26,8 +26,12 @@ struct ImportItemTable: View {
             }
             Divider()
             HStack {
-                Text(tr(vi: "\(L10n.integer(list.rows.count)) file", en: L10n.plural(list.rows.count, one: "1 file", other: "\(L10n.integer(list.rows.count)) files")))
-                    .font(.caption).foregroundStyle(.secondary)
+                if list.failed {
+                    Text(HistoryText.readFailed).font(.caption).foregroundStyle(.red)
+                } else {
+                    Text(tr(vi: "\(L10n.integer(list.rows.count)) file", en: L10n.plural(list.rows.count, one: "1 file", other: "\(L10n.integer(list.rows.count)) files")))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if list.isLoading { ProgressView().controlSize(.small) }
                 Spacer()
                 if list.hasMore {

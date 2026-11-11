@@ -24,11 +24,16 @@ struct TimelineChartView: View {
     @State private var span = 30
     @State private var metric: Metric = .files
     @State private var days: [TimelineDay] = []
+    @State private var failed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(HistoryTimeline.total(days)).font(.callout.weight(.medium))
+                if failed {
+                    Text(HistoryText.readFailed).font(.callout).foregroundStyle(.red)
+                } else {
+                    Text(HistoryTimeline.total(days)).font(.callout.weight(.medium))
+                }
                 Spacer()
                 Picker(tr(vi: "Hiển thị", en: "Show"), selection: $metric) {
                     ForEach(Metric.allCases) { Text($0.label).tag($0) }
@@ -64,9 +69,16 @@ struct TimelineChartView: View {
         let range = HistoryTimeline.range(days: span, now: Date(), calendar: calendar)
         let destination = destinationId
         let source = sourceId
-        let slots = (try? await model.historyRead { db in
-            try HistoryRepository.timeline(db, from: range.from, until: range.until, destinationId: destination, sourceId: source)
-        }) ?? []
-        days = HistoryTimeline.days(slots, from: range.from, until: range.until, calendar: calendar)
+        do {
+            let slots = try await model.historyRead { db in
+                try HistoryRepository.timeline(db, from: range.from, until: range.until, destinationId: destination, sourceId: source)
+            } ?? []
+            days = HistoryTimeline.days(slots, from: range.from, until: range.until, calendar: calendar)
+            failed = false
+        } catch is CancellationError {
+        } catch {
+            days = []
+            failed = true
+        }
     }
 }

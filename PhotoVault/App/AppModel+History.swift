@@ -13,7 +13,15 @@ extension AppModel {
     /// Reads the database on GRDB's reader, off the main thread; nil before the engine is up.
     func historyRead<T: Sendable>(_ body: @Sendable @escaping (Database) throws -> T) async throws -> T? {
         guard let store = env?.store else { return nil }
-        return try await store.read(body)
+        do {
+            return try await store.read(body)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // The window shows that the read failed; the log gets the error type, never what was being read.
+            env?.log.log(.error, category: "history", "read failed type=\(type(of: error))")
+            throw error
+        }
     }
 
     /// "Thử lại" on files: the owner's retry transitions only, then a sync.

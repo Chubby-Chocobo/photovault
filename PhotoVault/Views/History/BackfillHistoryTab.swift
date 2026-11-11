@@ -8,6 +8,7 @@ struct BackfillHistoryTab: View {
     @Environment(AppModel.self) private var model
     var refresh = 0
     @State private var runs: [BackfillRunRow] = []
+    @State private var failed = false
     @State private var selection: BackfillRunRow.ID?
     @State private var filter = HistoryFilterState()
     @State private var list = EventListModel()
@@ -23,7 +24,11 @@ struct BackfillHistoryTab: View {
                 .padding(.vertical, 2)
             }
             .overlay {
-                if runs.isEmpty { Text(tr(vi: "Chưa có lần backfill nào.", en: "No backfill yet.")).foregroundStyle(.secondary) }
+                if failed {
+                    Text(HistoryText.readFailed).foregroundStyle(.red).multilineTextAlignment(.center).padding()
+                } else if runs.isEmpty {
+                    Text(tr(vi: "Chưa có lần backfill nào.", en: "No backfill yet.")).foregroundStyle(.secondary)
+                }
             }
             .frame(minWidth: 220, idealWidth: 250, maxWidth: 320)
             detail.frame(minWidth: 600)
@@ -70,7 +75,8 @@ struct BackfillHistoryTab: View {
                         Button(tr(vi: "Xuất CSV…", en: "Export CSV…"), systemImage: "square.and.arrow.up") {
                             Task { await list.exportCSV(app: model, suggestedName: "PhotoVault-backfill-\(run.id).csv") }
                         }
-                        .disabled(list.rows.isEmpty)
+                        // Only once the list shows this run: a click right after switching runs must not save the last one.
+                        .disabled(list.rows.isEmpty || list.isLoading || list.filter.scope != .run(run.id))
                     }
                 }
                 .padding(12)
@@ -85,7 +91,13 @@ struct BackfillHistoryTab: View {
     }
 
     private func loadRuns() async {
-        runs = (try? await model.historyRead { db in try BackfillRunRepository.fetchAll(db) }) ?? []
+        do {
+            runs = try await model.historyRead { db in try BackfillRunRepository.fetchAll(db) } ?? []
+            failed = false
+        } catch is CancellationError {
+        } catch {
+            failed = true
+        }
         if selection == nil { selection = runs.first?.id }
     }
 }

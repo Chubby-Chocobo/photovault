@@ -23,11 +23,13 @@ struct FileDetailView: View {
     @Environment(AppModel.self) private var model
     var file: HistoryFile
     @State private var statuses: [FileDestinationStatus] = []
+    @State private var failed = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 header
+                if failed { Text(HistoryText.readFailed).font(.callout).foregroundStyle(.red) }
                 if !statuses.isEmpty {
                     Divider()
                     Text(tr(vi: "Trên từng đích", en: "At each destination")).font(.subheadline.weight(.semibold))
@@ -50,7 +52,9 @@ struct FileDetailView: View {
             if let captured = row.capturedAt { line(tr(vi: "Ngày chụp", en: "Taken"), RelativeTimeText.dateTime(captured)) }
             line(tr(vi: "Dung lượng", en: "Size"), VietnameseFormat.bytes(row.bytes))
             if let reason = HistoryReasonText.upload(reason: row.reason, detail: row.detail) { line(tr(vi: "Lý do", en: "Reason"), reason) }
-            if row.deletedFromLibraryAt != nil { Label(HistoryText.deletedFromLibrary, systemImage: "trash").font(.callout) }
+            if let note = HistoryText.deletionNote(row) {
+                Label(note, systemImage: HistoryText.keptAfterDeletion(row) ? "trash" : "minus.circle").font(.callout)
+            }
             if row.approximate { Text(HistoryText.approximateNote).font(.caption).foregroundStyle(.secondary) }
         case .importItem(let item):
             Text(item.relativePath).font(.headline).lineLimit(4)
@@ -99,8 +103,16 @@ struct FileDetailView: View {
     private func load() async {
         guard let key = file.assetKey else {
             statuses = []
+            failed = false
             return
         }
-        statuses = (try? await model.historyRead { db in try HistoryRepository.statuses(db, assetKey: key) }) ?? []
+        do {
+            statuses = try await model.historyRead { db in try HistoryRepository.statuses(db, assetKey: key) } ?? []
+            failed = false
+        } catch is CancellationError {
+        } catch {
+            statuses = []
+            failed = true
+        }
     }
 }
