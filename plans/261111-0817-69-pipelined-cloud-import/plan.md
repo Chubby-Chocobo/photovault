@@ -60,9 +60,12 @@ Round, after this change:
   staged bytes (`EngineQueries.importExportBacklogBytes`, same conditions as an export candidate) reach `importBatchBytes`.
   Cost: one indexed sum per import per round. Effect: reads stay within two batches of the exports; with uploads held,
   reading stops instead of hashing the whole folder.
-- **Photos first lasts until the new photo is staged.** A read-first round whose read half the disk guard stopped, or
-  after which an incremental Photos export still waits (`EngineQueries.photosExportWaiting`), makes the next round read
-  first too. Without it a photo arriving while staging is full of import files lost a round to the overlap.
+- **Photos first lasts until the new photo is staged.** A read-first round whose classification the disk guard stopped,
+  or after which an incremental Photos export still waits (`EngineQueries.photosExportWaiting`), makes the next round
+  read first too. Without it a photo arriving while staging is full of import files lost a round to the overlap. An
+  export pass stopped at the staging limit does not count: with an import bigger than the limit that is nearly every
+  pass, and the rounds would never overlap again (found in review; `theRoundsOverlapAgainOnceTheNewPhotoIsUploaded`).
+  The `photosExportWaiting` check runs only after read-first rounds, so its cost is left as is.
 - **Pause stops new exports.** The export pass starts no new export while the owner has paused (and while a command
   waits). Before, exports ran to the staging limit while paused. Pause means no transfer work; decided with the lead.
 - **Staging bound unchanged.** Exports keep going through `ResourceGuard.admit` (staged + in-flight bytes below

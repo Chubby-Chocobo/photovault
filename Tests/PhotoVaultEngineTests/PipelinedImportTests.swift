@@ -74,6 +74,8 @@ private final class SlowCloudFolder: FolderImportSource, @unchecked Sendable {
     private var readPaths: [String] = []
     private var exported = 0
     private var holding = false
+    private var meeting = false
+    private var met = 0
     private var holdingExports = false
     private var exportsWaiting = 0
     private var waiting: [String] = []
@@ -93,6 +95,11 @@ private final class SlowCloudFolder: FolderImportSource, @unchecked Sendable {
     /// Held reads that ended because the engine told them to stop.
     var cancelledReads: Int { lock.withLock { stopped } }
     func holdReads() { lock.withLock { holding = true } }
+    /// The next read waits until an upload is in flight (or the hang guard); the mode ends with that read.
+    func meetAnUpload() { lock.withLock { meeting = true } }
+    var isMeeting: Bool { lock.withLock { meeting } }
+    /// Reads that found an upload in flight while they waited for one.
+    var readsThatMetAnUpload: Int { lock.withLock { met } }
     func releaseReads() { lock.withLock { holding = false } }
     /// Exports from now on wait like held reads, until `releaseExports()`.
     func holdExports() { lock.withLock { holdingExports = true } }
@@ -105,6 +112,15 @@ private final class SlowCloudFolder: FolderImportSource, @unchecked Sendable {
     func inspect(relativePath: String, uti: String, mediaType: MediaType, control: ExportControl) async throws -> InspectedFile {
         lock.withLock { readPaths.append(relativePath) }
         probe.readStarted()
+        if lock.withLock({ meeting }) {
+            lock.withLock { waiting.append(relativePath) }
+            let found = await pollUntil(timeout: hangGuard) { probe.uploadsInFlight > 0 }
+            lock.withLock {
+                waiting.removeAll { $0 == relativePath }
+                meeting = false
+                if found { met += 1 }
+            }
+        }
         if lock.withLock({ holding }) {
             lock.withLock { waiting.append(relativePath) }
             defer { lock.withLock { waiting.removeAll { $0 == relativePath } } }
@@ -165,7 +181,7 @@ private struct SignalStage: CycleStage {
 
     /// Six photos in batches of two from a slow cloud folder, a staging limit of three files. A first cycle with uploads held
     /// lists the folder and reads and stages the first batch; the engine is then rebuilt with uploads allowed.
-    private func pipeline() async throws -> Pipeline {
+    private func pipeline(files: Int = PipelinedImportTests.files) async throws -> Pipeline {
         let h = try await Harness { tuning in
             tuning.importBatchGroups = 2
             tuning.maxCycleIterations = 2
@@ -174,9 +190,9 @@ private struct SignalStage: CycleStage {
         try await h.baseline(.googleDrive)
         try await h.update { $0.stagingSoftLimitBytes = Int64(3 * Self.fileSize) }
         let folder = try ImportFolder()
-        for index in 0..<Self.files {
+        for index in 0..<files {
             let date = h.clock.now.addingTimeInterval(-86_400 * Double(index + 2))
-            try folder.add("p\(index).jpg", String(repeating: "\(index)", count: Self.fileSize), metadata: ImportFolder.photo(at: date))
+            try folder.add("p\(index < 10 ? "" : "x")\(index).jpg", String(repeating: "\(index)", count: Self.fileSize), metadata: ImportFolder.photo(at: date))
         }
         let probe = PipelineProbe(staging: h.staging)
         let source = SlowCloudFolder(folder, probe: probe)
@@ -557,5 +573,40 @@ private struct SignalStage: CycleStage {
         // freed the staging import files filled.
         #expect(upload - arrival <= 2, "the photo waited \(upload - arrival) rounds")
         #expect(await p.h.drive.files.count == Self.files + 1)
+    }
+
+    @Test func theRoundsOverlapAgainOnceTheNewPhotoIsUploaded() async throws {
+        let files = 16
+        let p = try await pipeline(files: files)
+        // A staging limit of two files: the import fills it in every round.
+        try await p.h.update { $0.stagingSoftLimitBytes = Int64(2 * Self.fileSize) }
+        let probe = p.probe
+        let source = p.source
+        let rounds = Box(0)
+        let photoUploadedAfter = Box<Int?>(nil)
+        // Two rounds after the one that uploads the photo, a read waits for an upload in flight and the uploads wait for
+        // that read: they meet only if the round runs them side by side again.
+        let coordinator = try await oneAtATime(p, stages: [SignalStage(step: .fanOut) {
+            let ended = rounds.get() + 1
+            rounds.set(ended)
+            if let photo = photoUploadedAfter.get(), ended == photo + 2 { source.meetAnUpload() }
+        }])
+        let photos = p.h.fakePhotos
+        let fresh = p.h.snapshot("fresh", daysAgo: 0.1)
+        await p.h.drive.setUploadHook { request in
+            if request.job.assetKey == .local("fresh") { photoUploadedAfter.set(rounds.get()) }
+            await probe.upload { index in
+                if index == 0 {
+                    await photos.add(fresh, header: camera, recordChange: true)
+                    _ = await coordinator.run(trigger: .photosChanged)
+                }
+                // Stays in flight until the waiting read has seen it.
+                if source.isMeeting { _ = await pollUntil(timeout: hangGuard) { !source.isMeeting } }
+            }
+        }
+        _ = await coordinator.run(trigger: .manual)
+        #expect(photoUploadedAfter.get() != nil, "the photo was uploaded")
+        #expect(source.readsThatMetAnUpload == 1, "a read ran beside an upload after the photo was uploaded")
+        #expect(await p.h.drive.files.count == files + 1)
     }
 }

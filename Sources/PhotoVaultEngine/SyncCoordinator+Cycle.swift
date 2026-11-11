@@ -176,13 +176,13 @@ extension SyncCoordinator {
             try await runStages(.editGate, trigger, &report, progress: &progress)
             // Steps 3, 4 and 6 overlap: the upload pass sends what is staged while the next files are read and staged.
             let pass = try await overlappedPass(trigger, uploads: uploadsAllowed ? gate : nil, readFirst: photosFirst)
-            // A read half the disk guard stopped (staging full of import files) may have left a new photo unclassified or
-            // unexported; this round's upload pass frees staging, and the next round reads first again.
+            // A new photo the disk guard kept from classification (staging full of import files) or that still waits for its
+            // export keeps the next round reading first; this round's upload pass has freed staging. An export pass that
+            // stopped at the staging limit does not count: with an import bigger than the limit it nearly always does.
             if photosFirst {
                 let now = env.clock.now
-                let blocked = pass.read.classifyBlocked || pass.read.export.blockedBy != nil
                 let waiting = try await env.store.read { db in try EngineQueries.photosExportWaiting(db, now: now) }
-                photosFirst = blocked || waiting
+                photosFirst = pass.read.classifyBlocked || waiting
             }
             report.classified += pass.read.classified
             report.exported += pass.read.export.exported
