@@ -48,7 +48,7 @@ struct CardActivityTextTests {
     @Test func theBackfillCardShowsTheFullTransferLineOfPhotosFiles() {
         let activity = vi { backfill(snapshot(), [transfer()]) }
         #expect(activity == .transfer(FittedLine(
-            lead: "Đang upload IMG_1234.MOV", place: " lên Google Drive (ten@example.com)", detail: " · 1,0 / 2,0 GB (50%)")))
+            prefix: "Đang upload ", lead: "IMG_1234.MOV", place: " lên Google Drive (ten@example.com)", detail: " · 1,0 / 2,0 GB (50%)")))
         #expect(activity.isBusy)
         #expect(en { backfill(snapshot(), [transfer()]) }.text == "Uploading IMG_1234.MOV to Google Drive (ten@example.com) · 1.0 / 2.0 GB (50%)")
     }
@@ -127,7 +127,7 @@ struct CardActivityTextTests {
         // An unfinished backfill: its card shows the moving file, so the header is short.
         let backfilling = vi { OverallStatusText.make(snapshot: snapshot(done: 10, total: 100), disk: .ok, settings: GlobalSettings(), now: t0, transfers: [incremental]) }
         #expect(backfilling.subtitle == "Đang upload IMG_1234.MOV · 50%")
-        #expect(backfilling.subtitleLine == FittedLine(lead: "Đang upload IMG_1234.MOV", detail: " · 50%"), "the file name ends the part that is cut in the middle")
+        #expect(backfilling.subtitleLine == FittedLine(prefix: "Đang upload ", lead: "IMG_1234.MOV", detail: " · 50%"), "only the file name is cut in the middle")
         // A finished import has no card.
         var finished = snapshot(done: 0, total: 0)
         let id = SourceID.folder()

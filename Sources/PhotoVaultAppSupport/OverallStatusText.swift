@@ -89,7 +89,7 @@ public enum OverallStatusText {
         let onCard = CardActivityText.shownOnCards(snapshot: snapshot, transfers: transfers, now: now)
         let style: TransferLineText.Style = headerMain.map { onCard.contains($0.id) } == true ? .short : .full
         let moving = TransferLineText.fitted(transfers, now: now, style: style)
-        let tail = moving?.text ?? tr(
+        let tail = TransferLineText.make(transfers, now: now, style: style) ?? tr(
             vi: "\(count) đích · sync lần cuối ",
             en: L10n.plural(count, one: "1 destination · last sync ", other: "\(count) destinations · last sync ")) + RelativeTimeText.ago(last, now: now, calendar: calendar)
         if importing, !backfilling {

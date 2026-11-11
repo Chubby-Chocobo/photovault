@@ -125,8 +125,9 @@ struct TransferLineTextTests {
         #expect(vi { line([upload]) }?.contains(name) == false)
     }
 
-    @Test func theFittedLineEndsItsLeadWithTheFileNameSoMiddleTruncationKeepsTheExtension() {
+    @Test func theFittedLineHoldsTheFileNameApartSoACutKeepsTheExtension() {
         let name = "Kỳ nghỉ Đà Lạt 2026 - bản dựng cuối cùng (final v3).MOV"
+        let shortened = TransferLineText.middleTruncated(name, limit: TransferLineText.nameLimit)
         var cloud = item(.download(.googleDrive), name, done: gib, total: 2 * gib, startedAgo: 75)
         cloud.accountEmail = "ten@example.com"
         let kinds: [TransferProgress] = [
@@ -140,24 +141,30 @@ struct TransferLineTextTests {
                 for style in [TransferLineText.Style.full, .short] {
                     let fitted = L10n.$override.withValue(language) { TransferLineText.fitted([transfer], now: t0, style: style) }
                     let joined = L10n.$override.withValue(language) { TransferLineText.make([transfer], now: t0, style: style) }
-                    #expect(fitted?.lead.hasSuffix(TransferLineText.middleTruncated(name, limit: TransferLineText.nameLimit)) == true, "\(fitted?.lead ?? "")")
-                    #expect(fitted?.lead.hasSuffix(".MOV") == true)
-                    #expect(fitted?.text == joined)
-                    #expect(fitted.map { !$0.text.contains("\u{E000}") } == true)
+                    #expect(fitted?.lead == name, "the view cuts the name to its width")
+                    #expect(fitted.map { !$0.prefix.isEmpty && !$0.prefix.contains(".MOV") && !$0.place.contains(".MOV") } == true)
+                    #expect(fitted.map { $0.prefix + shortened + $0.place + $0.detail + $0.others } == joined)
+                    #expect(fitted?.help.contains(name) == true, "the tooltip names the file in full")
+                    #expect(fitted.map { !$0.text.contains("\u{E000}") && !$0.help.contains("\u{E000}") } == true)
                 }
             }
         }
     }
 
-    @Test func theFittedLineKeepsThePlaceAndTheNumbersApart() {
+    @Test func theFittedLineKeepsThePlaceTheNumbersAndTheOthersApart() {
         var upload = item(.upload, to: "Google Drive", done: gib, total: 2 * gib, startedAgo: 75)
-        upload.accountEmail = "ten@example.com"
+        upload.accountEmail = "a.very.long.mailbox.name.here@subdomain.example.com"
         let other = item(.copy, "b.MOV", to: "NAS", done: 1, total: 2, startedAgo: 5)
-        #expect(en { TransferLineText.fitted([upload, other], now: t0) } == FittedLine(
-            lead: "Uploading IMG_1234.MOV", place: " to Google Drive (ten@example.com)", detail: " · 1.0 / 2.0 GB (50%) · 1:15 · +1 more file"))
-        #expect(vi { TransferLineText.fitted([upload], now: t0, style: .short) } == FittedLine(lead: "Đang upload IMG_1234.MOV", detail: " · 50%"))
+        let fitted = en { TransferLineText.fitted([upload, other], now: t0) }
+        #expect(fitted?.prefix == "Uploading ")
+        #expect(fitted?.lead == "IMG_1234.MOV")
+        #expect(fitted?.place.hasPrefix(" to Google Drive (") == true && fitted?.place.contains("…") == true)
+        #expect(fitted?.detail == " · 1.0 / 2.0 GB (50%) · 1:15")
+        #expect(fitted?.others == " · +1 more file")
+        #expect(fitted?.help == "Uploading IMG_1234.MOV to Google Drive (a.very.long.mailbox.name.here@subdomain.example.com) · 1.0 / 2.0 GB (50%) · 1:15 · +1 more file")
+        #expect(vi { TransferLineText.fitted([upload], now: t0, style: .short) } == FittedLine(prefix: "Đang upload ", lead: "IMG_1234.MOV", detail: " · 50%"))
         let iCloud = item(.exportFromPhotos, done: 0, total: nil)
-        #expect(en { TransferLineText.fitted([iCloud], now: t0) } == FittedLine(lead: "Downloading IMG_1234.MOV", place: " from iCloud"))
+        #expect(en { TransferLineText.fitted([iCloud], now: t0) } == FittedLine(prefix: "Downloading ", lead: "IMG_1234.MOV", place: " from iCloud"))
     }
 
     @Test func theHeaderSubtitleShowsTheTransferWhileSyncing() {
