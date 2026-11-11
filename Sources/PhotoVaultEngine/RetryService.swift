@@ -48,19 +48,16 @@ struct RetryService: Sendable {
     }
 
     /// The given files, from the history: each deferred or skipped one is retried; any other state is left alone.
-    /// The backfill runs they belong to wait for them again.
+    /// Their backfill runs show as running while the files wait (`BackfillRunRepository`).
     @discardableResult
     func retry(_ identities: [JobIdentity]) async throws -> Int {
         let now = env.clock.now
         return try await env.store.write { db in
             var count = 0
-            var runs = Set<Int64>()
             for identity in identities {
                 guard let job = try JobRepository.fetch(db, identity: identity), try Self.retry(db, job, now: now) else { continue }
                 count += 1
-                if let run = job.backfillRunId, job.origin == .backfill || job.origin == .destinationBackfill { runs.insert(run) }
             }
-            try BackfillRunRepository.reopen(db, runIds: runs)
             return count
         }
     }

@@ -164,7 +164,35 @@ import Testing
         #expect(results.count == 3)
         #expect(results.filter { $0 == .missing }.count == 1)
         #expect(results.filter { $0 == .sizeMismatch }.count == 1)
-        #expect(results.filter { $0 == .intact || $0 == .hashVerified }.count == 1)
+        #expect(results.filter { $0 == .hashVerified }.count == 1, "the one intact file is the daily sample, re-hashed")
+    }
+
+    @Test func aDriveCheckRecordsPresentFilesFilesFoundAgainAndClearsAResultOnReUpload() async throws {
+        let h = try await backedUp(3)
+        let jobs = try h.jobs().filter { !$0.resType.isSidecar }.sorted { $0.assetKey.rawValue < $1.assetKey.rawValue }
+        #expect(jobs.count == 3)
+        func result(_ job: UploadJob) throws -> IntegrityCheckResult? {
+            try h.read { db in try IntegrityCheckRepository.fetch(db, identity: job.identity)?.result }
+        }
+        let trashed = try #require(jobs[0].remoteId)
+        let deleted = try #require(jobs[1].remoteId)
+        await h.drive.externallyTrash(trashed)
+        await h.drive.externallyDelete(deleted)
+        _ = try await h.coordinator.runIntegrityCheck(.googleDrive)
+        #expect(try result(jobs[0]) == .missing && result(jobs[1]) == .missing)
+        #expect(try result(jobs[2]) == .intact, "a Drive check only sees that the file is there")
+
+        // The owner takes the file out of the trash: the next check finds it again.
+        _ = try await h.drive.untrash(remoteId: trashed)
+        _ = try await h.coordinator.runIntegrityCheck(.googleDrive)
+        #expect(try result(jobs[0]) == .intact)
+        #expect(try h.jobs().first { $0.identity == jobs[0].identity }?.state == .done)
+
+        // The deleted one is uploaded again: its "missing" result described the copy that is gone.
+        try await h.coordinator.confirmReupload(.googleDrive)
+        await h.settle()
+        #expect(try h.jobs().first { $0.identity == jobs[1].identity }?.state == .done)
+        #expect(try result(jobs[1]) == nil)
     }
 
     @Test func historyNeverPutsAFileNameInTheLogOrTheActivityList() async throws {
