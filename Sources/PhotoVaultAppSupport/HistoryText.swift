@@ -67,7 +67,7 @@ public enum HistoryText {
         }
     }
 
-    /// "Đã lên · kiểm tra 10/11/2026 09:00: nguyên vẹn", with the reason of a failure.
+    /// "Đã lên · kiểm tra 10/11/2026 09:00: còn nguyên (đã kiểm checksum)", with the reason of a failure.
     public static func status(_ status: FileDestinationStatus, calendar: Calendar = .current) -> String {
         var parts = [state(status.state)]
         if status.state == .deferred || status.state == .skipped, let reason = HistoryReasonText.upload(reason: status.reason, detail: status.detail) {
@@ -82,8 +82,10 @@ public enum HistoryText {
     public static func check(_ result: IntegrityCheckResult, at date: Date, calendar: Calendar = .current) -> String {
         let when = RelativeTimeText.dateTime(date, calendar: calendar)
         let what = switch result {
-        case .intact: tr(vi: "còn nguyên", en: "present")
-        case .hashVerified: tr(vi: "nguyên vẹn (đã so checksum)", en: "intact (checksum verified)")
+        // Without a re-hash a check only sees that the file is there (and, on a folder, its size): it does not
+        // vouch for the content.
+        case .intact: tr(vi: "vẫn còn ở đích", en: "still at the destination")
+        case .hashVerified: tr(vi: "còn nguyên (đã kiểm checksum)", en: "intact (checksum verified)")
         case .missing: tr(vi: "không thấy ở đích", en: "not found at the destination")
         case .sizeMismatch: tr(vi: "sai dung lượng", en: "wrong size")
         case .hashMismatch: tr(vi: "checksum không khớp", en: "checksum mismatch")
@@ -101,6 +103,11 @@ public enum HistoryText {
         (approximate ? "≈ " : "") + RelativeTimeText.dateTime(date, calendar: calendar)
     }
 
+    /// A read of the history failed (the error type is in the log).
+    public static var readFailed: String {
+        tr(vi: "Không đọc được lịch sử. Bấm Làm mới để thử lại.", en: "The history could not be read. Click Refresh to try again.")
+    }
+
     public static var approximateNote: String {
         tr(vi: "≈ gần đúng: file đã lên trước khi PhotoVault ghi lịch sử, thời điểm là lần thay đổi cuối của nó",
            en: "≈ approximate: the file was uploaded before PhotoVault kept a history; the time is its last change")
@@ -108,5 +115,17 @@ public enum HistoryText {
 
     public static var deletedFromLibrary: String {
         tr(vi: "Đã xoá khỏi Photos, bản backup vẫn giữ", en: "Deleted from Photos; the backup is kept")
+    }
+
+    /// Whether a row is an upload of a photo later deleted from Photos, whose copy is kept: only those get the
+    /// "backup is kept" mark. A photo deleted before it went up has no backup to speak of.
+    public static func keptAfterDeletion(_ row: TransferEventRow) -> Bool {
+        row.deletedFromLibraryAt != nil && (row.outcome == .uploaded || row.outcome == .updated)
+    }
+
+    /// The note of a row whose photo was deleted from Photos, or nil.
+    public static func deletionNote(_ row: TransferEventRow) -> String? {
+        guard row.deletedFromLibraryAt != nil else { return nil }
+        return keptAfterDeletion(row) ? deletedFromLibrary : tr(vi: "Đã xoá khỏi Photos", en: "Deleted from Photos")
     }
 }

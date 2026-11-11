@@ -17,13 +17,34 @@ import Testing
         let done = FileDestinationStatus(destinationId: .googleDrive, resType: .photo, state: .done, checkedAt: t0, checkResult: .hashVerified)
         let failed = FileDestinationStatus(destinationId: .googleDrive, resType: .photo, state: .deferred, reason: .uploadFailures, detail: "noSpace")
         L10n.$override.withValue(.vi) {
-            #expect(HistoryText.status(done, calendar: vietnam) == "Đã lên · kiểm tra 26/10/2026 14:33: nguyên vẹn (đã so checksum)")
+            #expect(HistoryText.status(done, calendar: vietnam) == "Đã lên · kiểm tra 26/10/2026 14:33: còn nguyên (đã kiểm checksum)")
             #expect(HistoryText.status(failed, calendar: vietnam)
                 == "Lỗi, sẽ thử lại · Upload lỗi nhiều lần liền, sẽ tự thử lại sau 24 giờ: Đích đã hết dung lượng.")
         }
         L10n.$override.withValue(.en) {
             #expect(HistoryText.status(done, calendar: vietnam) == "Backed up · checked 26 Oct 2026 14:33: intact (checksum verified)")
         }
+    }
+
+    @Test func aPresenceCheckIsNotCalledIntactAndOnlyAKeptBackupIsCalledKept() {
+        func row(_ outcome: TransferOutcome, deleted: Bool) -> TransferEventRow {
+            TransferEventRow(
+                id: 1, at: t0, approximate: false, jobId: 1, destinationId: .googleDrive, assetKey: .local("a"), resType: .photo,
+                sourceId: .photos, origin: .incremental, runId: nil, outcome: outcome, bytes: 1, reason: nil, detail: nil,
+                fileName: "IMG_0001.HEIC", mediaType: .image, isRaw: false, capturedAt: t0, deletedFromLibraryAt: deleted ? t0 : nil)
+        }
+        L10n.$override.withValue(.vi) {
+            #expect(HistoryText.check(.intact, at: t0, calendar: vietnam) == "kiểm tra 26/10/2026 14:33: vẫn còn ở đích")
+            #expect(HistoryText.deletionNote(row(.uploaded, deleted: true)) == "Đã xoá khỏi Photos, bản backup vẫn giữ")
+            #expect(HistoryText.deletionNote(row(.cancelled, deleted: true)) == "Đã xoá khỏi Photos")
+        }
+        L10n.$override.withValue(.en) {
+            #expect(HistoryText.check(.intact, at: t0, calendar: vietnam) == "checked 26 Oct 2026 14:33: still at the destination")
+        }
+        #expect(HistoryText.keptAfterDeletion(row(.updated, deleted: true)))
+        for outcome in [TransferOutcome.failed, .skipped, .cancelled] { #expect(!HistoryText.keptAfterDeletion(row(outcome, deleted: true))) }
+        #expect(!HistoryText.keptAfterDeletion(row(.uploaded, deleted: false)))
+        #expect(HistoryText.deletionNote(row(.uploaded, deleted: false)) == nil)
     }
 
     @Test func reasonsAreReadableAndUnknownDetailsStayOut() {
