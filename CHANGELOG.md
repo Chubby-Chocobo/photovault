@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0] - 2026-11-11
+
+### Upgrade notes
+
+- The database gains a sync history (migration `v8-transfer-history`). The migration only adds: one column on `upload_job` (`backfill_run_id`), the tables `transfer_event`, `backfill_run` and `integrity_check`, their indexes, and a trigger that records each upload outcome in the same statement that changes the job. Uploads that finished before 0.7.0 are seeded once as approximate entries, dated by the job's last change. Earlier backfill jobs go into one "before history" run. As with every earlier migration, 0.6.x refuses a database this version has opened.
+- History is kept indefinitely. File names appear only in the History window and in a CSV you save yourself, never in logs, activity or notifications.
+
+### Features
+
+- A History window lists what was synced: continuous Photos sync, each backfill run, and each one-time import's files. It has search, filters (outcome, destination, capture date, deleted from Photos with the backup kept), a timeline, the last integrity check per file and destination, retry of failed files and CSV export (#82, #84) (b9a0da2)
+
+### Bug fixes
+
+- **app:** the menu bar popup keeps one size while files move. Each changing line has a fixed one-line slot, long file names are shortened in the middle so the extension stays visible, and the action rows at the bottom no longer shift (#88, #89) (2827a46)
+- **drive:** the browser page after Google sign-in says why sign-in failed. For example, it tells you to tick the Google Drive permission box when it was left unticked. A slow sign-in that succeeds is no longer reported as failed in the browser (#85, #86) (8298ca6)
+
 ## [0.6.0] - 2026-11-11
 
 ### Upgrade notes
