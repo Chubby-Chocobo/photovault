@@ -18,6 +18,7 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 | 0.6.0 | 2026-11-11 | Nhập từ cloud nhanh hơn: tải đợt sau trong lúc upload đợt trước (#69); Tạm dừng dừng cả việc tải về staging |
 | 0.7.0 | 2026-11-11 | Cửa sổ Lịch sử: lịch sử sync, từng lần backfill, file của từng lần import, kiểm tra toàn vẹn, thử lại, xuất CSV (#82); popup cố định kích thước (#88); trang đăng nhập nói rõ lý do lỗi (#85) |
 | 0.7.1 | 2026-11-11 | Popup vừa với nội dung trở lại, không còn khoảng trống dưới mục Đích; vẫn không nhảy khi đang upload và không co lại khi đang mở (#92, #90) |
+| 0.7.2 | 2026-11-12 | Mã nguồn phát hành theo giấy phép MIT; app không đổi (#94) |
 
 ### 0.4.0 (phát hành 2026-11-10)
 

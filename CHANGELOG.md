@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.2] - 2026-11-12
+
+### Documentation
+
+- The project is published under the MIT License (`LICENSE`), with a License section in the README. The app itself does not change (#94, #95) (e4698cc)
+
 ## [0.7.1] - 2026-11-11
 
 ### Bug fixes
