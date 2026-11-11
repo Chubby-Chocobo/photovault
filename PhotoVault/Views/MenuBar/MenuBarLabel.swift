@@ -18,6 +18,7 @@ struct MenuBarLabel: View {
                 switch request {
                 case .onboarding: openWindow(id: WindowID.onboarding)
                 case .activity: openWindow(id: WindowID.activity)
+                case .history: openWindow(id: WindowID.history)
                 case .log: openWindow(id: WindowID.log)
                 case .settings: openSettings()
                 }

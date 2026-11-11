@@ -36,6 +36,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 enum WindowRequest: Equatable {
     case onboarding
     case activity
+    case history
     case log
     case settings(SettingsTab)
 }
