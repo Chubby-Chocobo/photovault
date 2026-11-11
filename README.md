@@ -284,3 +284,7 @@ Settings → **Nâng cao** (Advanced) → **Đặt lại từ đầu…** (Start
 4. Delete the app's data: `~/Library/Containers/com.annh.photovault`. It holds the database, staging files, database snapshots and logs.
 5. Check [myaccount.google.com/permissions](https://myaccount.google.com/permissions). If PhotoVault is still listed, remove it.
 6. Backup data is never deleted by the app, including during uninstall. Files in your Drive folder and on your NAS stay where they are. Delete them yourself if you want them gone. Removing a destination in the app deletes only the app's record of it.
+
+## License
+
+PhotoVault is released under the [MIT License](LICENSE). Its one dependency, [GRDB.swift](https://github.com/groue/GRDB.swift), is MIT licensed too.
