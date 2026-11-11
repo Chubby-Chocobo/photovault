@@ -17,6 +17,7 @@ Lộ trình này không có ngày. Mục "Tương lai xa" chưa được lên l�
 | 0.5.1 | 2026-11-10 | Chỉ bảo trì: test không còn phụ thuộc tốc độ máy hay thời gian chờ ngẫu nhiên, CI ổn định trên máy macOS của GitHub; thêm test cho phần huỷ nhập |
 | 0.6.0 | 2026-11-11 | Nhập từ cloud nhanh hơn: tải đợt sau trong lúc upload đợt trước (#69); Tạm dừng dừng cả việc tải về staging |
 | 0.7.0 | 2026-11-11 | Cửa sổ Lịch sử: lịch sử sync, từng lần backfill, file của từng lần import, kiểm tra toàn vẹn, thử lại, xuất CSV (#82); popup cố định kích thước (#88); trang đăng nhập nói rõ lý do lỗi (#85) |
+| 0.7.1 | 2026-11-11 | Popup vừa với nội dung trở lại, không còn khoảng trống dưới mục Đích; vẫn không nhảy khi đang upload và không co lại khi đang mở (#92, #90) |
 
 ### 0.4.0 (phát hành 2026-11-10)
 
@@ -39,7 +40,7 @@ Chỉ Photos là nguồn liên tục ([quyết định 0029](../decisions/0029-p
 | 4 | Nguồn liên tục S3-compatible | Chưa lên lịch. Cần bộ chặn xoá hàng loạt |
 | 5 | Nguồn liên tục Flickr | Chưa lên lịch. Cần API key và secret từ owner |
 
-Việc tiếp theo đã có issue: trang báo lỗi khi chọn file Drive để nhập (#87), các việc còn lại của popup (#90); nhập liên tục từ Dropbox (#17) vẫn tạm dừng.
+Việc tiếp theo đã có issue: trang báo lỗi khi chọn file Drive để nhập (#87); nhập liên tục từ Dropbox (#17) vẫn tạm dừng.
 
 Các mục khác trong spec §15, chưa lên lịch:
 
