@@ -167,4 +167,28 @@ import Testing
         #expect(try names(store, TransferEventFilter()).count == 3)
         #expect(try names(store, TransferEventFilter(deletedFromLibraryOnly: true)) == ["KEPT.HEIC"])
     }
+
+    @Test func eachTermOfTheDeletedFilterDecidesOnItsOwn() throws {
+        let store = try Store.inMemory()
+        try store.write { db in
+            // Uploaded, then lost at the destination and sent again: the upload row is there, the copy is not yet.
+            let resent = try F.file(db, "resent", name: "RESENT.HEIC", deleted: t0)
+            // Uploaded, then found missing at the destination.
+            let missing = try F.file(db, "missing", name: "MISSING.HEIC", deleted: t0)
+            // Uploaded, then an edit failed: the job still holds the first copy, the failure row is not a backup.
+            let edited = try F.file(db, "edited", name: "EDITED.HEIC", deleted: t0)
+            for key in [resent, missing, edited] {
+                try JobRepository.upsert(db, desired: desired(F.drive, key), now: t0)
+                try F.upload(db, F.identity(key), at: t0)
+            }
+            _ = try JobRepository.apply(db, .missingAtDestination, to: F.identity(resent), now: t0)
+            _ = try JobRepository.apply(db, .reuploadConfirmed, to: F.identity(resent), now: t0)
+            _ = try JobRepository.apply(db, .missingAtDestination, to: F.identity(missing), now: t0)
+            _ = try JobRepository.apply(db, .contentChanged(targetGen: 2), to: F.identity(edited), now: t0)
+            try F.failForGood(db, F.identity(edited), at: t0.addingTimeInterval(30))
+        }
+        let rows = try store.read { db in try HistoryRepository.events(db, filter: TransferEventFilter(deletedFromLibraryOnly: true)) }
+        #expect(rows.map(\.fileName) == ["EDITED.HEIC"])
+        #expect(rows.map(\.outcome) == [.uploaded])
+    }
 }

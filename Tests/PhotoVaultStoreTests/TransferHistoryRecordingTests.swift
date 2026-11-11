@@ -230,4 +230,23 @@ enum HistoryFixture {
         #expect(after.1 == .hashVerified, "only the uploaded file's result goes")
         #expect(after.2.last == "updated")
     }
+
+    @Test func aFailureOrACancelKeepsTheLastCheck() throws {
+        let store = try Store.inMemory()
+        let kept = try store.write { db -> [IntegrityCheckResult?] in
+            let failing = try F.file(db, "failing")
+            let cancelled = try F.file(db, "cancelled")
+            for key in [failing, cancelled] {
+                try JobRepository.upsert(db, desired: desired(F.drive, key), now: t0)
+                try F.upload(db, F.identity(key), at: t0)
+                try IntegrityCheckRepository.record(db, identity: F.identity(key), result: .hashVerified, at: t0)
+                _ = try JobRepository.apply(db, .contentChanged(targetGen: 2), to: F.identity(key), now: t0)
+            }
+            try F.failForGood(db, F.identity(failing), at: t0.addingTimeInterval(10))
+            _ = try JobRepository.apply(db, .cancel, to: F.identity(cancelled), now: t0.addingTimeInterval(20))
+            #expect(try F.outcomes(db).suffix(2) == ["failed", "cancelled"])
+            return try [failing, cancelled].map { try IntegrityCheckRepository.fetch(db, identity: F.identity($0))?.result }
+        }
+        #expect(kept == [.hashVerified, .hashVerified], "the copy that was checked is still the one at the destination")
+    }
 }

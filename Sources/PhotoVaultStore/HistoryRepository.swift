@@ -52,10 +52,11 @@ public enum HistoryRepository {
         if let from = filter.capturedFrom { terms.append("a.creation_date >= ?"); values.append(from) }
         if let until = filter.capturedUntil { terms.append("a.creation_date < ?"); values.append(until) }
         if filter.deletedFromLibraryOnly {
-            // Only uploads whose copy is still kept: a photo deleted before it went up has no backup to show.
+            // Only uploads whose copy is still kept: a photo deleted before it went up has no backup to show, and a copy
+            // found missing at the destination is not kept either.
             terms.append("""
                 a.deleted_at IS NOT NULL AND +e.outcome IN ('uploaded', 'updated')
-                AND EXISTS (SELECT 1 FROM upload_job j WHERE j.id = e.job_id AND j.done_gen > 0)
+                AND EXISTS (SELECT 1 FROM upload_job j WHERE j.id = e.job_id AND j.done_gen > 0 AND j.state != 'missingRemote')
                 """)
         }
         values.append(limit)
