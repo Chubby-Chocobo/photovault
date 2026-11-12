@@ -116,6 +116,17 @@ The app needs a stable signature. macOS ties its Photos and folder permissions (
 
 Personal Team profiles expire. If Xcode reports the profile as expired, sign again and copy the app again. [M0-4](docs/spikes/m0-4-signing-sandbox-and-filesystems.md) measures how long a profile lasts.
 
+## Mac App Store build
+
+`scripts/app-store-archive.sh` archives the Release build and exports it for App Store Connect. Run it from a clean checkout of a `release/*` or `hotfix/*` branch or a `v*` tag, with `Config/Local.xcconfig` and `Config/Secrets.xcconfig` filled in.
+
+```sh
+scripts/app-store-archive.sh --export-only   # default: signed .pkg in build/AppStore/export
+scripts/app-store-archive.sh --upload        # send the build to App Store Connect
+```
+
+It checks the version, the signing team, the OAuth ids (without printing them) and the archived app's entitlements, privacy manifest and localizations before it exports. Xcode sets the build number on export. Export needs an Apple Distribution certificate, a Mac Installer Distribution certificate and an App Store profile for the bundle ID, which Xcode creates from your signed-in account. To use an App Store Connect API key instead, set `ASC_KEY_PATH`, `ASC_KEY_ID` and `ASC_ISSUER_ID`. The store build needs the `GOOGLE_DRIVE_BROWSER_IMPORT=NO` build setting, which the script passes.
+
 ## NAS and local folders
 
 1. Mount the SMB share yourself, for example in Finder with Go → Connect to Server. PhotoVault never mounts network shares.
