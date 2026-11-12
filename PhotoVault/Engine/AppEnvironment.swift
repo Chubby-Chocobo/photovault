@@ -167,11 +167,13 @@ struct AppEnvironment: Sendable {
         }
         let registry = DestinationRegistry(live)
         let dropboxAppKey = (bundle.object(forInfoDictionaryKey: "PVDropboxAppKey") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let googleBrowserImport = BuildFeatures.isOn(bundle.object(forInfoDictionaryKey: "PVGoogleDriveBrowserImport"))
         let cloud = CloudImportServices(
             googleConfig: OAuthConfig(clientID: clientID, clientSecret: clientSecret.isEmpty ? nil : clientSecret),
             oauth: oauth, transport: transport, keychain: SystemKeychainStore(), dropboxAppKey: dropboxAppKey,
             scratchDirectory: layout.staging.appendingPathComponent("cloud-import", isDirectory: true),
-            stateRoot: layout.root.appendingPathComponent("cloud-imports", isDirectory: true))
+            stateRoot: layout.root.appendingPathComponent("cloud-imports", isDirectory: true),
+            googleBrowserImport: googleBrowserImport)
         let folderSources = Self.openImportSources(store: store, cloud: cloud, log: log)
 
         let system = SystemMonitor()

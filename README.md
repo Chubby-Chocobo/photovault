@@ -90,6 +90,8 @@ Needed only for the Dropbox import. Do this once, in your own Dropbox account.
 
 Leave `DROPBOX_APP_KEY` empty (as the template does) to build without Dropbox: the Dropbox item in Settings is then disabled and shows a hint. The app uses PKCE, so no secret is needed.
 
+The Google Drive browser import (Picker plus `drive.readonly`) is built in only when `GOOGLE_DRIVE_BROWSER_IMPORT = YES` is set in `Config/Local.xcconfig`; the default is `NO`, which is what Mac App Store builds use (they ask Google only for `drive.file`, `openid` and `email`). With it off, Settings › Sources offers only "Google Drive on this Mac" for Google. To build it from source, keep `drive.readonly` on your own consent screen (step 4 above).
+
 Dropbox tokens live in the same Keychain service as the Google token (`com.annh.photovault.google`), under the account names `dropbox-account` and `import-<id>`.
 
 ## Signing

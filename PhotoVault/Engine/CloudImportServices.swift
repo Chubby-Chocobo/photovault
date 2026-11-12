@@ -20,7 +20,10 @@ struct CloudImportServices: Sendable {
     /// Holds one folder per import with the map of which remote file each path names.
     let stateRoot: URL
 
-    var googleConfigured: Bool { !googleConfig.clientID.isEmpty }
+    /// Whether the browser Drive import (Picker + `drive.readonly`) is built in.
+    let googleBrowserImport: Bool
+
+    var googleConfigured: Bool { !googleConfig.clientID.isEmpty && googleBrowserImport }
     var dropboxConfigured: Bool { !dropboxAppKey.isEmpty }
 
     static let openURL: URLOpening = { url in await MainActor.run { NSWorkspace.shared.open(url) } }

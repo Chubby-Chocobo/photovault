@@ -15,7 +15,7 @@ extension AppModel {
 
     /// Opens the Picker in the browser, stores the grant as `import-<id>` and starts the import.
     func importFromGoogleDrive() {
-        guard let env, canStartImport, !cloudFlowBusy else { return }
+        guard let env, env.cloud.googleConfigured, canStartImport, !cloudFlowBusy else { return }
         runCloudFlow { [self] in
             let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
             // The account guard needs to know who signed in; without it nothing is stored and nothing starts.
@@ -155,6 +155,11 @@ extension AppModel {
         let id = item.id
         switch item.kind {
         case .googleDrive:
+            guard env.cloud.googleConfigured else {
+                return showNotice(tr(
+                    vi: "Bản này không đăng nhập Google Drive qua trình duyệt. Hãy nhập lại thư mục từ Google Drive trên máy này.",
+                    en: "This build does not sign in to Google Drive in the browser. Import the folder again from Google Drive on this Mac."))
+            }
             runCloudFlow { [self] in
                 let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }
