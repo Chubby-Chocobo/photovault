@@ -17,6 +17,13 @@ struct BuildFeaturesTests {
         #expect(!BuildFeatures.isOn(false))
     }
 
+    @Test func browserImportNeedsClientIDAndFlag() {
+        #expect(BuildFeatures.googleBrowserImportEnabled(clientID: "id", flag: true))
+        #expect(!BuildFeatures.googleBrowserImportEnabled(clientID: "id", flag: false))
+        #expect(!BuildFeatures.googleBrowserImportEnabled(clientID: "", flag: true))
+        #expect(!BuildFeatures.googleBrowserImportEnabled(clientID: "  ", flag: true))
+    }
+
     @Test func missingOrOtherTypesAreOff() {
         #expect(!BuildFeatures.isOn(nil))
         #expect(!BuildFeatures.isOn(1))

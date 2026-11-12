@@ -23,7 +23,9 @@ struct CloudImportServices: Sendable {
     /// Whether the browser Drive import (Picker + `drive.readonly`) is built in.
     let googleBrowserImport: Bool
 
-    var googleConfigured: Bool { !googleConfig.clientID.isEmpty && googleBrowserImport }
+    var googleBrowserImportEnabled: Bool {
+        BuildFeatures.googleBrowserImportEnabled(clientID: googleConfig.clientID, flag: googleBrowserImport)
+    }
     var dropboxConfigured: Bool { !dropboxAppKey.isEmpty }
 
     static let openURL: URLOpening = { url in await MainActor.run { NSWorkspace.shared.open(url) } }
