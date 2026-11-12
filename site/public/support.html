@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — PhotoVault</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header><a href="/"><img src="/logo.png" alt="">PhotoVault</a></header>
+<main>
+<article>
+  <h1>Support</h1>
+  <p class="updated">Updated 12 November 2026</p>
+
+  <p>PhotoVault is a Mac menu bar app that backs up your Photos library to your own Google Drive and to local or NAS folders. There is no PhotoVault account and no developer server, so there is nothing to sign in to for help.</p>
+
+  <h2>Get help</h2>
+  <p class="note">Open an issue at <a href="https://github.com/Chubby-Chocobo/photovault/issues">github.com/Chubby-Chocobo/photovault/issues</a>. Say what you did, what you expected and what happened, and your macOS version. Do not post photos, file names or sign-in details.</p>
+  <p>The <a href="https://github.com/Chubby-Chocobo/photovault#readme">README</a> covers setup, known limits, Start over and uninstalling.</p>
+
+  <h2>Common questions</h2>
+  <h3>Google asks me to tick a box for Drive access</h3>
+  <p>On Google's permission screen, make sure the box for "See, edit, create and delete only the specific Google Drive files you use with this app" is ticked. That is the <code>drive.file</code> permission PhotoVault needs to create its backup folder and upload into it. PhotoVault cannot see or change any other file in your Drive. If you left the box unticked, sign out in the app and connect again.</p>
+
+  <h3>The app cannot write to my NAS or external folder</h3>
+  <p>PhotoVault only reaches folders you pick in the app, because macOS sandboxes it. Connect the NAS in Finder first, then choose its folder again in PhotoVault's settings so macOS grants access. If it stopped working after a reboot or the NAS was renamed, pick the folder again.</p>
+
+  <h3>PhotoVault says it cannot read my Photos library</h3>
+  <p>Open System Settings, Privacy &amp; Security, Photos, and allow PhotoVault full access.</p>
+
+  <h3>Where does my data live?</h3>
+  <p>Your backups are in the destinations you chose. The app's own database, settings and logs are in <code>~/Library/Containers/com.annh.photovault</code> on your Mac. Sign-in tokens are in the macOS Keychain. Nothing is sent to the developer.</p>
+
+  <h3>How do I uninstall it?</h3>
+  <p>Use Start over in the app first; it deletes the sign-in tokens from this Mac. Then move PhotoVault to the Trash (or delete it from Launchpad). To remove the local data too, delete the container folder above. Your backups are never deleted by uninstalling. To stop Google access, remove PhotoVault at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>; for Dropbox, use <a href="https://www.dropbox.com/account/connected_apps">Connected apps</a>.</p>
+
+  <h2>Hỗ trợ (Tiếng Việt)</h2>
+  <p>PhotoVault là ứng dụng thanh menu trên Mac, sao lưu thư viện Ảnh sang Google Drive của bạn và các thư mục trên ổ đĩa hoặc NAS. Không có tài khoản PhotoVault và không có máy chủ của nhà phát triển.</p>
+  <ul>
+    <li><strong>Cần trợ giúp:</strong> tạo issue tại <a href="https://github.com/Chubby-Chocobo/photovault/issues">github.com/Chubby-Chocobo/photovault/issues</a>. Mô tả bạn đã làm gì, mong đợi gì, điều gì xảy ra và phiên bản macOS. Đừng đăng ảnh, tên tệp hay thông tin đăng nhập.</li>
+    <li><strong>Hộp quyền của Google:</strong> hãy tích ô "Xem, chỉnh sửa, tạo và xóa chỉ những tệp Google Drive cụ thể mà bạn sử dụng với ứng dụng này". Nếu lỡ bỏ trống, đăng xuất trong ứng dụng rồi kết nối lại.</li>
+    <li><strong>Thư mục NAS:</strong> kết nối NAS trong Finder, rồi chọn lại thư mục đó trong phần cài đặt của PhotoVault để macOS cấp quyền truy cập.</li>
+    <li><strong>Dữ liệu nằm ở đâu:</strong> bản sao lưu nằm ở nơi bạn chọn; cơ sở dữ liệu, cài đặt và nhật ký của ứng dụng nằm trong <code>~/Library/Containers/com.annh.photovault</code>; token đăng nhập nằm trong Keychain.</li>
+    <li><strong>Gỡ cài đặt:</strong> chọn Start over trong ứng dụng, sau đó kéo PhotoVault vào Thùng rác (hoặc xóa trong Launchpad). Bản sao lưu của bạn không bị xóa.</li>
+  </ul>
+
+  <p>See also the <a href="/privacy">Privacy Policy</a> and the <a href="/terms">Terms of Service</a>.</p>
+</article>
+</main>
+<footer>
+  <a href="/">Home</a>
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/support">Support</a>
+  <a href="/terms">Terms of Service</a>
+</footer>
+</body>
+</html>
