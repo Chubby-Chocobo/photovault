@@ -158,7 +158,9 @@ struct SourcesTab: View {
                                 waitingReason: ImportProgressText.waitingForPhotos(row.item, photosAllowsReading: model.photosAuthorization.allowsReading),
                                 signedInWaiting: model.resumingImports.contains(row.id), cancelling: model.isCancelling(row.item),
                                 queueWait: model.queueWait(for: row.item), waitReason: model.engineWaitReason,
-                                onCancel: { confirmCancel = row.id }, onSignInAgain: { model.reconnectImport(row.item) })
+                                onCancel: { confirmCancel = row.id },
+                                canSignInAgain: CloudImportText.canSignInAgain(row.item, googleBrowserImport: model.googleImportAvailable),
+                                onSignInAgain: { model.reconnectImport(row.item) })
                         }
                     }
                 }
@@ -174,7 +176,9 @@ struct SourcesTab: View {
                 ImportListBox {
                     ForEach(Array(finished.enumerated()), id: \.element.id) { index, item in
                         ImportListRow(first: index == 0) {
-                            ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), waitReason: model.engineWaitReason, onSignInAgain: { model.reconnectImport(item) })
+                            ImportFinishedRow(item: item, signedInWaiting: model.resumingImports.contains(item.id), waitReason: model.engineWaitReason,
+                                              canSignInAgain: CloudImportText.canSignInAgain(item, googleBrowserImport: model.googleImportAvailable),
+                                              onSignInAgain: { model.reconnectImport(item) })
                         }
                     }
                 }

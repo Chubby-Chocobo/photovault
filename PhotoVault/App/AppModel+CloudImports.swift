@@ -8,14 +8,14 @@ import PhotoVaultStore
 
 /// One-time imports from Google Drive (Google's desktop Picker) and Dropbox (a folder).
 extension AppModel {
-    var googleImportAvailable: Bool { env?.cloud.googleConfigured ?? false }
+    var googleImportAvailable: Bool { env?.cloud.googleBrowserImportEnabled ?? false }
     var dropboxImportAvailable: Bool { env?.cloud.dropboxConfigured ?? false }
 
     // MARK: Google Drive
 
     /// Opens the Picker in the browser, stores the grant as `import-<id>` and starts the import.
     func importFromGoogleDrive() {
-        guard let env, canStartImport, !cloudFlowBusy else { return }
+        guard let env, env.cloud.googleBrowserImportEnabled, canStartImport, !cloudFlowBusy else { return }
         runCloudFlow { [self] in
             let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
             // The account guard needs to know who signed in; without it nothing is stored and nothing starts.
@@ -155,6 +155,7 @@ extension AppModel {
         let id = item.id
         switch item.kind {
         case .googleDrive:
+            guard env.cloud.googleBrowserImportEnabled else { return showNotice(CloudImportText.browserImportUnavailableNotice, isError: true) }
             runCloudFlow { [self] in
                 let picked = try await env.cloud.pickerFlow(onReadStep: readStepNotifier).run()
                 if CloudImportText.accountUnknown(expected: item.account, signedIn: picked.email) { return showNotice(CloudImportText.accountUnverifiedNotice, isError: true) }

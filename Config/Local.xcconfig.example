@@ -1,3 +1,7 @@
-// Copy to Config/Local.xcconfig (gitignored). Your Personal Team ID from Xcode → Settings →
+// Copy to Config/Local.xcconfig (gitignored). Your paid team's ID from Xcode → Settings →
 // Accounts. Signing with a stable team keeps Photos permission across rebuilds.
 DEVELOPMENT_TEAM = ABCDE12345
+
+// Turns on the Google Drive browser import (Picker + drive.readonly). It needs drive.readonly on your
+// own OAuth consent screen; leave it off for builds that ship to the Mac App Store.
+// GOOGLE_DRIVE_BROWSER_IMPORT = YES

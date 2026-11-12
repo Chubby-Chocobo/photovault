@@ -43,6 +43,7 @@ struct ImportRunningRow: View {
     var queueWait: (title: String, reason: String)?
     var waitReason = ""
     var onCancel: () -> Void
+    var canSignInAgain = true
     var onSignInAgain: () -> Void
 
     var body: some View {
@@ -98,7 +99,11 @@ struct ImportRunningRow: View {
             ].compactMap { $0 }
             if !rest.isEmpty { Text(rest.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
             if CloudImportText.needsSignIn(item), !signedInWaiting {
-                Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
+                if canSignInAgain {
+                    Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
+                } else {
+                    Text(CloudImportText.browserImportUnavailableNotice).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -115,6 +120,7 @@ struct ImportFinishedRow: View {
     var item: ImportSnapshot
     var signedInWaiting = false
     var waitReason = ""
+    var canSignInAgain = true
     var onSignInAgain: () -> Void
 
     var body: some View {
@@ -140,7 +146,12 @@ struct ImportFinishedRow: View {
                          + (item.account != nil ? CloudImportText.wrongAccountNotice(expected: item.account) : ""))
                         .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
-                    Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
+                    if canSignInAgain {
+                        Button(tr(vi: "Đăng nhập lại", en: "Sign in again"), action: onSignInAgain).controlSize(.small)
+                    }
+                }
+                if !canSignInAgain {
+                    Text(CloudImportText.browserImportUnavailableNotice).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if let hint = CloudImportText.emptyImportNotice(item) {
