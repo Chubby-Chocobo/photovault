@@ -125,7 +125,7 @@ scripts/app-store-archive.sh --export-only   # default: signed .pkg in build/App
 scripts/app-store-archive.sh --upload        # send the build to App Store Connect
 ```
 
-It checks the version, the signing team, the OAuth ids (without printing them) and the archived app's entitlements, privacy manifest and localizations before it exports. Xcode sets the build number on export. Export needs an Apple Distribution certificate, a Mac Installer Distribution certificate and an App Store profile for the bundle ID, which Xcode creates from your signed-in account. To use an App Store Connect API key instead, set `ASC_KEY_PATH`, `ASC_KEY_ID` and `ASC_ISSUER_ID`. The store build needs the `GOOGLE_DRIVE_BROWSER_IMPORT=NO` build setting, which the script passes.
+It checks the version, the signing team, the OAuth ids (without printing them) and the archived app's entitlements, privacy manifest and localizations before it exports. Xcode sets the build number when it uploads. Export needs an Apple Distribution certificate, a Mac Installer Distribution certificate and an App Store profile for the bundle ID, which Xcode creates from your signed-in account. To use an App Store Connect API key instead, set `ASC_KEY_PATH`, `ASC_KEY_ID` and `ASC_ISSUER_ID`. The store build needs the `GOOGLE_DRIVE_BROWSER_IMPORT=NO` build setting, which the script passes.
 
 ## NAS and local folders
 
