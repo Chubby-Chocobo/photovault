@@ -18,6 +18,29 @@ import Testing
                      status: .scanning, createdAt: Date(timeIntervalSince1970: 1_800_000_000))
     }
 
+    @Test func signInAgainFollowsTheBrowserImportFlagForDriveOnly() {
+        let heldDrive = snapshot(kind: .googleDrive, status: .offline, reason: "signInRequired")
+        let finishedDrive = snapshot(kind: .googleDrive, status: .completed, reason: "signInRequired")
+        let heldDropbox = snapshot(kind: .dropbox, status: .offline, reason: "signInRequired")
+        let finishedDropbox = snapshot(kind: .dropbox, status: .completed, reason: "signInRequired")
+        for flag in [true, false] {
+            #expect(CloudImportText.canSignInAgain(heldDropbox, googleBrowserImport: flag))
+            #expect(CloudImportText.canSignInAgain(finishedDropbox, googleBrowserImport: flag))
+        }
+        #expect(CloudImportText.canSignInAgain(heldDrive, googleBrowserImport: true))
+        #expect(CloudImportText.canSignInAgain(finishedDrive, googleBrowserImport: true))
+        #expect(!CloudImportText.canSignInAgain(heldDrive, googleBrowserImport: false))
+        #expect(!CloudImportText.canSignInAgain(finishedDrive, googleBrowserImport: false))
+    }
+
+    @Test func signInAgainIsNeverOfferedWithoutASignInReason() {
+        for flag in [true, false] {
+            #expect(!CloudImportText.canSignInAgain(snapshot(kind: .googleDrive, status: .scanning), googleBrowserImport: flag))
+            #expect(!CloudImportText.canSignInAgain(snapshot(kind: .dropbox, status: .offline, reason: "unavailable"), googleBrowserImport: flag))
+            #expect(!CloudImportText.canSignInAgain(snapshot(kind: .localFolder, status: .offline, reason: "signInRequired"), googleBrowserImport: flag))
+        }
+    }
+
     @Test func providerLabels() {
         vi {
             #expect(CloudImportText.providerLabel(kind: .localFolder, account: nil) == "Thư mục trên Mac")
