@@ -82,7 +82,7 @@ Chức năng tương tự Dropbox Camera Uploads: **iPhone → iCloud Photos →
 | Dừng khi mạng expensive | Bật |
 | `lowWatermark` / `criticalWatermark` | 15 / 5 GB |
 | Staging (giới hạn mềm) | 4 GB |
-| Launch at login | Bật |
+| Launch at login | Tắt (hỏi ở bước Sẵn sàng khi cài đặt) |
 | Album app chat | WhatsApp, Zalo, Messenger, Telegram, Viber, LINE, Signal, Instagram, Facebook, Threads, X, TikTok |
 | Ảnh thiếu EXIF máy ảnh → `saved` | Bật |
 | Địa danh | Bật (`vi`, quốc gia nhà `VN`) |

@@ -34,6 +34,8 @@ final class OnboardingModel {
     var notifications: NotificationState = .notAsked
     var nas: PendingLocalDestination?
     var nasTesting = false
+    /// Off unless the owner ticks it on the Ready step.
+    var launchAtLogin = false
 
     /// Why Start did nothing: an earlier answer no longer holds.
     var startError: String?
@@ -223,7 +225,7 @@ final class OnboardingModel {
             return
         }
         startError = nil
-        var plan = FirstStartPlan(identity: identity, root: rootChoice, timeZone: timeZone, scope: scope, nas: nas)
+        var plan = FirstStartPlan(identity: identity, root: rootChoice, timeZone: timeZone, scope: scope, nas: nas, launchAtLogin: launchAtLogin)
         if let current = plan.nas { plan.nas = current }
         await app.performFirstStart(plan)
     }

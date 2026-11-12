@@ -163,7 +163,7 @@ Settings is where you change these. Defaults come from `Sources/PhotoVaultCore/M
 | Pause on expensive network | on | |
 | Free-space watermarks, low / critical | 15 / 5 GB | |
 | Staging soft limit | 4 GB | |
-| Launch at login | on | |
+| Launch at login | off (offered during setup) | |
 | Chat-app album names | WhatsApp, Zalo, Messenger, Telegram, Viber, LINE, Signal, Instagram, Facebook, Threads, X, TikTok | Exact name match, case-insensitive. |
 | Photos without camera EXIF go to Saved | on | See [known limits](#known-limits). |
 | Interface language | Tiếng Việt | Settings → General: System, Tiếng Việt or English; switches at once. Folder names on destinations never change with it. |

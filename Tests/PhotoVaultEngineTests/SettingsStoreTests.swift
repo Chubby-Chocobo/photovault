@@ -20,6 +20,13 @@ import Testing
         #expect(value.includeEdited == GlobalSettings().includeEdited)
     }
 
+    @Test func openAtLoginIsOffUnlessTheOwnerChoseIt() async throws {
+        let fresh = try SettingsStore(store: Store.inMemory(), defaultTimeZone: TimeZone(identifier: "UTC")!)
+        #expect(await !fresh.snapshot().settings.launchAtLogin)
+        #expect(await (try stored(#"{"launchAtLogin": true}"#)).snapshot().settings.launchAtLogin, "a saved choice survives")
+        #expect(await !(try stored(#"{"includeVideos": false}"#)).snapshot().settings.launchAtLogin)
+    }
+
     @Test func settingsSavedBeforeTheLensViewDecodeWithItOff() async throws {
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(GlobalSettings())) as? [String: Any])
         object.removeValue(forKey: "viewByLensEnabled")

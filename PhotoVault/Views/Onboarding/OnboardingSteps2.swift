@@ -147,6 +147,10 @@ struct StartStep: View {
                 }
             }
         }
+        Toggle(tr(vi: "Mở PhotoVault khi đăng nhập", en: "Open PhotoVault at login"), isOn: $model.launchAtLogin)
+            .disabled(app.firstStart != nil)
+        Text(tr(vi: "Có thể đổi sau trong Cài đặt › Chung.", en: "You can change this later in Settings › General."))
+            .font(.caption).foregroundStyle(.secondary)
         if let problem = model.startError {
             Banner(.danger, title: tr(vi: "Chưa thể bắt đầu", en: "Can’t start yet"), message: problem)
         }

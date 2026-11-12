@@ -12,6 +12,7 @@ struct FirstStartPlan {
     var timeZone: TimeZone
     var scope: ScopeMode
     var nas: PendingLocalDestination?
+    var launchAtLogin = false
 }
 
 enum FirstStartError: Error {
@@ -46,6 +47,9 @@ extension AppModel {
         do {
             try await env.settings.setArchiveTimeZone(plan.timeZone)
             archiveTimeZone = plan.timeZone
+            let chosen = plan.launchAtLogin
+            persistedSettings = try await env.settings.update { $0.launchAtLogin = chosen }
+            settings.launchAtLogin = chosen
             try await reconcileUnstartedDestinations(plan, env: env)
             try await createDriveDestination(plan, env: env)
             if let nas = plan.nas, !destinations.contains(where: { $0.id == nas.destinationId }) {

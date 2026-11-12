@@ -14,7 +14,8 @@ public struct GlobalSettings: Hashable, Codable, Sendable {
     public var lowWatermarkBytes: Int64 = 15 * GiB
     public var criticalWatermarkBytes: Int64 = 5 * GiB
     public var stagingSoftLimitBytes: Int64 = 4 * GiB
-    public var launchAtLogin = true
+    /// Off until the owner turns it on: registering a login item needs their consent.
+    public var launchAtLogin = false
     public var chatAppAlbumNames: [String] = GlobalSettings.defaultChatAppAlbums
     public var photosWithoutCameraExifAreSaved = true
     public var placeNamesEnabled = true
