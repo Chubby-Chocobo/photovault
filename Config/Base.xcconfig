@@ -23,10 +23,6 @@ GOOGLE_CLIENT_SECRET =
 // Dropbox app key (README: Dropbox setup); empty disables importing from Dropbox.
 DROPBOX_APP_KEY =
 
-// The browser Drive import (Google Picker, restricted drive.readonly scope). Off for store builds, which
-// ask Google only for drive.file, openid and email; set YES in Local.xcconfig to build it from source.
-GOOGLE_DRIVE_BROWSER_IMPORT = NO
-
 #include? "Secrets.xcconfig"
 // Personal Team signing (DEVELOPMENT_TEAM); copy Local.xcconfig.example.
 #include? "Local.xcconfig"

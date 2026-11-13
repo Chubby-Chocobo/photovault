@@ -123,7 +123,7 @@
 				};
 			};
 			buildConfigurationList = A1B2C3D4E5F600000000000C /* Build configuration list for PBXProject "PhotoVault" */;
-			developmentRegion = en;
+			developmentRegion = vi;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				vi,
