@@ -5,17 +5,18 @@ import Foundation
 public enum HTTPBody: Sendable, Equatable {
     case none
     case data(Data)
-    case fileRange(URL, offset: Int64, length: Int)
+    /// `mappable`: the file may be mapped instead of read (see `mayMap(_:)`); decided once per file.
+    case fileRange(URL, offset: Int64, length: Int, mappable: Bool = false)
 
-    /// Materialises the body. A file range is mapped, not copied: its pages are the file's own clean pages,
-    /// which the system can drop and reread, so an 8 MiB upload chunk adds nothing to the app's footprint and
-    /// leaves no freed buffer behind in malloc. When the range cannot be mapped it is read, as before.
+    /// Materialises the body. A mappable file range is mapped, not copied: its pages are the file's own clean
+    /// pages, which the system can drop and reread, so an 8 MiB upload chunk adds nothing to the app's footprint
+    /// and leaves no freed buffer behind in malloc. Any other range, or one that cannot be mapped, is read.
     public func load() throws -> Data {
         switch self {
         case .none: return Data()
         case .data(let data): return data
-        case .fileRange(let url, let offset, let length):
-            if let mapped = Self.mapped(url, offset: offset, length: length) { return mapped }
+        case .fileRange(let url, let offset, let length, let mappable):
+            if mappable, let mapped = Self.mapped(url, offset: offset, length: length) { return mapped }
             let handle = try FileHandle(forReadingFrom: url)
             defer { try? handle.close() }
             try handle.seek(toOffset: UInt64(offset))
@@ -23,10 +24,22 @@ public enum HTTPBody: Sendable, Equatable {
         }
     }
 
+    /// Whether ranges of `file` may be mapped. A page of a mapping that cannot be read stops the app (SIGBUS)
+    /// where a read would only fail the upload, so only files on an internal, local volume are mapped: a disk
+    /// that can be unplugged or a network volume that can drop out is read instead.
+    public static func mayMap(_ file: URL) -> Bool {
+        let values = try? file.resourceValues(forKeys: [.volumeIsLocalKey, .volumeIsInternalKey])
+        return mayMap(volumeIsLocal: values?.volumeIsLocal, volumeIsInternal: values?.volumeIsInternal)
+    }
+
+    /// The decision behind `mayMap(_:)`: an unknown answer counts as no.
+    static func mayMap(volumeIsLocal: Bool?, volumeIsInternal: Bool?) -> Bool {
+        volumeIsLocal == true && volumeIsInternal == true
+    }
+
     /// The range mapped read-only, or nil when the file is shorter than the range or cannot be mapped. Upload
     /// chunks come from staged files, which are leased for the whole upload and never truncated in place (a new
-    /// export writes a new file), so the mapping stays valid while the request reads it. Staging is in the app
-    /// container on the startup disk; a read error there would now stop the app instead of failing the upload.
+    /// export writes a new file), so the mapping stays valid while the request reads it.
     static func mapped(_ url: URL, offset: Int64, length: Int) -> Data? {
         guard length > 0, offset >= 0 else { return nil }
         let fd = open(url.path, O_RDONLY | O_CLOEXEC)
