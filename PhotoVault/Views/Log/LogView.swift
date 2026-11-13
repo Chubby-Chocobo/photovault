@@ -94,7 +94,7 @@ struct LogView: View {
         NSPasteboard.general.setString(LogReader.text(visible), forType: .string)
         copied = true
         Task {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(2), tolerance: .milliseconds(500))
             copied = false
         }
     }
@@ -111,7 +111,7 @@ struct LogView: View {
                 lastStamp = stamp
                 entries = await Task.detached(priority: .utility) { reader.read() }.value
             }
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(2), tolerance: .milliseconds(500))
         }
     }
 }

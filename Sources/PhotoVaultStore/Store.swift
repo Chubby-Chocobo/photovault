@@ -27,8 +27,10 @@ public final class Store: Sendable {
     static func open(at url: URL, backups: DatabaseBackup?, migrator: DatabaseMigrator) throws -> Store {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var configuration = Configuration()
+        configuration.maximumReaderCount = maximumReaderCount
         configuration.prepareDatabase { db in
             try Self.makeDurable(db)
+            try db.execute(sql: "PRAGMA cache_size = \(Self.cacheSizeKiB)")
             Self.addFunctions(db)
         }
         let pool = try DatabasePool(path: url.path, configuration: configuration)
@@ -45,6 +47,20 @@ public final class Store: Sendable {
         }
         try migrator.migrate(pool)
         return store
+    }
+
+    /// Readers open at once (GRDB's default is 5). Reads are short, so a read that finds all three busy waits
+    /// briefly; each connection keeps its own page cache.
+    static let maximumReaderCount = 3
+
+    /// Page cache per connection, as SQLite's negative "KiB" form (SQLite's default is 2000 KiB). The database is
+    /// small and the system keeps its file in its own cache, so a cache miss costs a read, not a disk access.
+    static let cacheSizeKiB = -1024
+
+    /// Gives back the memory SQLite holds for caches: the writer drops its page and statement caches once it is
+    /// free, and the readers close once they are (the next read opens one again). Nothing waits for it.
+    public func releaseMemoryEventually() {
+        if let pool = writer as? DatabasePool { pool.releaseMemoryEventually() }
     }
 
     /// Reservations are committed before the side effect they guard; they must survive power loss

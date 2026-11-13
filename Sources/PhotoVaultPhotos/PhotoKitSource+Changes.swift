@@ -14,7 +14,7 @@ extension PhotoKitSource {
         do {
             let result = try PHPhotoLibrary.shared().fetchPersistentChanges(since: persistentToken)
             var changes: [PersistentChange] = []
-            for change in result { changes.append(try Self.map(change)) }
+            for change in result { changes.append(try autoreleasepool { try Self.map(change) }) }
             return changes
         } catch {
             throw PhotosErrorMapper.map(error)
