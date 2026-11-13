@@ -77,26 +77,31 @@ public struct LogReader: Sendable {
     }
 
     /// The file's last lines, at least `needed` of them when it has that many, oldest first; nil when it cannot
-    /// be read. The file is read from its end in growing pieces, so the window reads about the part it shows
-    /// instead of the whole file each time the log grows. Only "\n" ends a line: messages may hold other line
-    /// separators. A piece always starts right after a "\n" byte, which never occurs inside a multi-byte
-    /// character, so the lines are the same as when the whole file is decoded.
+    /// be read. The file is read from its end in growing pieces, each piece only the bytes before the previous
+    /// one, so a refresh reads about the part the window shows and never more than the whole file. Only "\n"
+    /// ends a line: messages may hold other line separators. The text kept always starts right after a "\n"
+    /// byte, which never occurs inside a multi-byte character, so the lines are the same as when the whole file
+    /// is decoded.
     static func lastLines(of url: URL, needed: Int, firstPiece: UInt64 = 256 << 10) -> [Substring]? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let size = try? handle.seekToEnd() else { return nil }
         var piece = max(1, firstPiece)
+        // The bytes from `start` to the end of the file as it was when opened.
+        var collected = Data()
+        var start = size
         while true {
             // One byte more than the piece: it says whether the piece starts at the beginning of a line.
-            let start = size > piece ? size - piece - 1 : 0
-            let read: Data
+            let next = size > piece ? size - piece - 1 : 0
             do {
-                try handle.seek(toOffset: start)
-                read = try autoreleasepool { try handle.readToEnd() } ?? Data()
+                try handle.seek(toOffset: next)
+                let added = try autoreleasepool { try handle.read(upToCount: Int(start - next)) } ?? Data()
+                collected = added + collected
             } catch {
                 return nil
             }
-            var bytes = read[...]
+            start = next
+            var bytes = collected[...]
             if start > 0 {
                 // The first line may have begun before the piece: drop it, through its "\n".
                 guard let newline = bytes.firstIndex(of: UInt8(ascii: "\n")) else {

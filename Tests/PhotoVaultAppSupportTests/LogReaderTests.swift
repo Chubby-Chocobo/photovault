@@ -75,6 +75,23 @@ import Testing
         #expect(LogReader.lastLines(of: dir.appendingPathComponent("missing.log"), needed: 1) == nil)
     }
 
+    @Test func linesLongerThanAPieceAreReadWholeAndNoLineIsLost() throws {
+        // Lines far longer than the first pieces, with empty lines and no newline at the very end.
+        let long = (0..<12).map { index in "\(index):" + String(repeating: index % 2 == 0 ? "ê" : "x", count: 300 + index * 997) }
+        let text = long.joined(separator: "\n\n") + "\ntail-without-newline"
+        let dir = try directory([:])
+        let url = dir.appendingPathComponent("photovault.log")
+        try Data(text.utf8).write(to: url)
+        let whole = text.split(separator: "\n", omittingEmptySubsequences: true)
+        for needed in [1, 2, 5, 13, 50] {
+            for firstPiece: UInt64 in [1, 100, 4_096] {
+                let tail = try #require(LogReader.lastLines(of: url, needed: needed, firstPiece: firstPiece))
+                #expect(tail.count >= min(needed, whole.count), "needed \(needed), piece \(firstPiece)")
+                #expect(Array(whole.suffix(tail.count)) == tail, "needed \(needed), piece \(firstPiece)")
+            }
+        }
+    }
+
     @Test func repeatedLinesGetDistinctIdsAndOnlyNewlinesSplit() throws {
         let dir = try directory(["photovault.log": ["same", "same", "a\u{2028}b"]])
         let entries = LogReader(directory: dir).read()
