@@ -25,7 +25,8 @@ public enum HTTPBody: Sendable, Equatable {
 
     /// The range mapped read-only, or nil when the file is shorter than the range or cannot be mapped. Upload
     /// chunks come from staged files, which are leased for the whole upload and never truncated in place (a new
-    /// export writes a new file), so the mapping stays valid while the request reads it.
+    /// export writes a new file), so the mapping stays valid while the request reads it. Staging is in the app
+    /// container on the startup disk; a read error there would now stop the app instead of failing the upload.
     static func mapped(_ url: URL, offset: Int64, length: Int) -> Data? {
         guard length > 0, offset >= 0 else { return nil }
         let fd = open(url.path, O_RDONLY | O_CLOEXEC)
