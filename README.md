@@ -90,8 +90,6 @@ Needed only for the Dropbox import. Do this once, in your own Dropbox account.
 
 Leave `DROPBOX_APP_KEY` empty (as the template does) to build without Dropbox: the Dropbox item in Settings is then disabled and shows a hint. The app uses PKCE, so no secret is needed.
 
-The Google Drive browser import (Picker plus `drive.readonly`) is built in only when `GOOGLE_DRIVE_BROWSER_IMPORT = YES` is set in `Config/Local.xcconfig`; the default is `NO`, which is what Mac App Store builds use (they ask Google only for `drive.file`, `openid` and `email`). With it off, Settings › Sources offers only "Google Drive on this Mac" for Google. To build it from source, keep `drive.readonly` on your own consent screen (step 4 above).
-
 Dropbox tokens live in the same Keychain service as the Google token (`com.annh.photovault.google`), under the account names `dropbox-account` and `import-<id>`.
 
 ## Signing
@@ -117,17 +115,6 @@ The app needs a stable signature. macOS ties its Photos and folder permissions (
 5. Build the app, then copy `PhotoVault.app` to `/Applications` and run it from there. Repeat the copy after each build. In Xcode, Product → Show Build Folder in Finder shows the built app.
 
 Personal Team profiles expire. If Xcode reports the profile as expired, sign again and copy the app again. [M0-4](docs/spikes/m0-4-signing-sandbox-and-filesystems.md) measures how long a profile lasts.
-
-## Mac App Store build
-
-`scripts/app-store-archive.sh` archives the Release build and exports it for App Store Connect. Run it from a clean checkout of a `release/*` or `hotfix/*` branch or a `v*` tag, with `Config/Local.xcconfig` and `Config/Secrets.xcconfig` filled in.
-
-```sh
-scripts/app-store-archive.sh --export-only   # default: signed .pkg in build/AppStore/export
-scripts/app-store-archive.sh --upload        # send the build to App Store Connect
-```
-
-It checks the version, the signing team, the OAuth ids (without printing them) and the archived app's entitlements, privacy manifest and localizations before it exports. Xcode sets the build number when it uploads. Export needs an Apple Distribution certificate, a Mac Installer Distribution certificate and an App Store profile for the bundle ID, which Xcode creates from your signed-in account. To use an App Store Connect API key instead, set `ASC_KEY_PATH`, `ASC_KEY_ID` and `ASC_ISSUER_ID`. The store build needs the `GOOGLE_DRIVE_BROWSER_IMPORT=NO` build setting, which the script passes.
 
 ## NAS and local folders
 
@@ -263,11 +250,11 @@ Cancel on an import that is running takes effect within seconds: the import stop
 
 Settings › **Nguồn** › **Nhập ảnh…** › **Từ Google Drive…** or **Từ Dropbox…** starts the import. The row and the menu bar card show the account email.
 
-- **Preferred: the desktop app.** If **Google Drive for desktop** (or the **Dropbox** app) is installed, the **Nhập ảnh…** menu lists **Google Drive trên máy này…** (or **Dropbox trên máy này…**), which opens a folder chooser at `~/Library/CloudStorage` ("Chọn thư mục Google Drive (đồng bộ trên máy này)"). Choose the account folder (`GoogleDrive-<email>`) and then "My Drive" or a subfolder; Dropbox's folder is `Dropbox`. The import is then a normal Mac-folder import: no sign-in, no Google "chưa xác minh" screen, subfolders included. The row reads "Google Drive (trên máy này) · <email>" or "Dropbox (trên máy này)". When this build also has the Dropbox key, a separate item **Dropbox qua trình duyệt…** appears, and **Google Drive qua trình duyệt…** appears when it has the Google client ID and `GOOGLE_DRIVE_BROWSER_IMPORT = YES` (store builds leave the Google one out); opens the browser flow below, for an account that is not synced on this Mac. With only one way available the menu shows a single **Từ Google Drive…** / **Từ Dropbox…** item for it ([decision 0031](docs/decisions/0031-import-from-synced-cloud-folder.md)).
+- **Preferred: the desktop app.** If **Google Drive for desktop** (or the **Dropbox** app) is installed, the **Nhập ảnh…** menu lists **Google Drive trên máy này…** (or **Dropbox trên máy này…**), which opens a folder chooser at `~/Library/CloudStorage` ("Chọn thư mục Google Drive (đồng bộ trên máy này)"). Choose the account folder (`GoogleDrive-<email>`) and then "My Drive" or a subfolder; Dropbox's folder is `Dropbox`. The import is then a normal Mac-folder import: no sign-in, no Google "chưa xác minh" screen, subfolders included. The row reads "Google Drive (trên máy này) · <email>" or "Dropbox (trên máy này)". When this build also has the Google client ID (or the Dropbox key), a separate item **Google Drive qua trình duyệt…** (**Dropbox qua trình duyệt…**) opens the browser flow below, for an account that is not synced on this Mac. With only one way available the menu shows a single **Từ Google Drive…** / **Từ Dropbox…** item for it ([decision 0031](docs/decisions/0031-import-from-synced-cloud-folder.md)).
 - **Online-only files** (the desktop app keeps them in the cloud) are downloaded when the import reads them, so you need enough free space; a file whose download times out, is cancelled or fails because the Mac is offline is tried again later with the same back-off as a Google Drive or Dropbox read, and the import waits with "chờ chỗ trống" when the disk is too full to download the next file. Keep the desktop app running and signed in during the import.
-- Without the desktop app, the browser flows below are used. A Google Drive import started in a build that has the browser import cannot sign in again in a build without it: cancel it and import the folder with **Google Drive trên máy này…**.
+- Without the desktop app, the browser flows below are used.
 
-- **Google Drive (browser)**, only in builds with `GOOGLE_DRIVE_BROWSER_IMPORT = YES`: a sheet first warns that Google will show "chưa xác minh" (not verified) because the app uses the Drive read permission, that this is your own app (choose Advanced › Go to PhotoVault), and that installing Google Drive for desktop avoids it; **Tiếp tục** / **Huỷ**. It also explains what to pick. The browser then opens Google's Picker. Sign in with the Google account that holds the photos; it can differ from your backup account. Pick photos, videos and/or folders. Google then opens a second page ("Step 2 of 2"): choose the same account and allow "see and download all your Google Drive files" (read only). Both pages show the unverified-app warning for a personal app. The app reads only what you pick and everything below picked folders, subfolders included.
+- **Google Drive (browser):** a sheet first warns that Google will show "chưa xác minh" (not verified) because the app uses the Drive read permission, that this is your own app (choose Advanced › Go to PhotoVault), and that installing Google Drive for desktop avoids it; **Tiếp tục** / **Huỷ**. It also explains what to pick. The browser then opens Google's Picker. Sign in with the Google account that holds the photos; it can differ from your backup account. Pick photos, videos and/or folders. Google then opens a second page ("Step 2 of 2"): choose the same account and allow "see and download all your Google Drive files" (read only). Both pages show the unverified-app warning for a personal app. The app reads only what you pick and everything below picked folders, subfolders included.
   - When the import is finished or cancelled and no file of it is still waiting to upload, the app deletes this sign-in from this Mac. The permission itself stays in your Google account until you remove it at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Adding a backup destination later, or uploading a file again after the destination lost it, asks you to sign in again ("Đăng nhập lại").
   - Keep "See and download all your Google Drive files" ticked on the second page, or the app refuses the sign-in. Choosing a different account on the second page is refused too.
   - Google Workspace (school or work) accounts may not be able to use the import: an admin can block restricted scopes. Personal accounts are what this was tested for.

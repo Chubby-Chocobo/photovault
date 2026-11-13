@@ -3,12 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>vi</string>
-		<string>en</string>
-	</array>
+	<string>vi</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,8 +20,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>LSApplicationCategoryType</key>
@@ -39,8 +32,6 @@
 	<string>$(GOOGLE_CLIENT_ID)</string>
 	<key>PVGoogleClientSecret</key>
 	<string>$(GOOGLE_CLIENT_SECRET)</string>
-	<key>PVGoogleDriveBrowserImport</key>
-	<string>$(GOOGLE_DRIVE_BROWSER_IMPORT)</string>
 	<key>PVDropboxAppKey</key>
 	<string>$(DROPBOX_APP_KEY)</string>
 </dict>

@@ -127,8 +127,8 @@ public enum ImportMenuChoices {
         public var isEnabled: Bool
     }
 
-    /// `appPresent`: the provider's desktop app was found. `browserConfigured`: the build includes the browser import (for Google
-    /// Drive, the client ID and the build flag; for Dropbox, the app key). One way available gives one plain item; neither gives one disabled item that says why.
+    /// `appPresent`: the provider's desktop app was found. `browserConfigured`: the build has the Google client ID or
+    /// the Dropbox app key. One way available gives one plain item; neither gives one disabled item that says why.
     /// For Dropbox the browser item carries the sign-in state, and a signed-in account adds a sign-out item.
     public static func items(_ provider: SyncedCloudProvider, appPresent: Bool, browserConfigured: Bool, dropbox: DropboxState = .notApplicable,
                              canStartImport: Bool = true, flowBusy: Bool = false) -> [Item] {
@@ -161,8 +161,8 @@ public enum ImportMenuChoices {
             items = [Item(action: .browser, title: label(plain), help: state == .signedOut ? signedOutHelp : "", isEnabled: true)]
         case (false, false):
             let why = provider == .googleDrive
-                ? tr(vi: "Cài Google Drive cho máy tính. Bản này không có nhập Drive qua trình duyệt.",
-                     en: "Install Google Drive for desktop. The browser Drive import is not part of this build.")
+                ? tr(vi: "Cài Google Drive cho máy tính, hoặc dùng bản build có Google client ID.",
+                     en: "Install Google Drive for desktop, or use a build with a Google client ID.")
                 : tr(vi: "Cài ứng dụng Dropbox, hoặc dùng bản build có khoá ứng dụng Dropbox (DROPBOX_APP_KEY).",
                      en: "Install the Dropbox app, or use a build with a Dropbox app key (DROPBOX_APP_KEY).")
             // A disabled item may not show its tooltip, so the title carries the short reason.

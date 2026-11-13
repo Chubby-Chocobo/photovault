@@ -59,17 +59,6 @@ public enum CloudImportText {
         (item.kind == .googleDrive || item.kind == .dropbox) && item.statusReason == "signInRequired"
     }
 
-    /// Whether "Sign in again" can work: a Google Drive browser import cannot sign in on a build without it.
-    public static func canSignInAgain(_ item: ImportSnapshot, googleBrowserImport: Bool) -> Bool {
-        needsSignIn(item) && (item.kind != .googleDrive || googleBrowserImport)
-    }
-
-    /// Shown instead of a sign-in on a build that has no browser Drive import.
-    public static var browserImportUnavailableNotice: String {
-        tr(vi: "Bản này không đăng nhập Google Drive qua trình duyệt. Hãy huỷ lần nhập này rồi nhập lại thư mục bằng “Google Drive trên máy này”.",
-           en: "This build does not sign in to Google Drive in the browser. Cancel this import, then import the folder again with “Google Drive on this Mac”.")
-    }
-
     /// Shown when the owner signed in to another account than the import reads from.
     public static func wrongAccountNotice(expected: String?) -> String {
         let email = expected ?? tr(vi: "đã dùng trước đó", en: "used before")
