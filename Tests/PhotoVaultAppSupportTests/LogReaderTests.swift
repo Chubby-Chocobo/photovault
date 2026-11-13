@@ -59,6 +59,22 @@ import Testing
             """)
     }
 
+    @Test func readingTheEndOfAFileGivesTheSameLinesAsReadingItWhole() throws {
+        // Lines of varied length, some with multi-byte characters, so pieces start at awkward offsets.
+        let lines = (0..<400).map { "2026-11-09T10:00:00Z [INFO] cycle: dòng \($0) " + String(repeating: "ảnh·", count: $0 % 37) }
+        let dir = try directory(["photovault.log": lines])
+        let url = dir.appendingPathComponent("photovault.log")
+        let whole = String(decoding: try Data(contentsOf: url), as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
+        for needed in [1, 7, 100, 399, 400, 1000] {
+            for firstPiece: UInt64 in [1, 13, 64, 1 << 20] {
+                let tail = try #require(LogReader.lastLines(of: url, needed: needed, firstPiece: firstPiece))
+                #expect(tail.count >= min(needed, whole.count), "needed \(needed), piece \(firstPiece)")
+                #expect(Array(whole.suffix(tail.count)) == tail, "needed \(needed), piece \(firstPiece)")
+            }
+        }
+        #expect(LogReader.lastLines(of: dir.appendingPathComponent("missing.log"), needed: 1) == nil)
+    }
+
     @Test func repeatedLinesGetDistinctIdsAndOnlyNewlinesSplit() throws {
         let dir = try directory(["photovault.log": ["same", "same", "a\u{2028}b"]])
         let entries = LogReader(directory: dir).read()

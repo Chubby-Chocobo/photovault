@@ -18,7 +18,7 @@ extension AppModel {
         // A transfer appears once it has run a second even when no bytes arrive meanwhile (a long upload chunk).
         transferClockTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: .seconds(1), tolerance: .milliseconds(100))
                 guard let self, !Task.isCancelled else { return }
                 self.transferNow = Date()
                 if self.transfers.isEmpty {

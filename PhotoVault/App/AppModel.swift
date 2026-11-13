@@ -53,6 +53,8 @@ final class AppModel {
     /// A factory reset is signing out or relaunching; its button stays disabled.
     var factoryResetInProgress = false
     var windowRequest: WindowRequest?
+    /// The menu bar popup is on screen: clocks that only redraw it stop while it is closed.
+    var popupOpen = false
     var settingsTab: SettingsTab = .general
     /// A Dropbox account token is stored (the folder browser needs no new sign-in).
     var dropboxSignedIn = false
@@ -219,12 +221,15 @@ final class AppModel {
         }
         let poll = Task { [weak self] in
             // A cycle publishes only at its start and end; polling keeps the progress bar moving during a
-            // long backfill. Idle, nothing moves, so nothing is polled (NFR-03).
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard let self else { return }
-                guard self.snapshot?.overall == .syncing else { continue }
-                await self.refreshSnapshot()
+            // long backfill. Idle, nothing moves, so nothing is polled and the loop does not wake up: it waits
+            // for the next published snapshot that says a sync runs (NFR-03).
+            for await published in await env.coordinator.snapshots() where published.overall == .syncing {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(10), tolerance: .seconds(1))
+                    guard let self else { return }
+                    guard self.snapshot?.overall == .syncing else { break }
+                    await self.refreshSnapshot()
+                }
             }
         }
         let transferUpdates = Task { [weak self] in

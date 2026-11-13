@@ -49,7 +49,7 @@ struct ActivityView: View {
         .task {
             while !Task.isCancelled {
                 await model.refreshActivity()
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(5), tolerance: .seconds(1))
             }
         }
     }

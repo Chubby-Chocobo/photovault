@@ -63,9 +63,7 @@ public struct LogReader: Sendable {
         var seen: [String: Int] = [:]
         for index in 0..<RotatingFileLog.fileCount where entries.count < limit {
             let name = index == 0 ? "photovault.log" : "photovault.\(index).log"
-            guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else { continue }
-            // Only "\n" ends a line: messages may hold other line separators.
-            let lines = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
+            guard let lines = Self.lastLines(of: directory.appendingPathComponent(name), needed: limit - entries.count) else { continue }
             for line in lines.reversed() where entries.count < limit {
                 let text = String(line)
                 let repeats = seen[text, default: 0]
@@ -76,6 +74,41 @@ public struct LogReader: Sendable {
             }
         }
         return entries
+    }
+
+    /// The file's last lines, at least `needed` of them when it has that many, oldest first; nil when it cannot
+    /// be read. The file is read from its end in growing pieces, so the window reads about the part it shows
+    /// instead of the whole file each time the log grows. Only "\n" ends a line: messages may hold other line
+    /// separators. A piece always starts right after a "\n" byte, which never occurs inside a multi-byte
+    /// character, so the lines are the same as when the whole file is decoded.
+    static func lastLines(of url: URL, needed: Int, firstPiece: UInt64 = 256 << 10) -> [Substring]? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return nil }
+        var piece = max(1, firstPiece)
+        while true {
+            // One byte more than the piece: it says whether the piece starts at the beginning of a line.
+            let start = size > piece ? size - piece - 1 : 0
+            let read: Data
+            do {
+                try handle.seek(toOffset: start)
+                read = try autoreleasepool { try handle.readToEnd() } ?? Data()
+            } catch {
+                return nil
+            }
+            var bytes = read[...]
+            if start > 0 {
+                // The first line may have begun before the piece: drop it, through its "\n".
+                guard let newline = bytes.firstIndex(of: UInt8(ascii: "\n")) else {
+                    piece *= 4
+                    continue
+                }
+                bytes = bytes[bytes.index(after: newline)...]
+            }
+            let lines = String(decoding: bytes, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
+            if start == 0 || lines.count >= needed { return lines }
+            piece *= 4
+        }
     }
 
     /// Most disk the log takes: the rotated files together.
