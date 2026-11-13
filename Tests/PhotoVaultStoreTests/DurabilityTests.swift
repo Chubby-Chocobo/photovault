@@ -17,6 +17,21 @@ import Testing
         #expect(written == [2, 1, 1], "\(written)")
         #expect(try store.read(pragmas) == [2, 1, 1])
     }
+
+    @Test func releasingMemoryKeepsEveryConnectionDurableAndItsSmallCache() throws {
+        let dir = try tempDirectory()
+        let store = try Store.open(at: dir.appendingPathComponent("db/photovault.sqlite"))
+        func settings(_ db: Database) throws -> [Int] {
+            try ["synchronous", "fullfsync", "cache_size"].map { try Int.fetchOne(db, sql: "PRAGMA \($0)") ?? 0 }
+        }
+        #expect(try store.read(settings) == [2, 1, Store.cacheSizeKiB])
+        try store.write { db in _ = try DestinationRepository.add(db, makeDestination(.googleDrive), now: t0) }
+        store.releaseMemoryEventually()
+        // The next read and write open or reuse connections set up the same way, and see the data.
+        #expect(try store.write(settings) == [2, 1, Store.cacheSizeKiB])
+        #expect(try store.read(settings) == [2, 1, Store.cacheSizeKiB])
+        #expect(try store.read { try DestinationRepository.fetch($0, id: .googleDrive) } != nil)
+    }
 }
 
 @Suite struct UploadIntentTests {
