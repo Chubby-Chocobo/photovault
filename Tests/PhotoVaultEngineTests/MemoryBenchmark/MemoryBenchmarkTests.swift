@@ -59,7 +59,7 @@ struct MemoryBenchmarkTests {
         let entries = try await source.listFiles()
         let peak = sampler.stop()
         let after = MemoryProbe.read()
-        print("MEMBENCH folder-listing: \(entries.count) entries; before \(MemoryProbe.megabytes(before.current)) MB, peak \(MemoryProbe.megabytes(peak)) MB (+\(MemoryProbe.megabytes(peak - before.current))), after \(MemoryProbe.megabytes(after.current)) MB")
+        print("MEMBENCH folder-listing: \(entries.count) entries; before \(MemoryProbe.megabytes(before.current)) MB, peak \(MemoryProbe.megabytes(peak)) MB (+\(MemoryProbe.megabytes(MemoryProbe.growth(from: before.current, to: peak)))), after \(MemoryProbe.megabytes(after.current)) MB")
         #expect(entries.count == folder.count)
     }
 
@@ -131,7 +131,7 @@ struct MemoryBenchmarkTests {
             MEMBENCH \(name): \(fileCount) files, \(cycles) cycles, \
             drive files \(server.fileCount), done jobs \(try h.jobs(.done).count)
             MEMBENCH \(name): before \(MemoryProbe.megabytes(before.current)) MB, peak \(MemoryProbe.megabytes(peak)) MB \
-            (+\(MemoryProbe.megabytes(peak - before.current))), after \(MemoryProbe.megabytes(after.current)) MB, \
+            (+\(MemoryProbe.megabytes(MemoryProbe.growth(from: before.current, to: peak)))), after \(MemoryProbe.megabytes(after.current)) MB, \
             after 1 s \(MemoryProbe.megabytes(settled.current)) MB, lifetime peak \(MemoryProbe.megabytes(settled.lifetimePeak)) MB
             MEMBENCH \(name): heap in use \(MemoryProbe.megabytes(heap.inUse)) MB, held \(MemoryProbe.megabytes(heap.held)) MB
             """)

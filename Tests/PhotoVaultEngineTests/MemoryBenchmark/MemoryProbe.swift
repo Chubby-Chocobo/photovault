@@ -21,6 +21,9 @@ enum MemoryProbe {
         return (UInt64(stats.size_in_use), UInt64(stats.size_allocated))
     }
 
+    /// How far the footprint rose; zero when it fell (malloc can give back memory taken before the start).
+    static func growth(from start: UInt64, to peak: UInt64) -> UInt64 { peak > start ? peak - start : 0 }
+
     static func megabytes(_ bytes: UInt64) -> String { String(format: "%.1f", Double(bytes) / 1_048_576) }
 }
 
