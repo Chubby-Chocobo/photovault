@@ -48,6 +48,8 @@ extension SyncCoordinator {
         running = false
         await lane.endCycle()
         await publish()
+        // Between cycles the app is idle, often for an hour: SQLite's caches are not worth keeping until then.
+        env.store.releaseMemoryEventually()
         return outcome
     }
 

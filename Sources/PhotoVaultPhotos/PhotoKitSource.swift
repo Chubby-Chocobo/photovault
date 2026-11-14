@@ -10,6 +10,10 @@ import PhotoVaultCore
 /// otherwise (the library changed) the scan finds the last asset by ID, and failing that by binary
 /// search on creation date. Assets inserted or removed while scanning are reconciled by the
 /// persistent-change history, so a rare duplicate or skipped boundary asset is acceptable.
+///
+/// Loops over PhotoKit objects drain an autorelease pool per item: these calls run on the Swift concurrency
+/// pool, whose threads drain their pool only when a job ends, so a loop over a whole page or library would
+/// otherwise keep every `PHAsset` and resource it touched alive until it returns.
 public final class PhotoKitSource: PhotosSource {
     static let mappingBatchSize = 500
     private let mapper: PhotoKitSnapshotMapper
@@ -56,9 +60,11 @@ public final class PhotoKitSource: PhotosSource {
         var last: PHAsset?
         if start < end {
             for index in start..<end {
-                let asset = result.object(at: index)
-                snapshots.append(mapper.snapshot(of: asset))
-                last = asset
+                autoreleasepool {
+                    let asset = result.object(at: index)
+                    snapshots.append(mapper.snapshot(of: asset))
+                    last = asset
+                }
             }
         }
         guard end < result.count, let last else { return AssetPage(assets: snapshots, nextCursor: nil) }
@@ -70,7 +76,7 @@ public final class PhotoKitSource: PhotosSource {
         guard !localIds.isEmpty else { return [] }
         let result = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: Self.fetchOptions())
         var snapshots: [AssetSnapshot] = []
-        result.enumerateObjects { asset, _, _ in snapshots.append(self.mapper.snapshot(of: asset)) }
+        result.enumerateObjects { asset, _, _ in autoreleasepool { snapshots.append(self.mapper.snapshot(of: asset)) } }
         return snapshots
     }
 
@@ -92,7 +98,7 @@ public final class PhotoKitSource: PhotosSource {
         guard parts.count == 3, let offset = Int(parts[0]) else { return 0 }
         let localId = String(parts[2])
         if offset < result.count, result.object(at: offset).localIdentifier == localId { return offset + 1 }
-        for index in 0..<result.count where result.object(at: index).localIdentifier == localId {
+        for index in 0..<result.count where autoreleasepool(invoking: { result.object(at: index).localIdentifier == localId }) {
             return index + 1
         }
         // Last asset is gone: first asset strictly after its creation date.
@@ -100,7 +106,7 @@ public final class PhotoKitSource: PhotosSource {
         var low = 0, high = result.count
         while low < high {
             let mid = (low + high) / 2
-            let date = result.object(at: mid).creationDate?.timeIntervalSinceReferenceDate ?? -.greatestFiniteMagnitude
+            let date = autoreleasepool { result.object(at: mid).creationDate?.timeIntervalSinceReferenceDate } ?? -.greatestFiniteMagnitude
             if date <= pivot { low = mid + 1 } else { high = mid }
         }
         return low
@@ -112,10 +118,12 @@ public final class PhotoKitSource: PhotosSource {
         try requireAccess()
         var mapped: [String: String] = [:]
         for batch in Self.batches(localIds, size: Self.mappingBatchSize) {
-            let results = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: batch)
-            for (localId, result) in results {
-                guard case .success(let cloudId) = result else { continue }
-                mapped[localId] = cloudId.stringValue
+            autoreleasepool {
+                let results = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: batch)
+                for (localId, result) in results {
+                    guard case .success(let cloudId) = result else { continue }
+                    mapped[localId] = cloudId.stringValue
+                }
             }
         }
         return mapped
@@ -125,10 +133,12 @@ public final class PhotoKitSource: PhotosSource {
         try requireAccess()
         var mapped: [String: String] = [:]
         for batch in Self.batches(cloudIds, size: Self.mappingBatchSize) {
-            let results = PHPhotoLibrary.shared().localIdentifierMappings(for: batch.map { PHCloudIdentifier(stringValue: $0) })
-            for (cloudId, result) in results {
-                guard case .success(let localId) = result else { continue }
-                mapped[cloudId.stringValue] = localId
+            autoreleasepool {
+                let results = PHPhotoLibrary.shared().localIdentifierMappings(for: batch.map { PHCloudIdentifier(stringValue: $0) })
+                for (cloudId, result) in results {
+                    guard case .success(let localId) = result else { continue }
+                    mapped[cloudId.stringValue] = localId
+                }
             }
         }
         return mapped
@@ -145,10 +155,12 @@ public final class PhotoKitSource: PhotosSource {
         let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
         var albums: [AlbumSnapshot] = []
         collections.enumerateObjects { collection, _, _ in
-            var members: [String] = []
-            PHAsset.fetchAssets(in: collection, options: Self.fetchOptions())
-                .enumerateObjects { asset, _, _ in members.append(asset.localIdentifier) }
-            albums.append(AlbumSnapshot(localId: collection.localIdentifier, title: collection.localizedTitle ?? "", assetLocalIds: members))
+            autoreleasepool {
+                var members: [String] = []
+                PHAsset.fetchAssets(in: collection, options: Self.fetchOptions())
+                    .enumerateObjects { asset, _, _ in autoreleasepool { members.append(asset.localIdentifier) } }
+                albums.append(AlbumSnapshot(localId: collection.localIdentifier, title: collection.localizedTitle ?? "", assetLocalIds: members))
+            }
         }
         return albums
     }

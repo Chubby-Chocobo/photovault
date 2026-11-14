@@ -79,6 +79,7 @@ struct ResumableUploader: Sendable {
 
     private func transfer(_ session: URL, file: URL, size: Int64, from start: Int64, progress: TransferSink?) async throws -> DriveFile {
         var offset = start
+        let mappable = HTTPBody.mayMap(file)
         if start > 0 { progress?.report(start) }
         var recoveries = 0
         var stalls = 0
@@ -96,7 +97,7 @@ struct ResumableUploader: Sendable {
             }
             let end = min(offset + Int64(chunkSize), size)
             let range = size == 0 ? "bytes */0" : "bytes \(offset)-\(end - 1)/\(size)"
-            let body: HTTPBody = size == 0 ? .none : .fileRange(file, offset: offset, length: Int(end - offset))
+            let body: HTTPBody = size == 0 ? .none : .fileRange(file, offset: offset, length: Int(end - offset), mappable: mappable)
             var stalled = false
             do {
                 let (data, response) = try await http.send(session, method: "PUT", headers: ["Content-Range": range], body: body)

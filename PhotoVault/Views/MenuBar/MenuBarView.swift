@@ -37,7 +37,10 @@ struct MenuBarView: View {
         .padding(12)
         .frame(width: PopoverLayout.width)
         .background(PopupWindowObserver(
-            onOpenChange: { isOpen in isOpen ? contentHeight.opened() : contentHeight.closed() },
+            onOpenChange: { isOpen in
+                isOpen ? contentHeight.opened() : contentHeight.closed()
+                model.popupOpen = isOpen
+            },
             onScreenHeight: { height in if screenHeight != height { screenHeight = height } }))
         .task { await model.refreshSnapshot() }
     }
@@ -144,9 +147,10 @@ private struct BackfillSection: View {
                 }
                 ProgressBar(fraction: ProgressText.fraction(done: snapshot.backfillDoneAssets, total: snapshot.backfillTotalAssets))
                     .accessibilityLabel(tr(vi: "Tiến độ backfill", en: "Backfill progress"))
-                // `transferNow` ticks while files move; a retry countdown has nothing moving, so it brings its own clock.
+                // `transferNow` ticks while files move; a retry countdown has nothing moving, so it brings its own
+                // clock, which runs only while the popup shows it.
                 let _ = model.transferNow
-                if snapshot.nextRetryAt != nil {
+                if snapshot.nextRetryAt != nil, model.popupOpen {
                     TimelineView(.periodic(from: .now, by: 1)) { context in activityLine(now: context.date) }
                 } else {
                     activityLine(now: Date())

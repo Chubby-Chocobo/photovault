@@ -63,7 +63,7 @@ let package = Package(
         .testTarget(name: "PhotoVaultLocalTests", dependencies: ["PhotoVaultLocal", "PhotoVaultTestSupport"], swiftSettings: strictSwift),
         .testTarget(
             name: "PhotoVaultEngineTests",
-            dependencies: ["PhotoVaultEngine", "PhotoVaultStore", "PhotoVaultLocal", "PhotoVaultTestSupport"],
+            dependencies: ["PhotoVaultEngine", "PhotoVaultStore", "PhotoVaultLocal", "PhotoVaultDrive", "PhotoVaultTestSupport"],
             swiftSettings: strictSwift
         ),
         .testTarget(

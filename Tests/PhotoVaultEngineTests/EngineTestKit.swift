@@ -55,6 +55,8 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
     /// Runs before every page of the library scan is fetched.
     var onFetch: (@Sendable () async -> Void)?
     var headerOverride: (@Sendable (String, URL, ExportControl) async throws -> HeaderResult)?
+    /// Replaces the fake library's in-memory bytes (streams large files from disk instead).
+    var exportOverride: (@Sendable (String, ResourceType, URL, ExportControl) async throws -> ExportedFile)?
 
     init(_ inner: FakePhotosSource) { self.inner = inner }
 
@@ -93,6 +95,7 @@ final class ProbePhotosSource: PhotosSource, @unchecked Sendable {
         }
         defer { lock.withLock { running -= 1 } }
         if let beforeExport { try await beforeExport(localId, type, control) }
+        if let exportOverride { return try await exportOverride(localId, type, destination, control) }
         return try await inner.exportResource(localId: localId, type: type, to: destination, control: control)
     }
 
@@ -107,7 +110,9 @@ struct StubMetadataReader: MetadataReading {
     func metadata(of file: URL, uti: String, mediaType: MediaType) -> CaptureMetadata {
         // Staged files have no extension: without the resource's UTI a real reader finds nothing.
         guard !uti.isEmpty else { return .empty }
-        let head = (try? Data(contentsOf: file)).map { String(decoding: $0.prefix(8), as: UTF8.self) } ?? ""
+        let handle = try? FileHandle(forReadingFrom: file)
+        defer { try? handle?.close() }
+        let head = (try? handle?.read(upToCount: 8)).flatMap { $0 }.map { String(decoding: $0, as: UTF8.self) } ?? ""
         if head.hasPrefix("l:sonylow") || head.hasPrefix("sonylow") {
             return CaptureMetadata(make: "SONY", model: "ILCE-7M4", lensModel: "fe 24-70")
         }
