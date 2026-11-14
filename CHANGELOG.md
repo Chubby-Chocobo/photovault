@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0] - 2026-11-14
+
+### Upgrade notes
+
+- No database migration. 0.8.0 opens the same database as 0.7.x, and 0.7.x can still open it after 0.8.0 has.
+
+### Performance
+
+- PhotoVault uses much less memory. On the owner's Mac the idle footprint went from about 100 MB (0.7.1 after two days) to about 22 MB right after launch. With generated test files, the peak above start fell from about 20 MB to 6 MB for a 300 MiB backup or folder import, and from about 13 MB to 1.5 MB for listing a 10 000-file folder. Nothing the app does changed (#107, #108) (1b76ce4):
+  - Drive uploads read each 8 MiB chunk straight from the staged file on the Mac's internal disk instead of copying it into memory. Staged files on other volumes are read as before.
+  - Loops over Photos library objects and folder listings free memory as they go.
+  - SQLite keeps smaller caches and releases them after each sync.
+  - While idle the app no longer wakes every 10 seconds, the retry countdown runs only while the popup is open, and the Log window reads only the end of each log file.
+
 ## [0.7.2] - 2026-11-12
 
 ### Documentation
